@@ -1,0 +1,11 @@
+{
+    "name": "Faturacao",
+    "alias": "faturacao",
+    "description": "Faturação & Gestão Financeira: clientes, produtos/serviços, faturas com numeração sequencial e cadeia de hash RSA (AGT), notas de crédito/débito, recibos e exportação SAF-T (AO). Depende do módulo Core.",
+    "keywords": [],
+    "priority": 1,
+    "providers": [
+        "Modules\\Faturacao\\Providers\\FaturacaoServiceProvider"
+    ],
+    "files": []
+}

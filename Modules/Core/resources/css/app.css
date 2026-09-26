@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+/*
+ * Por omissão, o Tailwind só rastreia resources/views na raiz do projeto.
+ * Esta linha garante que as classes usadas nas views deste módulo também
+ * são incluídas no CSS final. Confirma a sintaxe consoante a versão do
+ * Tailwind instalada (escrito para Tailwind CSS 4.x).
+ */
+@source "../views/**/*.blade.php";
+
+/* Cada módulo compila o seu próprio CSS (ver vite.config.js na raiz do
+   projeto) para que, por exemplo, o CSS do Estúdio de Música não seja
+   carregado quando o utilizador está no módulo de Faturação. */

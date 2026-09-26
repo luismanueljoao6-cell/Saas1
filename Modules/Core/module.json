@@ -1,0 +1,11 @@
+{
+    "name": "Core",
+    "alias": "core",
+    "description": "Núcleo Multi-tenant: gestão de empresas (inquilinos), autenticação e perfis/permissões. Módulo base do qual todos os outros módulos dependem.",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Core\\Providers\\CoreServiceProvider"
+    ],
+    "files": []
+}

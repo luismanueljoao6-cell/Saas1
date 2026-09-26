@@ -1,0 +1,23 @@
+{
+    "name": "empresa/faturacao",
+    "description": "Faturação, clientes, produtos, cadeia de hash fiscal e exportação SAF-T (AO)",
+    "type": "laravel-module",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "ext-openssl": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Faturacao\\": "app/",
+            "Modules\\Faturacao\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Modules\\Faturacao\\Providers\\FaturacaoServiceProvider"
+            ]
+        }
+    }
+}

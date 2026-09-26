@@ -1,0 +1,24 @@
+{
+    "name": "empresa/core",
+    "description": "Núcleo Multi-tenant do sistema de gestão empresarial e faturação",
+    "type": "laravel-module",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "spatie/laravel-permission": "^6.0",
+        "spatie/laravel-activitylog": "^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Core\\": "app/",
+            "Modules\\Core\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Modules\\Core\\Providers\\CoreServiceProvider"
+            ]
+        }
+    }
+}
