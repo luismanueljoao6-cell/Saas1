@@ -18,6 +18,12 @@ class FaturacaoServiceProvider extends ServiceProvider
 
         $this->app->register(RouteServiceProvider::class);
 
+        $menu = $this->app->make(\Modules\Core\Services\MenuRegistry::class);
+        $menu->adicionar('faturacao.faturas.index', 'Faturas', 20);
+        $menu->adicionar('faturacao.clientes.index', 'Clientes', 30);
+        $menu->adicionar('faturacao.produtos.index', 'Produtos', 40);
+        $menu->adicionar('faturacao.saft.criar', 'SAF-T (AO)', 80);
+
         $this->publishes([
             __DIR__.'/../../config/config.php' => config_path('faturacao.php'),
         ], 'faturacao-config');

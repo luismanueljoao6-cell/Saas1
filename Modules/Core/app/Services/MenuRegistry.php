@@ -1,0 +1,56 @@
+<?php
+
+namespace Modules\Core\Services;
+
+use Illuminate\Support\Facades\Route;
+
+/**
+ * Resolve o problema de navegação entre módulos sem quebrar a
+ * independência entre eles: o Core NUNCA importa nada de Subscricoes ou
+ * Faturacao (isso seria o Core a depender de módulos que, por definição,
+ * podem não estar instalados). Em vez disso, cada módulo regista os seus
+ * próprios itens aqui, no boot() do seu ServiceProvider — o Core só
+ * conhece esta interface simples, nunca os módulos em si.
+ *
+ * Se desativares um módulo (ex.: apagares a pasta Modules/Faturacao), os
+ * itens dele simplesmente deixam de ser registados — o menu adapta-se
+ * sozinho, sem precisares de tocar no Core.
+ */
+class MenuRegistry
+{
+    protected array $itens = [];
+
+    /**
+     * $parametros é uma closure só avaliada no momento de desenhar o menu
+     * (nunca no momento de registar) — é isso que permite registar, por
+     * exemplo, uma rota como 'core.empresa.editar' (que precisa de
+     * {empresa}) sem o módulo saber de antemão qual vai ser o utilizador
+     * autenticado a ver a página.
+     */
+    public function adicionar(string $rota, string $rotulo, int $ordem = 100, ?\Closure $parametros = null): void
+    {
+        $this->itens[] = compact('rota', 'rotulo', 'ordem', 'parametros');
+    }
+
+    /**
+     * @return array<int, array{rota: string, rotulo: string, ordem: int, url: string}>
+     */
+    public function itens(): array
+    {
+        return collect($this->itens)
+            // Defensivo: se um módulo registou uma rota que por alguma
+            // razão não existe (ex.: módulo desativado a meio, cache de
+            // rotas desatualizada), simplesmente não aparece — nunca
+            // rebenta a página com um erro de rota inexistente.
+            ->filter(fn (array $item) => Route::has($item['rota']))
+            ->map(fn (array $item) => [
+                'rota' => $item['rota'],
+                'rotulo' => $item['rotulo'],
+                'ordem' => $item['ordem'],
+                'url' => route($item['rota'], $item['parametros'] ? ($item['parametros'])() : []),
+            ])
+            ->sortBy('ordem')
+            ->values()
+            ->all();
+    }
+}

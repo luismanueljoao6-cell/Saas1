@@ -8,6 +8,7 @@ use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Core\Http\Middleware\VerificarSubscricaoAtiva;
 use Modules\Core\Repositories\Contracts\EmpresaRepositoryInterface;
 use Modules\Core\Repositories\EmpresaRepository;
+use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Services\TenantManager;
 
 class CoreServiceProvider extends ServiceProvider
@@ -24,6 +25,11 @@ class CoreServiceProvider extends ServiceProvider
         // (ou por execução de comando artisan / job).
         $this->app->singleton(TenantManager::class);
 
+        // Idem para o MenuRegistry — cada módulo instalado regista aqui os
+        // seus próprios itens (ver boot() de cada ServiceProvider); tem de
+        // ser a MESMA instância em toda a aplicação, daí o singleton.
+        $this->app->singleton(MenuRegistry::class);
+
         $this->app->bind(EmpresaRepositoryInterface::class, EmpresaRepository::class);
     }
 
@@ -32,6 +38,7 @@ class CoreServiceProvider extends ServiceProvider
         $this->registerViews();
         $this->registerMigrations();
         $this->registerMiddlewareAliases();
+        $this->registerMenuItems();
 
         $this->app->register(RouteServiceProvider::class);
 
@@ -57,5 +64,19 @@ class CoreServiceProvider extends ServiceProvider
 
         $router->aliasMiddleware('tenant', IdentificarTenant::class);
         $router->aliasMiddleware('subscricao.ativa', VerificarSubscricaoAtiva::class);
+    }
+
+    protected function registerMenuItems(): void
+    {
+        $menu = $this->app->make(MenuRegistry::class);
+
+        $menu->adicionar('core.painel', 'Painel', 10);
+
+        $menu->adicionar(
+            'core.empresa.editar',
+            'Empresa',
+            90,
+            fn () => [auth()->user()?->empresa_id],
+        );
     }
 }

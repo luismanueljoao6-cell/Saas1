@@ -50,6 +50,9 @@ class SubscricoesServiceProvider extends ServiceProvider
 
         $this->app->register(RouteServiceProvider::class);
 
+        $this->app->make(\Modules\Core\Services\MenuRegistry::class)
+            ->adicionar('subscricoes.planos', 'Planos', 50);
+
         $this->publishes([
             __DIR__.'/../../config/config.php' => config_path('subscricoes.php'),
         ], 'subscricoes-config');
