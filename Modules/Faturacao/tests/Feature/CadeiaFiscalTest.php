@@ -100,6 +100,30 @@ class CadeiaFiscalTest extends TestCase
         $fatura->delete();
     }
 
+    public function test_atualizacao_em_massa_tambem_e_bloqueada_pelo_trigger_de_base_de_dados(): void
+    {
+        // Este teste existe especificamente porque a trait Imutavel (nível
+        // de aplicação) só intercepta update()/delete() numa instância já
+        // carregada — nunca uma operação em massa como
+        // Fatura::where(...)->update([...]), que não dispara os eventos do
+        // Eloquent. A proteção real aqui vem do trigger de base de dados
+        // (ver migration 2026_03_01_000009).
+        [$empresa, $cliente] = $this->criarEmpresaComCliente('300000007');
+        $fatura = app(FaturaService::class)->emitir(
+            app(FaturaService::class)->criarRascunho($empresa, $cliente, $this->linhaExemplo())
+        );
+
+        // Sem tenant definido, a TenantScope (fail-closed) acrescentaria
+        // "1 = 0" à query: o UPDATE não apanharia nenhuma linha e o
+        // trigger nunca chegaria a disparar. Com o tenant certo definido,
+        // a query apanha a fatura e é o trigger que a trava.
+        app(\Modules\Core\Services\TenantManager::class)->set($empresa->id);
+
+        $this->expectException(\Illuminate\Database\QueryException::class);
+
+        Fatura::where('id', $fatura->id)->update(['observacoes' => 'tentativa de alteração em massa']);
+    }
+
     public function test_rascunho_pode_ser_livremente_alterado_antes_de_emitido(): void
     {
         [$empresa, $cliente] = $this->criarEmpresaComCliente('300000005');

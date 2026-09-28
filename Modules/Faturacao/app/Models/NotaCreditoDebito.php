@@ -8,11 +8,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Core\Traits\BelongsToTenant;
 use Modules\Faturacao\Contracts\DocumentoFiscalInterface;
 use Modules\Faturacao\Traits\Imutavel;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class NotaCreditoDebito extends Model implements DocumentoFiscalInterface
 {
     use BelongsToTenant;
     use Imutavel;
+    use LogsActivity;
 
     protected $table = 'notas_credito_debito';
 
@@ -134,5 +137,13 @@ class NotaCreditoDebito extends Model implements DocumentoFiscalInterface
         $this->hash = $hash;
         $this->chave_versao = $chaveVersao;
         $this->estado = 'emitida';
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['estado', 'tipo', 'numero_documento', 'valor_total', 'fatura_id', 'motivo'])
+            ->logOnlyDirty()
+            ->useLogName('notas_credito_debito');
     }
 }

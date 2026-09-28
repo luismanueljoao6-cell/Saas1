@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Core\Http\Controllers\EmpresaController;
+use Modules\Core\Http\Controllers\UtilizadorController;
 use Modules\Core\Http\Controllers\Auth\AuthenticatedSessionController;
 use Modules\Core\Http\Controllers\Auth\RegisteredTenantController;
 
@@ -49,4 +50,9 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa'])->group(function () {
         ->name('core.empresa.editar');
     Route::put('/empresas/{empresa}', [EmpresaController::class, 'atualizar'])
         ->name('core.empresa.atualizar');
+
+    Route::get('/utilizadores', [UtilizadorController::class, 'index'])->name('core.utilizadores.index');
+    Route::post('/utilizadores', [UtilizadorController::class, 'store'])->name('core.utilizadores.store');
+    Route::post('/utilizadores/{utilizador}/alternar-ativo', [UtilizadorController::class, 'alternarAtivo'])
+        ->name('core.utilizadores.alternar-ativo');
 });

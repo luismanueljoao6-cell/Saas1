@@ -25,11 +25,18 @@ class MenuRegistry
      * (nunca no momento de registar) — é isso que permite registar, por
      * exemplo, uma rota como 'core.empresa.editar' (que precisa de
      * {empresa}) sem o módulo saber de antemão qual vai ser o utilizador
-     * autenticado a ver a página.
+     * autenticado a ver a página. $visivel segue a mesma lógica, para
+     * itens que só devem aparecer a certos papéis (ex.: "Utilizadores"
+     * só para administradores) — null significa "sempre visível".
      */
-    public function adicionar(string $rota, string $rotulo, int $ordem = 100, ?\Closure $parametros = null): void
-    {
-        $this->itens[] = compact('rota', 'rotulo', 'ordem', 'parametros');
+    public function adicionar(
+        string $rota,
+        string $rotulo,
+        int $ordem = 100,
+        ?\Closure $parametros = null,
+        ?\Closure $visivel = null,
+    ): void {
+        $this->itens[] = compact('rota', 'rotulo', 'ordem', 'parametros', 'visivel');
     }
 
     /**
@@ -43,6 +50,7 @@ class MenuRegistry
             // rotas desatualizada), simplesmente não aparece — nunca
             // rebenta a página com um erro de rota inexistente.
             ->filter(fn (array $item) => Route::has($item['rota']))
+            ->filter(fn (array $item) => $item['visivel'] === null || ($item['visivel'])())
             ->map(fn (array $item) => [
                 'rota' => $item['rota'],
                 'rotulo' => $item['rotulo'],

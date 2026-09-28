@@ -7,11 +7,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Core\Traits\BelongsToTenant;
 use Modules\Faturacao\Contracts\DocumentoFiscalInterface;
 use Modules\Faturacao\Traits\Imutavel;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class Recibo extends Model implements DocumentoFiscalInterface
 {
     use BelongsToTenant;
     use Imutavel;
+    use LogsActivity;
 
     protected $fillable = [
         'empresa_id',
@@ -121,5 +124,13 @@ class Recibo extends Model implements DocumentoFiscalInterface
         $this->hash = $hash;
         $this->chave_versao = $chaveVersao;
         $this->estado = 'emitido';
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['estado', 'numero_documento', 'valor', 'meio_pagamento'])
+            ->logOnlyDirty()
+            ->useLogName('recibos');
     }
 }

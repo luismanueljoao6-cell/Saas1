@@ -8,11 +8,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Core\Traits\BelongsToTenant;
 use Modules\Faturacao\Contracts\DocumentoFiscalInterface;
 use Modules\Faturacao\Traits\Imutavel;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class Fatura extends Model implements DocumentoFiscalInterface
 {
     use BelongsToTenant;
     use Imutavel;
+    use LogsActivity;
 
     protected $fillable = [
         'empresa_id',
@@ -137,5 +140,13 @@ class Fatura extends Model implements DocumentoFiscalInterface
         $this->hash = $hash;
         $this->chave_versao = $chaveVersao;
         $this->estado = 'emitida';
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['estado', 'numero_documento', 'valor_total', 'cliente_id'])
+            ->logOnlyDirty()
+            ->useLogName('faturas');
     }
 }
