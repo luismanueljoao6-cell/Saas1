@@ -28,6 +28,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Duração do período experimental (trial)
+    |--------------------------------------------------------------------------
+    |
+    | Dias de acesso completo a partir do registo. Terminado o trial, a rotina
+    | diária (módulo Subscrições) põe a empresa em período de tolerância e,
+    | depois, bloqueia-a. 0 = trial sem fim (comportamento antigo).
+    |
+    */
+    'trial_dias' => (int) env('CORE_TRIAL_DIAS', 14),
+
+    /*
+    |--------------------------------------------------------------------------
     | Super administradores
     |--------------------------------------------------------------------------
     |

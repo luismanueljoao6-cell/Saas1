@@ -32,9 +32,12 @@ class RegistoEmpresaService
     {
         try {
             return DB::transaction(function () use ($dadosEmpresa, $dadosAdmin) {
+                $diasTrial = (int) config('core.trial_dias', 14);
+
                 $empresa = Empresa::create([
                     ...$dadosEmpresa,
                     'estado_subscricao' => 'trial',
+                    'subscricao_expira_em' => $diasTrial > 0 ? now()->addDays($diasTrial) : null,
                 ]);
 
                 $utilizador = User::create([
@@ -81,9 +84,12 @@ class RegistoEmpresaService
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($empresaId);
 
+        // 'empresa_id' explícito: sem ele o firstOrCreate procura o papel
+        // pelo nome em TODAS as empresas e reutilizaria o de outra.
         $papel = Role::firstOrCreate([
             'name' => self::PAPEL_ADMINISTRADOR,
             'guard_name' => 'web',
+            'empresa_id' => $empresaId,
         ]);
 
         $utilizador->assignRole($papel);

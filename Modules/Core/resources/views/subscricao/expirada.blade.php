@@ -10,13 +10,13 @@
             terminou. Regulariza o pagamento para recuperares o acesso.
         </p>
 
-        {{-- O Módulo de Subscrições e Pagamentos deve substituir este botão
-             por um link real para o fluxo de pagamento (ex.: Multicaixa
-             Express). --}}
-        <button type="button" disabled
-                class="mt-6 inline-block cursor-not-allowed rounded-md bg-amber-300 px-4 py-2 text-sm font-semibold text-amber-900">
-            Regularizar pagamento (em breve)
-        </button>
+        {{-- Só aparece se o módulo Subscrições estiver instalado. --}}
+        @if (\Illuminate\Support\Facades\Route::has('subscricoes.planos'))
+            <a href="{{ route('subscricoes.planos') }}"
+               class="mt-6 inline-block rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-500">
+                Ver planos e regularizar
+            </a>
+        @endif
 
         <form method="POST" action="{{ route('core.logout') }}" class="mt-4">
             @csrf

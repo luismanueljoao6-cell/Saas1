@@ -1,0 +1,22 @@
+{
+    "name": "empresa/estudiomusica",
+    "description": "Gestão de estúdio de música: projetos, sessões, portal do cliente e marketing automatizado",
+    "type": "laravel-module",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\EstudioMusica\\": "app/",
+            "Modules\\EstudioMusica\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Modules\\EstudioMusica\\Providers\\EstudioMusicaServiceProvider"
+            ]
+        }
+    }
+}

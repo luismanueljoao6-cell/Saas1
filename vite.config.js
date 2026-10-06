@@ -10,6 +10,7 @@ export default defineConfig({
         'resources/css/app.css',
         'resources/js/app.js',
         'Modules/Core/resources/css/app.css',
+           'Modules/Atelier/resources/css/app.css',
     ],
     refresh: true,
             fonts: [

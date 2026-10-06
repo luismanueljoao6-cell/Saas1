@@ -14,6 +14,13 @@ use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Services\FaturaService;
 use Throwable;
 
+/**
+ * IMPORTANTE: {fatura} chega como int, nunca como Fatura tipado (route
+ * model binding implícito). O Laravel resolve o binding ANTES do
+ * middleware 'tenant' correr — nessa altura ainda não há empresa
+ * definida, e a TenantScope (fail-closed) faria o binding devolver sempre
+ * 404. O findOrFail() dentro de cada método já corre com o tenant certo.
+ */
 class FaturaController extends Controller
 {
     public function __construct(protected FaturaService $faturaService)
@@ -53,30 +60,32 @@ class FaturaController extends Controller
             ->with('sucesso', 'Rascunho criado. Revê os valores antes de emitir.');
     }
 
-    public function mostrar(Fatura $fatura): View
+    public function mostrar(int $fatura): View
     {
         return view('faturacao::faturas.mostrar', [
-            'fatura' => $fatura->load('linhas', 'cliente'),
+            'fatura' => Fatura::with('linhas', 'cliente')->findOrFail($fatura),
         ]);
     }
 
-    public function emitir(Fatura $fatura): RedirectResponse
+    public function emitir(int $fatura): RedirectResponse
     {
-        $this->garantirQuePodeEmitirFaturas($fatura->empresa);
+        $modelo = Fatura::findOrFail($fatura);
+
+        $this->garantirQuePodeEmitirFaturas($modelo->empresa);
 
         try {
-            $this->faturaService->emitir($fatura);
+            $this->faturaService->emitir($modelo);
         } catch (AssinaturaFiscalException $e) {
-            Log::error('Não foi possível emitir a fatura', ['fatura_id' => $fatura->id, 'erro' => $e->getMessage()]);
+            Log::error('Não foi possível emitir a fatura', ['fatura_id' => $modelo->id, 'erro' => $e->getMessage()]);
 
             return back()->with('erro', $e->getMessage());
         } catch (Throwable $e) {
-            Log::error('Falha inesperada ao emitir fatura', ['fatura_id' => $fatura->id, 'erro' => $e->getMessage()]);
+            Log::error('Falha inesperada ao emitir fatura', ['fatura_id' => $modelo->id, 'erro' => $e->getMessage()]);
 
             return back()->with('erro', 'Ocorreu um erro ao emitir a fatura. Tenta novamente.');
         }
 
-        return redirect()->route('faturacao.faturas.mostrar', $fatura)
+        return redirect()->route('faturacao.faturas.mostrar', $modelo)
             ->with('sucesso', 'Fatura emitida com sucesso.');
     }
 

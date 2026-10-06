@@ -36,6 +36,17 @@ class User extends Authenticatable implements MustVerifyEmail
     use LogsActivity;
     use Notifiable;
 
+    /**
+     * Espelha os defaults da migration. Sem isto, um User acabado de criar
+     * (ex.: Auth::login($novo) no registo, ou actingAs() nos testes) fica
+     * com `ativo` a null em memória, e o IdentificarTenant tratá-lo-ia
+     * como desativado.
+     */
+    protected $attributes = [
+        'ativo' => true,
+        'is_super_admin' => false,
+    ];
+
     protected $fillable = [
         'name',
         'email',

@@ -4,11 +4,14 @@ namespace Modules\Core\Providers;
 
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
+use Modules\Core\Contracts\LimitesDaEmpresa;
+use Modules\Core\Http\Middleware\ExigirPapel;
 use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Core\Http\Middleware\VerificarSubscricaoAtiva;
 use Modules\Core\Repositories\Contracts\EmpresaRepositoryInterface;
 use Modules\Core\Repositories\EmpresaRepository;
 use Modules\Core\Services\MenuRegistry;
+use Modules\Core\Services\SemLimites;
 use Modules\Core\Services\TenantManager;
 
 class CoreServiceProvider extends ServiceProvider
@@ -29,6 +32,11 @@ class CoreServiceProvider extends ServiceProvider
         // seus próprios itens (ver boot() de cada ServiceProvider); tem de
         // ser a MESMA instância em toda a aplicação, daí o singleton.
         $this->app->singleton(MenuRegistry::class);
+
+        // Por omissão, sem limites. bindIf: se o módulo Subscrições já
+        // registou a sua implementação (por ordem de carregamento), esta
+        // linha não a substitui.
+        $this->app->bindIf(LimitesDaEmpresa::class, SemLimites::class);
 
         $this->app->bind(EmpresaRepositoryInterface::class, EmpresaRepository::class);
     }
@@ -64,6 +72,7 @@ class CoreServiceProvider extends ServiceProvider
 
         $router->aliasMiddleware('tenant', IdentificarTenant::class);
         $router->aliasMiddleware('subscricao.ativa', VerificarSubscricaoAtiva::class);
+        $router->aliasMiddleware('papel', ExigirPapel::class);
     }
 
     protected function registerMenuItems(): void

@@ -5,10 +5,13 @@ namespace Modules\Subscricoes\Providers;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
+use Modules\Core\Contracts\LimitesDaEmpresa;
+use Modules\Subscricoes\Console\VerificarSubscricoesCommand;
 use Modules\Subscricoes\Http\Middleware\VerificarAssinaturaWebhook;
 use Modules\Subscricoes\Jobs\VerificarSubscricoesExpiradasJob;
 use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
 use Modules\Subscricoes\Services\Gateways\ProxyPayGateway;
+use Modules\Subscricoes\Services\LimitesPlanoService;
 
 class SubscricoesServiceProvider extends ServiceProvider
 {
@@ -24,6 +27,10 @@ class SubscricoesServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../../config/config.php', 'subscricoes');
+
+        // Os limites passam a vir do plano da empresa (substitui o
+        // SemLimites que o Core regista por omissão).
+        $this->app->bind(LimitesDaEmpresa::class, LimitesPlanoService::class);
 
         $this->app->bind(GatewayPagamentoInterface::class, function ($app) {
             $identificador = config('subscricoes.gateway');
@@ -56,6 +63,10 @@ class SubscricoesServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../../config/config.php' => config_path('subscricoes.php'),
         ], 'subscricoes-config');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([VerificarSubscricoesCommand::class]);
+        }
 
         $this->agendarVerificacaoDiaria();
     }

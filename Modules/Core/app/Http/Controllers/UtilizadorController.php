@@ -8,7 +8,9 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
+use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Http\Requests\ConvidarUtilizadorRequest;
+use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -24,6 +26,10 @@ use Throwable;
  */
 class UtilizadorController extends Controller
 {
+    public function __construct(protected LimitesDaEmpresa $limites)
+    {
+    }
+
     public function index(Request $request): View
     {
         $this->garantirAdministrador($request->user());
@@ -36,6 +42,11 @@ class UtilizadorController extends Controller
     public function store(ConvidarUtilizadorRequest $request): RedirectResponse
     {
         $empresa = $request->user()->empresa;
+
+        if ($mensagem = $this->mensagemSeLimiteAtingido($empresa)) {
+            return back()->withInput($request->except('password', 'password_confirmation'))
+                ->with('erro', $mensagem);
+        }
 
         try {
             $novoUtilizador = User::create([
@@ -78,18 +89,42 @@ class UtilizadorController extends Controller
             return back()->with('erro', 'Não podes desativar a tua própria conta.');
         }
 
+        // Reativar também conta para o limite — senão desativar e reativar
+        // seria uma forma de contornar o número de utilizadores do plano.
+        if (! $utilizador->ativo && ($mensagem = $this->mensagemSeLimiteAtingido($admin->empresa))) {
+            return back()->with('erro', $mensagem);
+        }
+
         $utilizador->update(['ativo' => ! $utilizador->ativo]);
 
         return back()->with('sucesso', $utilizador->ativo ? 'Utilizador reativado.' : 'Utilizador desativado.');
+    }
+
+    protected function mensagemSeLimiteAtingido(Empresa $empresa): ?string
+    {
+        $limite = $this->limites->limite($empresa, 'max_utilizadores');
+
+        if ($limite === null) {
+            return null;
+        }
+
+        if ($empresa->utilizadores()->where('ativo', true)->count() < $limite) {
+            return null;
+        }
+
+        return "O plano atual permite no máximo {$limite} utilizador(es) ativo(s). Desativa alguém ou passa para um plano superior.";
     }
 
     protected function atribuirPapel(User $utilizador, int $empresaId, bool $administrador): void
     {
         app(PermissionRegistrar::class)->setPermissionsTeamId($empresaId);
 
+        // 'empresa_id' explícito: sem ele o firstOrCreate procura o papel
+        // pelo nome em TODAS as empresas e reutilizaria o de outra.
         $papel = Role::firstOrCreate([
             'name' => $administrador ? 'Administrador' : 'Utilizador',
             'guard_name' => 'web',
+            'empresa_id' => $empresaId,
         ]);
 
         $utilizador->assignRole($papel);

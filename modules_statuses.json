@@ -1,5 +1,7 @@
 {
     "Core": true,
     "Faturacao": true,
-    "Subscricoes": true
+    "Subscricoes": true,
+    "Atelier": true,
+    "EstudioMusica": true
 }

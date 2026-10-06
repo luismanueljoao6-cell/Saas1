@@ -3,13 +3,39 @@
 @section('titulo', 'Planos')
 
 @section('conteudo')
-    <div class="w-full max-w-3xl">
+    <div class="mx-auto w-full max-w-3xl">
         <h1 class="text-center text-2xl font-semibold text-slate-900">Escolhe o teu plano</h1>
         <p class="mt-1 text-center text-sm text-slate-500">Podes mudar de plano a qualquer momento.</p>
 
         @if (session('erro'))
             <div class="mt-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
                 {{ session('erro') }}
+            </div>
+        @endif
+
+        @if ($subscricaoAtual)
+            <div class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900">
+                <p>
+                    Plano <strong>{{ $subscricaoAtual->plano->nome }}</strong> ativo até
+                    <strong>{{ $subscricaoAtual->termina_em?->format('d/m/Y') }}</strong>.
+                </p>
+                <p class="mt-1 text-emerald-800">
+                    @if ($subscricaoAtual->renovacao_automatica)
+                        Renovação ativa: {{ config('subscricoes.aviso_renovacao_dias') }} dias antes do fim enviamos-te
+                        por e-mail a referência do período seguinte. Os dias que restarem somam-se.
+                    @else
+                        Renovação cancelada: manténs o acesso até ao fim do período pago e não enviamos nova referência.
+                    @endif
+                </p>
+
+                @if (auth()->user()->hasRole('Administrador'))
+                    <form method="POST" action="{{ route('subscricoes.renovacao', $subscricaoAtual) }}" class="mt-3">
+                        @csrf
+                        <button type="submit" class="text-xs font-medium underline hover:text-emerald-700">
+                            {{ $subscricaoAtual->renovacao_automatica ? 'Cancelar renovação' : 'Retomar renovação' }}
+                        </button>
+                    </form>
+                @endif
             </div>
         @endif
 

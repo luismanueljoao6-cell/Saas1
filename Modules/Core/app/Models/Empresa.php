@@ -38,6 +38,10 @@ class Empresa extends Model
         'configuracoes',
     ];
 
+    /**
+     * Espelha o default da migration — ver Plano::$attributes no módulo
+     * Subscrições para a explicação completa de por que isto importa.
+     */
     protected $attributes = [
         'estado_subscricao' => 'trial',
     ];

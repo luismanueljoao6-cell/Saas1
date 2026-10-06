@@ -20,6 +20,10 @@ class Subscricao extends Model
     use BelongsToTenant;
     use HasFactory;
 
+    // Sem isto, o Eloquent adivinha o nome da tabela pluralizando
+    // "subscricao" à inglesa ("subscricaos") em vez do nome real da
+    // migration ("subscricoes") — português não segue as regras de
+    // pluralização em que o Eloquent confia por omissão.
     protected $table = 'subscricoes';
 
     protected $fillable = [

@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+/*
+ * Mesmo padrão de Modules/Core/resources/css/app.css: cada módulo compila
+ * o seu próprio CSS, rastreando só as SUAS views. Injetado no <head>
+ * partilhado via @push('estilos') a partir de cada view de topo deste
+ * módulo (ver o @stack('estilos') acrescentado a core::layouts.app).
+ */
+@source "../views/**/*.blade.php";

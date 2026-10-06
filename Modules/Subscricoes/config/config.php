@@ -47,9 +47,20 @@ return [
     | Aviso de renovação
     |--------------------------------------------------------------------------
     | Quantos dias antes de terminar_em a VerificarSubscricoesExpiradasJob
-    | deve disparar um lembrete (ver README — notificação de lembrete
-    | deixada como próximo passo, o "gancho" já fica pronto aqui).
+    | gerar a referência de renovação e avisar a empresa por e-mail.
     */
     'aviso_renovacao_dias' => (int) env('SUBSCRICOES_AVISO_RENOVACAO_DIAS', 3),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Limites de uma empresa SEM subscrição ativa (trial, por exemplo)
+    |--------------------------------------------------------------------------
+    | Com subscrição ativa valem os limites do plano (Plano::$limites).
+    | Valores de partida — decisão comercial tua, ajusta à vontade.
+    */
+    'limites_sem_plano' => [
+        'max_utilizadores' => (int) env('SUBSCRICOES_TRIAL_MAX_UTILIZADORES', 3),
+        'max_faturas_mes' => (int) env('SUBSCRICOES_TRIAL_MAX_FATURAS_MES', 50),
+    ],
 
 ];

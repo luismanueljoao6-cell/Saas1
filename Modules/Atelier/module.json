@@ -1,0 +1,11 @@
+{
+    "name": "Atelier",
+    "alias": "atelier",
+    "description": "Atelier de Costura: fichas de medidas, pedidos de confeção/ajuste com fluxo de provas, ligação à Faturação (sinal + fatura final), notificações ao cliente, CRM/marketing básico, portal do cliente por link assinado e página pública/portfólio. Depende dos módulos Core e Faturacao.",
+    "keywords": ["atelier", "costura", "confecao"],
+    "priority": 2,
+    "providers": [
+        "Modules\\Atelier\\Providers\\AtelierServiceProvider"
+    ],
+    "files": []
+}

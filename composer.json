@@ -33,8 +33,11 @@
 "Modules\\Faturacao\\": "Modules/Faturacao/app/",
 "Modules\\Core\\Database\\Seeders\\": "Modules/Core/database/seeders/",
 "Modules\\Subscricoes\\Database\\Seeders\\": "Modules/Subscricoes/database/seeders/",
-"Modules\\Faturacao\\Database\\Seeders\\": "Modules/Faturacao/database/seeders/"
-        
+"Modules\\Faturacao\\Database\\Seeders\\": "Modules/Faturacao/database/seeders/",
+ "Modules\\Atelier\\": "Modules/Atelier/app/",
+"Modules\\Atelier\\Database\\Seeders\\": "Modules/Atelier/database/seeders/",
+"Modules\\EstudioMusica\\": "Modules/EstudioMusica/app/",
+"Modules\\EstudioMusica\\Database\\Seeders\\": "Modules/EstudioMusica/database/seeders/"       
     }
 },
 

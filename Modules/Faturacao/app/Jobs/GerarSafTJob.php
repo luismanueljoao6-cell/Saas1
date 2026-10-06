@@ -11,6 +11,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Services\SafTExportService;
 use Throwable;
 
@@ -35,14 +36,21 @@ class GerarSafTJob implements ShouldQueue
     ) {
     }
 
-    public function handle(SafTExportService $safTExportService): void
+    /**
+     * Um worker de filas não tem pedido HTTP nem middleware 'tenant' — sem
+     * este bypass explícito, Cliente/Produto/Fatura (todos com
+     * BelongsToTenant) seriam filtrados pela TenantScope fail-closed e o
+     * XML sairia sempre vazio, mesmo com dados reais na base de dados.
+     * Foi exatamente isto que aconteceu na primeira vez que testámos.
+     */
+    public function handle(SafTExportService $safTExportService, TenantManager $tenantManager): void
     {
         try {
-            $xml = $safTExportService->gerar(
+            $xml = $tenantManager->semTenant(fn () => $safTExportService->gerar(
                 $this->empresa,
                 Carbon::parse($this->dataInicio)->startOfDay(),
                 Carbon::parse($this->dataFim)->endOfDay(),
-            );
+            ));
 
             $caminho = "faturacao/saft/{$this->empresa->id}/SAFT_{$this->dataInicio}_{$this->dataFim}.xml";
             Storage::disk('local')->put($caminho, $xml);
@@ -53,11 +61,6 @@ class GerarSafTJob implements ShouldQueue
                 'caminho' => $caminho,
                 'tamanho_bytes' => strlen($xml),
             ]);
-
-            // Próximo passo natural aqui: notificar o utilizador que pediu
-            // a exportação com um link de download — deixado de fora desta
-            // entrega para não presumir onde guardas ficheiros gerados em
-            // produção (local vs. S3 vs. outro disco).
         } catch (Throwable $e) {
             Log::error('Falha ao gerar SAF-T (AO)', [
                 'empresa_id' => $this->empresa->id,

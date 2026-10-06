@@ -33,6 +33,27 @@ class IdentificarTenant
             throw new TenantNaoEncontradoException;
         }
 
+        // Um utilizador desativado deixa de ter acesso IMEDIATAMENTE, mesmo
+        // com a sessão já aberta (antes, `ativo` só era verificado no login).
+        if (! $utilizador->ativo) {
+            Log::info('Sessão terminada: utilizador desativado.', ['utilizador_id' => $utilizador->id]);
+
+            if ($request->expectsJson()) {
+                abort(403, 'Esta conta está desativada.');
+            }
+
+            Auth::logout();
+
+            if ($request->hasSession()) {
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
+
+            return redirect()->route('core.login')->withErrors([
+                'email' => 'Esta conta foi desativada. Contacta o administrador da tua empresa.',
+            ]);
+        }
+
         // Super admins da plataforma não têm empresa_id — navegam sem
         // tenant definido (a TenantScope, por omissão, bloqueia tudo; usa
         // TenantManager::semTenant() explicitamente nas rotas de admin).

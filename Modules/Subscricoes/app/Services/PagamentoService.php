@@ -9,6 +9,7 @@ use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantService;
 use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
 use Modules\Subscricoes\Models\Pagamento;
+use Modules\Subscricoes\Models\Subscricao;
 use Modules\Subscricoes\Notifications\PagamentoConfirmadoNotification;
 use Throwable;
 
@@ -24,16 +25,16 @@ class PagamentoService
      * Ponto único de confirmação de pagamento — chamado tanto pelo Job que
      * processa o webhook como pela confirmação manual (transferência
      * bancária reconciliada por um super admin). Ativa a subscrição, ativa
-     * a empresa no Core, e notifica os administradores da empresa.
+     * a empresa no Core, e notifica os utilizadores ativos da empresa.
+     *
+     * Um pagamento feito ANTES do fim da subscrição atual estende-a: os dias
+     * que ainda restavam somam-se, nunca se perdem.
      *
      * @throws Throwable
      */
     public function confirmar(Pagamento $pagamento, array $payloadBruto = [], ?User $confirmadoPor = null): Pagamento
     {
         if ($pagamento->estado === 'confirmado') {
-            // Idempotência: um gateway pode reenviar a mesma notificação
-            // mais do que uma vez — confirmar duas vezes não deve duplicar
-            // o período de subscrição.
             Log::info('Pagamento já estava confirmado — notificação ignorada em segurança', [
                 'pagamento_id' => $pagamento->id,
             ]);
@@ -43,18 +44,27 @@ class PagamentoService
 
         try {
             // Bypass explícito e intencional: esta operação é despoletada
-            // pelo gateway de pagamento (webhook) ou por um super admin da
-            // plataforma — nenhum dos dois tem um "tenant atual" no sentido
-            // em que o IdentificarTenant o define. Sem este bypass, a
-            // TenantScope (fail-closed) bloquearia a leitura tanto do
-            // Pagamento como da Subscricao. Ver TenantManager::semTenant().
+            // pelo gateway (webhook) ou por um super admin — nenhum tem um
+            // "tenant atual". Ver TenantManager::semTenant().
             return $this->tenantManager->semTenant(function () use ($pagamento, $payloadBruto, $confirmadoPor) {
                 return DB::transaction(function () use ($pagamento, $payloadBruto, $confirmadoPor) {
+                    // Relê com lock: dois webhooks duplicados em paralelo
+                    // não podem confirmar (e somar dias) duas vezes.
+                    $pagamento = Pagamento::query()->lockForUpdate()->findOrFail($pagamento->id);
+
+                    if ($pagamento->estado === 'confirmado') {
+                        return $pagamento;
+                    }
+
                     $subscricao = $pagamento->subscricao()->with('plano')->firstOrFail();
                     $empresa = $subscricao->empresa;
-
                     $agora = now();
-                    $terminaEm = $agora->copy()->addDays($subscricao->plano->periodo_dias);
+
+                    $base = $agora;
+                    if ($empresa->estado_subscricao === 'ativa' && $empresa->subscricao_expira_em?->isFuture()) {
+                        $base = $empresa->subscricao_expira_em;
+                    }
+                    $terminaEm = $base->copy()->addDays($subscricao->plano->periodo_dias);
 
                     $pagamento->update([
                         'estado' => 'confirmado',
@@ -69,6 +79,14 @@ class PagamentoService
                         'termina_em' => $terminaEm,
                     ]);
 
+                    // Uma empresa só tem uma subscrição ativa de cada vez
+                    // (mudança de plano): as anteriores ficam encerradas.
+                    Subscricao::query()
+                        ->where('empresa_id', $empresa->id)
+                        ->where('estado', 'ativa')
+                        ->where('id', '!=', $subscricao->id)
+                        ->update(['estado' => 'expirada']);
+
                     $this->tenantService->ativar($empresa, $terminaEm);
 
                     $empresa->utilizadores()->where('ativo', true)->get()
@@ -81,6 +99,8 @@ class PagamentoService
                         'confirmado_por' => $confirmadoPor?->id ? "user:{$confirmadoPor->id}" : 'gateway',
                     ]);
 
+                    // Relação carregada AQUI, ainda dentro do bypass: um
+                    // lazy-load mais tarde seria bloqueado pela TenantScope.
                     return $pagamento->fresh(['subscricao.plano']);
                 });
             });
@@ -95,11 +115,9 @@ class PagamentoService
     }
 
     /**
-     * Localiza o Pagamento correspondente a uma referência externa
-     * devolvida pelo gateway. Lança exceção — em vez de devolver null — de
-     * propósito: um webhook para uma referência desconhecida é uma
-     * situação anómala que deve ficar registada, nunca ser ignorada
-     * silenciosamente.
+     * Lança exceção — em vez de devolver null — de propósito: um webhook
+     * para uma referência desconhecida é uma situação anómala que deve
+     * ficar registada, nunca ser ignorada silenciosamente.
      *
      * @throws GatewayPagamentoException
      */
