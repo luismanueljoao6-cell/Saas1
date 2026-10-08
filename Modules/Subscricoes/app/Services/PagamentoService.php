@@ -90,7 +90,11 @@ class PagamentoService
                     $this->tenantService->ativar($empresa, $terminaEm);
 
                     $empresa->utilizadores()->where('ativo', true)->get()
-                        ->each(fn (User $utilizador) => $utilizador->notify(new PagamentoConfirmadoNotification($pagamento, $subscricao)));
+                        ->each(fn (User $utilizador) => $utilizador->notify(new PagamentoConfirmadoNotification(
+    (string) $pagamento->valor,
+    $pagamento->moeda,
+    $subscricao->termina_em->format('d/m/Y'),
+)));
 
                     Log::info('Pagamento confirmado e subscrição ativada', [
                         'pagamento_id' => $pagamento->id,

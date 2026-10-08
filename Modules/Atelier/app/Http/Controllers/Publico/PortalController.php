@@ -56,7 +56,7 @@ class PortalController extends Controller
     public function reagendar(Request $request, int $cliente, int $prova): View|RedirectResponse
     {
         $clienteModel = $this->resolverCliente($cliente);
-        $provaModel = $this->resolverProva($provaId: $prova, clienteId: $clienteModel->id);
+        $provaModel = $this->resolverProva(provaId: $prova, clienteId: $clienteModel->id);
 
         if ($request->isMethod('get')) {
             return view('atelier::portal.reagendar', ['cliente' => $clienteModel, 'prova' => $provaModel]);

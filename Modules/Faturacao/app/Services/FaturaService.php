@@ -59,51 +59,61 @@ class FaturaService
      * @throws Throwable
      */
     public function emitir(Fatura $fatura): Fatura
-    {
-        if ($fatura->estaEmitido()) {
-            return $fatura; // idempotente: emitir uma fatura já emitida não faz nada
-        }
+{
+    try {
+        return DB::transaction(function () use ($fatura) {
+            $fatura = Fatura::query()
+                ->lockForUpdate()
+                ->findOrFail($fatura->id);
 
-        try {
-            return DB::transaction(function () use ($fatura) {
-                $resultado = $this->numeracaoService->proximoNumero($fatura->empresa_id, 'FT');
-
-                $hashAnterior = $this->tenantManager->semTenant(
-                    fn () => Fatura::query()
-                        ->where('serie_id', $resultado['serie']->id)
-                        ->where('numero_sequencial', $resultado['numero_sequencial'] - 1)
-                        ->value('hash')
-                );
-
-                $fatura->serie_id = $resultado['serie']->id;
-
-                $this->assinaturaFiscalService->assinarEEmitir(
-                    $fatura,
-                    $resultado['numero_sequencial'],
-                    $resultado['numero_documento'],
-                    now(),
-                    $hashAnterior,
-                );
-
-                $fatura->save();
-
-                Log::info('Fatura emitida', [
-                    'fatura_id' => $fatura->id,
-                    'numero_documento' => $fatura->numero_documento,
-                    'empresa_id' => $fatura->empresa_id,
-                ]);
-
+            if ($fatura->estaEmitido()) {
                 return $fatura->fresh('linhas');
-            });
-        } catch (Throwable $e) {
-            Log::error('Falha ao emitir fatura', [
+            }
+
+            $resultado = $this->numeracaoService->proximoNumero(
+                $fatura->empresa_id,
+                'FT'
+            );
+
+            $hashAnterior = $this->tenantManager->semTenant(
+                fn () => Fatura::query()
+                    ->where('serie_id', $resultado['serie']->id)
+                    ->where(
+                        'numero_sequencial',
+                        $resultado['numero_sequencial'] - 1
+                    )
+                    ->value('hash')
+            );
+
+            $fatura->serie_id = $resultado['serie']->id;
+
+            $this->assinaturaFiscalService->assinarEEmitir(
+                $fatura,
+                $resultado['numero_sequencial'],
+                $resultado['numero_documento'],
+                now(),
+                $hashAnterior,
+            );
+
+            $fatura->save();
+
+            Log::info('Fatura emitida', [
                 'fatura_id' => $fatura->id,
-                'erro' => $e->getMessage(),
+                'numero_documento' => $fatura->numero_documento,
+                'empresa_id' => $fatura->empresa_id,
             ]);
 
-            throw $e;
-        }
+            return $fatura->fresh('linhas');
+        }, attempts: 5);
+    } catch (Throwable $e) {
+        Log::error('Falha ao emitir fatura', [
+            'fatura_id' => $fatura->id,
+            'erro' => $e->getMessage(),
+        ]);
+
+        throw $e;
     }
+}
 
     /**
      * @param  array<int, array{produto_id?: int, descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float}>  $linhas

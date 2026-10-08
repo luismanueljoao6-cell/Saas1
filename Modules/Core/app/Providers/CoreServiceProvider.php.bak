@@ -13,7 +13,6 @@ use Modules\Core\Repositories\EmpresaRepository;
 use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Services\SemLimites;
 use Modules\Core\Services\TenantManager;
-use Modules\Core\Services\TenantProvisionerRegistry;
 
 class CoreServiceProvider extends ServiceProvider
 {
@@ -33,7 +32,6 @@ class CoreServiceProvider extends ServiceProvider
         // seus próprios itens (ver boot() de cada ServiceProvider); tem de
         // ser a MESMA instância em toda a aplicação, daí o singleton.
         $this->app->singleton(MenuRegistry::class);
-        $this->app->singleton(TenantProvisionerRegistry::class);
 
         // Por omissão, sem limites. bindIf: se o módulo Subscrições já
         // registou a sua implementação (por ordem de carregamento), esta

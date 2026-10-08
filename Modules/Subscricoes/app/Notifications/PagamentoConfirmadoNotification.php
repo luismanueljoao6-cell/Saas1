@@ -6,15 +6,18 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use Modules\Subscricoes\Models\Pagamento;
-use Modules\Subscricoes\Models\Subscricao;
 
 class PagamentoConfirmadoNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(protected Pagamento $pagamento, protected Subscricao $subscricao)
-    {
+    public bool $afterCommit = true;
+
+    public function __construct(
+        protected string $valor,
+        protected string $moeda,
+        protected string $terminaEm,
+    ) {
     }
 
     public function via(object $notifiable): array
@@ -28,8 +31,8 @@ class PagamentoConfirmadoNotification extends Notification implements ShouldQueu
             ->subject('Pagamento confirmado — subscrição ativa')
             ->greeting("Olá, {$notifiable->name}!")
             ->line('Recebemos a confirmação do teu pagamento.')
-            ->line("Valor: {$this->pagamento->valor} {$this->pagamento->moeda}")
-            ->line("A tua subscrição está ativa até {$this->subscricao->termina_em->format('d/m/Y')}.")
+            ->line("Valor: {$this->valor} {$this->moeda}")
+            ->line("A tua subscrição está ativa até {$this->terminaEm}.")
             ->action('Aceder à plataforma', url('/painel'));
     }
 }

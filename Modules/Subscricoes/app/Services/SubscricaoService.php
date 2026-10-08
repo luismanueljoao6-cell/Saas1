@@ -101,7 +101,13 @@ class SubscricaoService
                 $pagamento = $this->criarPagamentoComReferencia($subscricao, $subscricao->plano);
 
                 $subscricao->empresa->utilizadores()->where('ativo', true)->get()
-                    ->each(fn (User $utilizador) => $utilizador->notify(new RenovacaoProximaNotification($pagamento, $subscricao)));
+                    ->each(fn (User $utilizador) => $utilizador->notify(new RenovacaoProximaNotification(
+    $subscricao->termina_em->format('d/m/Y'),
+    (string) $pagamento->referencia_externa,
+    (string) $pagamento->valor,
+    $pagamento->moeda,
+    $pagamento->expira_em->format('d/m/Y'),
+)));
 
                 Log::info('Referência de renovação gerada', [
                     'subscricao_id' => $subscricao->id,

@@ -6,15 +6,20 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use Modules\Subscricoes\Models\Pagamento;
-use Modules\Subscricoes\Models\Subscricao;
 
 class RenovacaoProximaNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(protected Pagamento $pagamento, protected Subscricao $subscricao)
-    {
+    public bool $afterCommit = true;
+
+    public function __construct(
+        protected string $terminaEm,
+        protected string $referenciaExterna,
+        protected string $valor,
+        protected string $moeda,
+        protected string $expiraEm,
+    ) {
     }
 
     public function via(object $notifiable): array
@@ -27,8 +32,12 @@ class RenovacaoProximaNotification extends Notification implements ShouldQueue
         return (new MailMessage)
             ->subject('A tua subscrição termina em breve')
             ->greeting("Olá, {$notifiable->name}!")
-            ->line("A subscrição da tua empresa termina a {$this->subscricao->termina_em->format('d/m/Y')}.")
-            ->line("Para continuares sem interrupção, paga a referência {$this->pagamento->referencia_externa} — {$this->pagamento->valor} {$this->pagamento->moeda} — até {$this->pagamento->expira_em->format('d/m/Y')}.")
+            ->line("A subscrição da tua empresa termina a {$this->terminaEm}.")
+            ->line(
+                "Para continuares sem interrupção, paga a referência ".
+                "{$this->referenciaExterna} — {$this->valor} {$this->moeda} — ".
+                "até {$this->expiraEm}."
+            )
             ->line('Os dias que ainda te restarem são somados ao novo período.')
             ->action('Ver planos e pagamentos', url('/planos'));
     }
