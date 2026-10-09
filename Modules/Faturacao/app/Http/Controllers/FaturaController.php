@@ -4,8 +4,8 @@ namespace Modules\Faturacao\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
+use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Http\Requests\GuardarFaturaRequest;
 use Modules\Faturacao\Models\Cliente;
@@ -15,11 +15,8 @@ use Modules\Faturacao\Services\FaturaService;
 use Throwable;
 
 /**
- * IMPORTANTE: {fatura} chega como int, nunca como Fatura tipado (route
- * model binding implícito). O Laravel resolve o binding ANTES do
- * middleware 'tenant' correr — nessa altura ainda não há empresa
- * definida, e a TenantScope (fail-closed) faria o binding devolver sempre
- * 404. O findOrFail() dentro de cada método já corre com o tenant certo.
+ * {fatura} chega como int (sem route model binding): o binding corre antes
+ * do middleware 'tenant' e a TenantScope fail-closed devolveria sempre 404.
  */
 class FaturaController extends Controller
 {
@@ -45,12 +42,15 @@ class FaturaController extends Controller
 
     public function guardar(GuardarFaturaRequest $request): RedirectResponse
     {
-        $this->garantirQuePodeEmitirFaturas($request->user()->empresa);
+        $empresa = $request->user()->empresa;
+        abort_if($empresa === null, 403, 'Utilizador sem empresa associada.');
+
+        $this->garantirQuePodeEmitirFaturas($empresa);
 
         $cliente = Cliente::findOrFail($request->validated('cliente_id'));
 
         $fatura = $this->faturaService->criarRascunho(
-            $request->user()->empresa,
+            $empresa,
             $cliente,
             $request->validated('linhas'),
             $request->validated('observacoes'),
@@ -75,12 +75,14 @@ class FaturaController extends Controller
 
         try {
             $this->faturaService->emitir($modelo);
-        } catch (AssinaturaFiscalException $e) {
-            Log::error('Não foi possível emitir a fatura', ['fatura_id' => $modelo->id, 'erro' => $e->getMessage()]);
-
+        } catch (\DomainException|\InvalidArgumentException $e) {
+            // Mensagens de regra de negócio: seguras para o utilizador.
             return back()->with('erro', $e->getMessage());
+        } catch (AssinaturaFiscalException) {
+            // Detalhe técnico já está no log (o serviço regista-o).
+            return back()->with('erro', 'Não foi possível assinar o documento. A equipa técnica foi notificada.');
         } catch (Throwable $e) {
-            Log::error('Falha inesperada ao emitir fatura', ['fatura_id' => $modelo->id, 'erro' => $e->getMessage()]);
+            report($e);
 
             return back()->with('erro', 'Ocorreu um erro ao emitir a fatura. Tenta novamente.');
         }
@@ -89,14 +91,7 @@ class FaturaController extends Controller
             ->with('sucesso', 'Fatura emitida com sucesso.');
     }
 
-    /**
-     * Aplica exatamente a distinção que o Core deixou pronta para este
-     * módulo: durante o grace period, Empresa::temAcesso() é true (o
-     * middleware 'subscricao.ativa' deixa passar), mas
-     * Empresa::podeEmitirFaturas() é false — é aqui, no ponto exato de
-     * criar/emitir, que essa segunda verificação tem de acontecer.
-     */
-    protected function garantirQuePodeEmitirFaturas(\Modules\Core\Models\Empresa $empresa): void
+    protected function garantirQuePodeEmitirFaturas(Empresa $empresa): void
     {
         abort_unless(
             $empresa->podeEmitirFaturas(),

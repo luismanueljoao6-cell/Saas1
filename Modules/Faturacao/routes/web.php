@@ -7,13 +7,9 @@ use Modules\Faturacao\Http\Controllers\ProdutoController;
 use Modules\Faturacao\Http\Controllers\SafTExportController;
 
 /*
-|--------------------------------------------------------------------------
-| Rotas de faturação
-|--------------------------------------------------------------------------
-| 'auth' + 'tenant' + 'subscricao.ativa' (do Core) cobre o bloqueio total
-| fora do grace period. O bloqueio mais fino — sem emitir novos documentos
-| DURANTE o grace period — é feito dentro do FaturaController, chamando
-| Empresa::podeEmitirFaturas() (ver garantirQuePodeEmitirFaturas()).
+| 'auth' + 'tenant' + 'subscricao.ativa' (Core). Ações com valor fiscal
+| (emitir, SAF-T) exigem o papel Administrador ('papel' corre DEPOIS de
+| 'tenant'). Durante o grace period, a emissão é bloqueada no controller.
 */
 Route::middleware(['auth', 'tenant', 'subscricao.ativa'])
     ->prefix('faturacao')
@@ -28,9 +24,15 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa'])
         Route::get('/faturas', [FaturaController::class, 'index'])->name('faturas.index');
         Route::get('/faturas/criar', [FaturaController::class, 'criar'])->name('faturas.criar');
         Route::post('/faturas', [FaturaController::class, 'guardar'])->name('faturas.guardar');
-        Route::get('/faturas/{fatura}', [FaturaController::class, 'mostrar'])->name('faturas.mostrar');
-        Route::post('/faturas/{fatura}/emitir', [FaturaController::class, 'emitir'])->name('faturas.emitir');
+        Route::get('/faturas/{fatura}', [FaturaController::class, 'mostrar'])->whereNumber('fatura')->name('faturas.mostrar');
 
-        Route::get('/saft', [SafTExportController::class, 'criar'])->name('saft.criar');
-        Route::post('/saft', [SafTExportController::class, 'despachar'])->name('saft.despachar');
+        Route::middleware('papel:Administrador')->group(function () {
+            Route::post('/faturas/{fatura}/emitir', [FaturaController::class, 'emitir'])
+                ->whereNumber('fatura')->middleware('throttle:20,1')->name('faturas.emitir');
+
+            Route::get('/saft', [SafTExportController::class, 'criar'])->name('saft.criar');
+            Route::post('/saft', [SafTExportController::class, 'despachar'])->middleware('throttle:3,1')->name('saft.despachar');
+            Route::get('/saft/{ficheiro}', [SafTExportController::class, 'descarregar'])
+                ->where('ficheiro', '[A-Za-z0-9_\-\.]+')->name('saft.descarregar');
+        });
     });

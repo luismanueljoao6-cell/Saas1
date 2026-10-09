@@ -3,6 +3,7 @@
 namespace Modules\Faturacao\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -11,16 +12,14 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Modules\Core\Models\Empresa;
-use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Services\SafTExportService;
 use Throwable;
 
 /**
- * Gerar o SAF-T pode envolver milhares de faturas — corre sempre em fila,
- * nunca no próprio pedido HTTP (era um requisito explícito do pedido
- * original: "a exportação do SAF-T... não bloquear o servidor").
+ * Corre sempre em fila. ATENÇÃO: DB_QUEUE_RETRY_AFTER tem de ser MAIOR que
+ * $timeout (ver .env.example), senão o job é reentregue enquanto ainda corre.
  */
-class GerarSafTJob implements ShouldQueue
+class GerarSafTJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -29,6 +28,10 @@ class GerarSafTJob implements ShouldQueue
 
     public int $timeout = 600;
 
+    public int $tries = 1;
+
+    public int $uniqueFor = 900;
+
     public function __construct(
         protected Empresa $empresa,
         protected string $dataInicio,
@@ -36,38 +39,34 @@ class GerarSafTJob implements ShouldQueue
     ) {
     }
 
-    /**
-     * Um worker de filas não tem pedido HTTP nem middleware 'tenant' — sem
-     * este bypass explícito, Cliente/Produto/Fatura (todos com
-     * BelongsToTenant) seriam filtrados pela TenantScope fail-closed e o
-     * XML sairia sempre vazio, mesmo com dados reais na base de dados.
-     * Foi exatamente isto que aconteceu na primeira vez que testámos.
-     */
-    public function handle(SafTExportService $safTExportService, TenantManager $tenantManager): void
+    public function uniqueId(): string
     {
-        try {
-            $xml = $tenantManager->semTenant(fn () => $safTExportService->gerar(
-                $this->empresa,
-                Carbon::parse($this->dataInicio)->startOfDay(),
-                Carbon::parse($this->dataFim)->endOfDay(),
-            ));
+        return "saft:{$this->empresa->id}:{$this->dataInicio}:{$this->dataFim}";
+    }
 
-            $caminho = "faturacao/saft/{$this->empresa->id}/SAFT_{$this->dataInicio}_{$this->dataFim}.xml";
-            Storage::disk('local')->put($caminho, $xml);
+    public function handle(SafTExportService $safTExportService): void
+    {
+        $inicio = Carbon::createFromFormat('Y-m-d', $this->dataInicio)->startOfDay();
+        $fim = Carbon::createFromFormat('Y-m-d', $this->dataFim)->endOfDay();
 
-            Log::info('SAF-T (AO) gerado', [
-                'empresa_id' => $this->empresa->id,
-                'periodo' => "{$this->dataInicio} a {$this->dataFim}",
-                'caminho' => $caminho,
-                'tamanho_bytes' => strlen($xml),
-            ]);
-        } catch (Throwable $e) {
-            Log::error('Falha ao gerar SAF-T (AO)', [
-                'empresa_id' => $this->empresa->id,
-                'erro' => $e->getMessage(),
-            ]);
+        $xml = $safTExportService->gerar($this->empresa, $inicio, $fim);
 
-            throw $e;
-        }
+        $caminho = "faturacao/saft/{$this->empresa->id}/SAFT_{$inicio->toDateString()}_{$fim->toDateString()}.xml";
+        Storage::disk('local')->put($caminho, $xml);
+
+        Log::info('SAF-T (AO) gerado', [
+            'empresa_id' => $this->empresa->id,
+            'caminho' => $caminho,
+            'tamanho_bytes' => strlen($xml),
+        ]);
+    }
+
+    public function failed(Throwable $e): void
+    {
+        Log::error('Falha ao gerar SAF-T (AO)', [
+            'empresa_id' => $this->empresa->id,
+            'periodo' => "{$this->dataInicio} a {$this->dataFim}",
+            'erro' => $e->getMessage(),
+        ]);
     }
 }
