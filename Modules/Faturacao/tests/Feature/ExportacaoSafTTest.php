@@ -14,6 +14,26 @@ class ExportacaoSafTTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Emitir uma fatura exige chave privada de assinatura fiscal. No CI
+        // não existe chave real, por isso geramos uma só para este processo
+        // de teste — nunca escrita de forma persistente, nunca reutilizada.
+        $recurso = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        openssl_pkey_export($recurso, $chavePrivadaPem);
+
+        $caminho = sys_get_temp_dir().'/faturacao-teste-'.uniqid().'.pem';
+        file_put_contents($caminho, $chavePrivadaPem);
+
+        config(['faturacao.chave_privada_path' => $caminho]);
+
+        $this->beforeApplicationDestroyed(function () use ($caminho) {
+            @unlink($caminho);
+        });
+    }
+
     /**
      * Reproduz exatamente o bug real: um worker de filas não tem tenant
      * "ambiente" nenhum. Sem o bypass no GerarSafTJob, esta chamada

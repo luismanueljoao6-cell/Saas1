@@ -31,7 +31,7 @@ class RegistoEmpresaService
     public function registar(array $dadosEmpresa, array $dadosAdmin): User
     {
         try {
-            return DB::transaction(function () use ($dadosEmpresa, $dadosAdmin) {
+            [$utilizador, $empresa] = DB::transaction(function () use ($dadosEmpresa, $dadosAdmin) {
                 $diasTrial = (int) config('core.trial_dias', 14);
 
                 $empresa = Empresa::create([
@@ -49,15 +49,13 @@ class RegistoEmpresaService
 
                 $this->atribuirPapelAdministrador($utilizador, $empresa->id);
 
-                $utilizador->notify(new BoasVindasNotification($empresa));
-
                 Log::info('Nova empresa registada', [
                     'empresa_id' => $empresa->id,
                     'nif' => $empresa->nif,
                     'utilizador_id' => $utilizador->id,
                 ]);
 
-                return $utilizador;
+                return [$utilizador, $empresa];
             });
         } catch (Throwable $e) {
             Log::error('Falha ao registar nova empresa', [
@@ -68,6 +66,19 @@ class RegistoEmpresaService
 
             throw $e;
         }
+
+        // Fora da transação: uma falha de e-mail (SMTP em baixo) não pode
+        // desfazer o registo de uma empresa já criada.
+        try {
+            $utilizador->notify(new BoasVindasNotification($empresa));
+        } catch (Throwable $e) {
+            Log::warning('Registo concluído, mas o e-mail de boas-vindas falhou', [
+                'empresa_id' => $empresa->id,
+                'erro' => $e->getMessage(),
+            ]);
+        }
+
+        return $utilizador;
     }
 
     /**

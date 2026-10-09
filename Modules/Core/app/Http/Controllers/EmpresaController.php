@@ -39,17 +39,24 @@ class EmpresaController extends Controller
     }
 
     /**
-     * Segunda barreira de segurança além da TenantScope: mesmo que a query
-     * do route model binding já esteja implicitamente filtrada pelo tenant
-     * atual, confirmamos aqui explicitamente — nunca confiar numa única
-     * camada quando se trata de isolamento de dados entre empresas.
+     * Isolamento entre empresas (o binding de Empresa não tem TenantScope) e
+     * restrição ao papel Administrador — igual ao que o FormRequest exige
+     * para gravar, para que ninguém veja o que não pode alterar.
      */
     protected function autorizarAcessoAEmpresa(Empresa $empresa): void
     {
+        $utilizador = auth()->user();
+
         abort_unless(
-            $empresa->id === auth()->user()?->empresa_id,
+            $utilizador !== null && (int) $empresa->id === (int) $utilizador->empresa_id,
             403,
             'Não tens acesso a esta empresa.'
+        );
+
+        abort_unless(
+            $utilizador->hasRole('Administrador'),
+            403,
+            'Só um administrador pode ver as definições da empresa.'
         );
     }
 }

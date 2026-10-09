@@ -12,8 +12,8 @@ com os detalhes de arquitetura e as decisões tomadas.
 | **Core** (empresas, autenticação, permissões, navegação) | Completo e testado | `Modules/Core/README.md` |
 | **Subscrições e Pagamentos** (planos, ProxyPay, grace period) | Completo e testado | `Modules/Subscricoes/README.md` |
 | **Faturação & Gestão Financeira** (faturas, hash fiscal, SAF-T) | Completo e testado; **não certificado pela AGT** | `Modules/Faturacao/README.md` |
-| **Atelier de Costura** | Ainda não construído | — |
-| **Estúdio de Música** | Ainda não construído | — |
+| **Atelier de Costura** | Em desenvolvimento (código e testes presentes; por rever) | — |
+| **Estúdio de Música** | Em desenvolvimento (código e testes presentes; por rever) | — |
 
 Os três primeiros módulos foram validados de duas formas: testes
 automatizados (`php artisan test`) e uso real, ponta a ponta, num
@@ -213,3 +213,24 @@ php artisan test --filter=CadeiaFiscalTest         # Faturação
   por agora; separá-los cumpriria a intenção original à letra.
 - **Validação do SAF-T (AO) contra o XSD oficial da AGT** — ver aviso de
   conformidade acima.
+
+## Processos em segundo plano (obrigatórios em produção)
+
+Sem estes dois processos a faturação da plataforma **não funciona**:
+
+| Processo | Para quê | Comando |
+|---|---|---|
+| **Worker de filas** | Confirmar pagamentos (webhook), exportar SAF-T, enviar e-mails em fila | `php artisan queue:work --tries=3 --max-time=3600` |
+| **Agendador** | Job diário de subscrições (expirar, suspender, gerar renovações) | cron: `* * * * * cd /caminho && php artisan schedule:run >> /dev/null 2>&1` |
+
+Em desenvolvimento: `php artisan queue:work` e `php artisan schedule:work` em terminais separados.
+Em produção, mantém o worker vivo com Supervisor ou systemd e reinicia-o em cada deploy (`php artisan queue:restart`).
+
+A expiração do acesso é avaliada em tempo real (`Empresa::subscricaoAtiva()`), por isso um
+atraso do agendador não dá acesso gratuito; o job apenas atualiza estados e gera renovações.
+
+### Webhook ProxyPay
+
+URL a configurar no painel: `https://SEU-DOMINIO/api/webhooks/proxypay?token=<PROXYPAY_WEBHOOK_TOKEN>`.
+Os pagamentos com valor inferior ao devido são rejeitados e ficam em `failed_jobs` para revisão manual
+(`php artisan queue:failed`).

@@ -15,6 +15,9 @@ use Throwable;
  * VerificarAssinaturaWebhook antes de chegar aqui. Este controller só
  * interpreta o payload e despacha o Job — não faz nenhuma escrita na base
  * de dados diretamente, para responder ao gateway o mais depressa possível.
+ *
+ * ATENÇÃO: o Job corre na fila — é obrigatório ter `php artisan queue:work`
+ * (ou um supervisor) ativo, senão os pagamentos nunca são confirmados.
  */
 class ProxyPayWebhookController extends Controller
 {
@@ -40,6 +43,7 @@ class ProxyPayWebhookController extends Controller
             $this->gateway->identificador(),
             $notificacao['referencia_externa'],
             $notificacao['payload'],
+            $notificacao['valor'] ?? null,
         );
 
         return response()->json(['recebido' => true]);
