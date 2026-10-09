@@ -61,16 +61,23 @@ class Empresa extends Model
     }
 
     /**
-     * A empresa tem acesso normal à aplicação (fora do grace period)?
+     * Acesso normal (fora do grace period). Avaliado EM TEMPO REAL: uma
+     * subscrição/trial com data de fim já passada deixa de contar como ativa
+     * no próprio instante, mesmo que o job diário ainda não tenha corrido.
+     * `subscricao_expira_em` nulo = sem data de fim (trial sem limite).
      */
     public function subscricaoAtiva(): bool
     {
-        return in_array($this->estado_subscricao, ['trial', 'ativa'], true);
+        if (! in_array($this->estado_subscricao, ['trial', 'ativa'], true)) {
+            return false;
+        }
+
+        return $this->subscricao_expira_em === null
+            || $this->subscricao_expira_em->isFuture();
     }
 
     /**
-     * Está dentro do período de tolerância (acesso de leitura, sem poder
-     * emitir novas faturas)?
+     * Dentro do período de tolerância (leitura sim, emissão não)?
      */
     public function emPeriodoDeTolerancia(): bool
     {
@@ -78,14 +85,22 @@ class Empresa extends Model
             return false;
         }
 
-        return $this->periodo_tolerancia_ate !== null
+        // Vencida, mas o job diário ainda não a suspendeu: a tolerância
+        // conta a partir da data de fim.
+        if (in_array($this->estado_subscricao, ['trial', 'ativa'], true) && $this->subscricao_expira_em !== null) {
+            $dias = (int) config('core.periodo_tolerancia_dias', 5);
+
+            return $this->subscricao_expira_em->copy()->addDays($dias)->isFuture();
+        }
+
+        // Só uma empresa 'suspensa' tem tolerância; 'pendente'/'expirada' não.
+        return $this->estado_subscricao === 'suspensa'
+            && $this->periodo_tolerancia_ate !== null
             && $this->periodo_tolerancia_ate->isFuture();
     }
 
     /**
-     * A empresa tem, neste momento, qualquer tipo de acesso à aplicação
-     * (ativa ou dentro do grace period)? Usado pelo middleware
-     * VerificarSubscricaoAtiva para decidir bloquear ou não o pedido.
+     * Tem, neste momento, qualquer tipo de acesso (ativa ou em tolerância)?
      */
     public function temAcesso(): bool
     {
@@ -94,9 +109,7 @@ class Empresa extends Model
 
     /**
      * Pode emitir novas faturas, recibos, notas de crédito/débito, etc.?
-     * Módulos como o de Faturação devem chamar isto (via Policy/Gate) antes
-     * de qualquer operação de escrita crítica — durante o grace period isto
-     * é false mesmo que temAcesso() seja true.
+     * Durante o grace period isto é false mesmo que temAcesso() seja true.
      */
     public function podeEmitirFaturas(): bool
     {
