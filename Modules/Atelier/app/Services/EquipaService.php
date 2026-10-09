@@ -22,7 +22,11 @@ class EquipaService
     {
         $this->garantirPapelGerido($papel);
 
-        $role = Role::firstOrCreate(['name' => $papel, 'guard_name' => 'web']);
+        $role = Role::firstOrCreate([
+            'name' => $papel,
+            'guard_name' => 'web',
+            'empresa_id' => $utilizador->empresa_id,
+        ]);
 
         $utilizador->assignRole($role);
     }
