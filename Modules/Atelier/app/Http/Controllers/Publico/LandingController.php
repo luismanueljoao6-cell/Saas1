@@ -38,6 +38,11 @@ class LandingController extends Controller
 
     public function solicitarOrcamento(SolicitarOrcamentoRequest $request, Empresa $empresa): RedirectResponse
     {
+        abort_unless(
+            Perfil::where('empresa_id', $empresa->id)->where('publicado', true)->exists(),
+            404
+        );
+
         PedidoOrcamento::create([
             'empresa_id' => $empresa->id,
             'nome' => $request->validated('nome'),

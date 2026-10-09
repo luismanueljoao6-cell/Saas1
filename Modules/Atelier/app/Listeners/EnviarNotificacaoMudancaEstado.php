@@ -6,39 +6,50 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Modules\Atelier\Events\PedidoMudouEstado;
 use Modules\Atelier\Models\Pedido;
 use Modules\Atelier\Services\Notificacoes\NotificadorClienteService;
+use Modules\Core\Services\TenantManager;
 
 /**
  * Traduz uma mudança de estado (requisito A.2) numa notificação ao cliente
  * (requisito C.1). 'pendente', 'em_corte' e 'em_costura' são passos
- * internos de produção — não geram notificação, para não bombardear o
- * cliente com atualizações que não lhe interessam.
+ * internos de produção — não geram notificação.
+ *
+ * Corre na fila, onde não há tenant definido: por isso o acesso a Cliente
+ * (que usa TenantScope, fail-closed) é feito dentro de semTenant(), tal como
+ * os Jobs do módulo. $afterCommit garante que o worker só corre depois de o
+ * novo estado estar gravado (o evento é disparado dentro de uma transação).
  */
 class EnviarNotificacaoMudancaEstado implements ShouldQueue
 {
-    public function __construct(protected NotificadorClienteService $notificador)
-    {
+    public bool $afterCommit = true;
+
+    public function __construct(
+        protected NotificadorClienteService $notificador,
+        protected TenantManager $tenantManager,
+    ) {
     }
 
     public function handle(PedidoMudouEstado $event): void
     {
-        $pedido = $event->pedido;
-        $cliente = $pedido->cliente;
+        $this->tenantManager->semTenant(function () use ($event) {
+            $pedido = $event->pedido;
+            $cliente = $pedido->cliente;
 
-        if (! $cliente) {
-            return;
-        }
+            if (! $cliente) {
+                return;
+            }
 
-        $mensagem = $this->mensagemPara($pedido);
+            $mensagem = $this->mensagemPara($pedido);
 
-        if ($mensagem === null) {
-            return;
-        }
+            if ($mensagem === null) {
+                return;
+            }
 
-        $this->notificador->notificar(
-            $cliente,
-            "Atualização do seu pedido — {$pedido->empresa->nome_comercial}",
-            $mensagem,
-        );
+            $this->notificador->notificar(
+                $cliente,
+                "Atualização do seu pedido — {$pedido->empresa->nome_comercial}",
+                $mensagem,
+            );
+        });
     }
 
     protected function mensagemPara(Pedido $pedido): ?string
