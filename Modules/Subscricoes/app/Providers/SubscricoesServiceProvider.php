@@ -84,7 +84,7 @@ class SubscricoesServiceProvider extends ServiceProvider
         $this->app->booted(function () {
             $schedule = $this->app->make(Schedule::class);
 
-            $schedule->job(new VerificarSubscricoesExpiradasJob)
+            $schedule->call(fn () => VerificarSubscricoesExpiradasJob::dispatchSync())
                 ->dailyAt('02:00')
                 ->name('subscricoes:verificar-expiradas')
                 ->withoutOverlapping();

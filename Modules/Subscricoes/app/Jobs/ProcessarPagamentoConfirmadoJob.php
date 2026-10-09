@@ -2,6 +2,7 @@
 
 namespace Modules\Subscricoes\Jobs;
 
+use DomainException;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,10 +14,7 @@ use Throwable;
 
 /**
  * O controller do webhook despacha este Job e responde 200 ao gateway de
- * imediato — o processamento em si (que pode envolver várias escritas na
- * base de dados e o envio de notificações) corre em segundo plano. Isto
- * evita que uma lentidão nossa faça o gateway considerar o webhook como
- * falhado e tentar reenviá-lo desnecessariamente.
+ * imediato — o processamento em si corre em segundo plano.
  */
 class ProcessarPagamentoConfirmadoJob implements ShouldQueue
 {
@@ -33,14 +31,27 @@ class ProcessarPagamentoConfirmadoJob implements ShouldQueue
         protected string $gatewayIdentificador,
         protected string $referenciaExterna,
         protected array $payloadBruto,
-    ) {}
+        protected ?string $valorRecebido = null,
+    ) {
+    }
 
     public function handle(PagamentoService $pagamentoService): void
     {
         try {
             $pagamento = $pagamentoService->localizarPorReferencia($this->referenciaExterna);
 
-            $pagamentoService->confirmar($pagamento, $this->payloadBruto);
+            $pagamentoService->confirmar($pagamento, $this->payloadBruto, null, $this->valorRecebido);
+        } catch (DomainException $e) {
+            // Regra de negócio violada (ex.: valor pago inferior ao devido):
+            // repetir não resolve — falha de vez e fica para revisão manual.
+            Log::critical('Pagamento recebido rejeitado — requer revisão manual', [
+                'gateway' => $this->gatewayIdentificador,
+                'referencia_externa' => $this->referenciaExterna,
+                'valor_recebido' => $this->valorRecebido,
+                'erro' => $e->getMessage(),
+            ]);
+
+            $this->fail($e);
         } catch (Throwable $e) {
             Log::error('ProcessarPagamentoConfirmadoJob falhou', [
                 'gateway' => $this->gatewayIdentificador,
