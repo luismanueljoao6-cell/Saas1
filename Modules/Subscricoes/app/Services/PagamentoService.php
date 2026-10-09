@@ -2,12 +2,15 @@
 
 namespace Modules\Subscricoes\Services;
 
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantService;
 use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
+use Modules\Subscricoes\Exceptions\PagamentoRejeitadoException;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Subscricao;
 use Modules\Subscricoes\Notifications\PagamentoConfirmadoNotification;
@@ -18,17 +21,16 @@ class PagamentoService
     public function __construct(
         protected TenantService $tenantService,
         protected TenantManager $tenantManager,
-    ) {
-    }
+    ) {}
 
     /**
-     * Ponto único de confirmação de pagamento — chamado tanto pelo Job que
-     * processa o webhook como pela confirmação manual (transferência
-     * bancária reconciliada por um super admin). Ativa a subscrição, ativa
-     * a empresa no Core, e notifica os utilizadores ativos da empresa.
+     * Ponto único de confirmação de pagamento (webhook ou reconciliação
+     * manual por super admin).
      *
-     * Um pagamento feito ANTES do fim da subscrição atual estende-a: os dias
-     * que ainda restavam somam-se, nunca se perdem.
+     * Ordem de locks (igual à do job diário, para evitar deadlocks):
+     * Pagamento -> Subscricao -> Empresa.
+     * As notificações só saem DEPOIS do commit, e uma falha de e-mail nunca
+     * reverte a confirmação do pagamento.
      *
      * @throws Throwable
      */
@@ -43,21 +45,25 @@ class PagamentoService
         }
 
         try {
-            // Bypass explícito e intencional: esta operação é despoletada
-            // pelo gateway (webhook) ou por um super admin — nenhum tem um
-            // "tenant atual". Ver TenantManager::semTenant().
             return $this->tenantManager->semTenant(function () use ($pagamento, $payloadBruto, $confirmadoPor) {
-                return DB::transaction(function () use ($pagamento, $payloadBruto, $confirmadoPor) {
-                    // Relê com lock: dois webhooks duplicados em paralelo
-                    // não podem confirmar (e somar dias) duas vezes.
+                $resultado = DB::transaction(function () use ($pagamento, $payloadBruto, $confirmadoPor) {
                     $pagamento = Pagamento::query()->lockForUpdate()->findOrFail($pagamento->id);
 
                     if ($pagamento->estado === 'confirmado') {
-                        return $pagamento;
+                        return ['novo' => false, 'pagamento' => $pagamento];
                     }
 
-                    $subscricao = $pagamento->subscricao()->with('plano')->firstOrFail();
-                    $empresa = $subscricao->empresa;
+                    $this->validarConfirmavel($pagamento, $payloadBruto, $confirmadoPor);
+
+                    $subscricao = Subscricao::query()
+                        ->lockForUpdate()
+                        ->with('plano')
+                        ->findOrFail($pagamento->subscricao_id);
+
+                    // Lock da empresa: dois pagamentos simultâneos da mesma
+                    // empresa já não leem a mesma data-base nem perdem dias.
+                    $empresa = Empresa::query()->lockForUpdate()->findOrFail($subscricao->empresa_id);
+
                     $agora = now();
 
                     $base = $agora;
@@ -79,8 +85,6 @@ class PagamentoService
                         'termina_em' => $terminaEm,
                     ]);
 
-                    // Uma empresa só tem uma subscrição ativa de cada vez
-                    // (mudança de plano): as anteriores ficam encerradas.
                     Subscricao::query()
                         ->where('empresa_id', $empresa->id)
                         ->where('estado', 'ativa')
@@ -89,13 +93,6 @@ class PagamentoService
 
                     $this->tenantService->ativar($empresa, $terminaEm);
 
-                    $empresa->utilizadores()->where('ativo', true)->get()
-                        ->each(fn (User $utilizador) => $utilizador->notify(new PagamentoConfirmadoNotification(
-    (string) $pagamento->valor,
-    $pagamento->moeda,
-    $subscricao->termina_em->format('d/m/Y'),
-)));
-
                     Log::info('Pagamento confirmado e subscrição ativada', [
                         'pagamento_id' => $pagamento->id,
                         'empresa_id' => $empresa->id,
@@ -103,10 +100,19 @@ class PagamentoService
                         'confirmado_por' => $confirmadoPor?->id ? "user:{$confirmadoPor->id}" : 'gateway',
                     ]);
 
-                    // Relação carregada AQUI, ainda dentro do bypass: um
-                    // lazy-load mais tarde seria bloqueado pela TenantScope.
-                    return $pagamento->fresh(['subscricao.plano']);
-                });
+                    return [
+                        'novo' => true,
+                        'pagamento' => $pagamento,
+                        'empresa' => $empresa,
+                        'termina_em' => $terminaEm,
+                    ];
+                }, 3);
+
+                if ($resultado['novo']) {
+                    $this->notificarConfirmacao($resultado['empresa'], $resultado['pagamento'], $resultado['termina_em']);
+                }
+
+                return $resultado['pagamento']->fresh(['subscricao.plano']);
             });
         } catch (Throwable $e) {
             Log::error('Falha ao confirmar pagamento', [
@@ -119,22 +125,129 @@ class PagamentoService
     }
 
     /**
-     * Lança exceção — em vez de devolver null — de propósito: um webhook
-     * para uma referência desconhecida é uma situação anómala que deve
-     * ficar registada, nunca ser ignorada silenciosamente.
+     * Referência desconhecida lança exceção (o Job tenta de novo com backoff).
+     * Fallback: se a referência foi criada no gateway mas nunca ficou gravada
+     * localmente, tenta ligar o webhook ao Pagamento pelos custom_fields que
+     * nós próprios enviámos (só para pagamentos ainda SEM referência).
      *
      * @throws GatewayPagamentoException
      */
-    public function localizarPorReferencia(string $referenciaExterna): Pagamento
+    public function localizarPorReferencia(string $referenciaExterna, array $payload = []): Pagamento
     {
         $pagamento = $this->tenantManager->semTenant(
             fn () => Pagamento::where('referencia_externa', $referenciaExterna)->first()
         );
 
         if (! $pagamento) {
+            $invoice = $payload['custom_fields']['invoice'] ?? null;
+            $empresaId = $payload['custom_fields']['empresa_id'] ?? null;
+
+            if (is_numeric($invoice) && is_numeric($empresaId)) {
+                $pagamento = $this->tenantManager->semTenant(fn () => Pagamento::query()
+                    ->whereKey((int) $invoice)
+                    ->where('empresa_id', (int) $empresaId)
+                    ->whereNull('referencia_externa')
+                    ->first());
+
+                if ($pagamento) {
+                    Log::warning('Webhook ligado a pagamento sem referência gravada (recuperação)', [
+                        'pagamento_id' => $pagamento->id,
+                        'referencia_externa' => $referenciaExterna,
+                    ]);
+
+                    $this->tenantManager->semTenant(
+                        fn () => $pagamento->update(['referencia_externa' => $referenciaExterna])
+                    );
+                }
+            }
+        }
+
+        if (! $pagamento) {
             throw GatewayPagamentoException::pagamentoNaoEncontrado($referenciaExterna);
         }
 
         return $pagamento;
+    }
+
+    /**
+     * Aceita pagamentos 'pendente' e 'expirado' (pagamento tardio: o dinheiro
+     * já entrou, deve ativar). Qualquer outro estado é recusado. Para
+     * notificações de gateway, o valor pago tem de existir e não pode ser
+     * inferior ao valor esperado.
+     */
+    protected function validarConfirmavel(Pagamento $pagamento, array $payload, ?User $confirmadoPor): void
+    {
+        if (! in_array($pagamento->estado, ['pendente', 'expirado'], true)) {
+            throw PagamentoRejeitadoException::estadoInvalido($pagamento);
+        }
+
+        if ($pagamento->estado === 'expirado') {
+            Log::warning('Pagamento tardio sobre referência expirada — a confirmar.', [
+                'pagamento_id' => $pagamento->id,
+            ]);
+        }
+
+        // Reconciliação manual por super admin: a validação do valor é humana.
+        if ($confirmadoPor !== null) {
+            return;
+        }
+
+        $valorPago = $this->extrairValorPago($payload);
+
+        if ($valorPago === null) {
+            if (Config::get('subscricoes.exigir_valor_webhook', true)) {
+                throw PagamentoRejeitadoException::valorAusente($pagamento);
+            }
+
+            Log::warning('Webhook sem valor pago aceite (SUBSCRICOES_EXIGIR_VALOR_WEBHOOK=false).', [
+                'pagamento_id' => $pagamento->id,
+            ]);
+
+            return;
+        }
+
+        $pagoCentimos = (int) round($valorPago * 100);
+        $esperadoCentimos = (int) round((float) $pagamento->valor * 100);
+
+        if ($pagoCentimos < $esperadoCentimos) {
+            throw PagamentoRejeitadoException::valorDivergente($pagamento, $valorPago);
+        }
+
+        if ($pagoCentimos > $esperadoCentimos) {
+            Log::warning('Valor pago superior ao esperado — a confirmar; rever manualmente.', [
+                'pagamento_id' => $pagamento->id,
+                'valor_pago' => $valorPago,
+                'valor_esperado' => (string) $pagamento->valor,
+            ]);
+        }
+    }
+
+    /**
+     * CONFIRMA o nome do campo na documentação/sandbox da ProxyPay.
+     */
+    protected function extrairValorPago(array $payload): ?float
+    {
+        $valor = $payload['amount'] ?? $payload['valor'] ?? null;
+
+        return is_numeric($valor) ? (float) $valor : null;
+    }
+
+    protected function notificarConfirmacao(Empresa $empresa, Pagamento $pagamento, \DateTimeInterface $terminaEm): void
+    {
+        $empresa->utilizadores()->where('ativo', true)->get()->each(function (User $utilizador) use ($pagamento, $terminaEm) {
+            try {
+                $utilizador->notify(new PagamentoConfirmadoNotification(
+                    (string) $pagamento->valor,
+                    $pagamento->moeda,
+                    $terminaEm->format('d/m/Y'),
+                ));
+            } catch (Throwable $e) {
+                Log::error('Falha ao notificar pagamento confirmado (a confirmação mantém-se).', [
+                    'pagamento_id' => $pagamento->id,
+                    'utilizador_id' => $utilizador->id,
+                    'erro' => $e->getMessage(),
+                ]);
+            }
+        });
     }
 }

@@ -17,8 +17,7 @@ class PagamentoConfirmadoNotification extends Notification implements ShouldQueu
         protected string $valor,
         protected string $moeda,
         protected string $terminaEm,
-    ) {
-    }
+    ) {}
 
     public function via(object $notifiable): array
     {

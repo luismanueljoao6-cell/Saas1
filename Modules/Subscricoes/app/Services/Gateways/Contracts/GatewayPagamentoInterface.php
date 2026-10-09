@@ -3,6 +3,7 @@
 namespace Modules\Subscricoes\Services\Gateways\Contracts;
 
 use Illuminate\Http\Request;
+use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
 use Modules\Subscricoes\Models\Pagamento;
 
 /**
@@ -29,7 +30,7 @@ interface GatewayPagamentoInterface
      *
      * @return array{referencia_externa: string, payload: array<string, mixed>}
      *
-     * @throws \Modules\Subscricoes\Exceptions\GatewayPagamentoException
+     * @throws GatewayPagamentoException
      */
     public function gerarReferencia(Pagamento $pagamento): array;
 

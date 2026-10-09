@@ -6,8 +6,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Spatie\Activitylog\Support\LogOptions;
+use Illuminate\Support\Facades\Config;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 /**
  * Representa uma empresa/inquilino (tenant) da plataforma.
@@ -38,10 +39,6 @@ class Empresa extends Model
         'configuracoes',
     ];
 
-    /**
-     * Espelha o default da migration — ver Plano::$attributes no módulo
-     * Subscrições para a explicação completa de por que isto importa.
-     */
     protected $attributes = [
         'estado_subscricao' => 'trial',
     ];
@@ -61,16 +58,24 @@ class Empresa extends Model
     }
 
     /**
-     * A empresa tem acesso normal à aplicação (fora do grace period)?
+     * Estado 'trial'/'ativa' E data de fim ainda no futuro (ou sem data).
+     * Não depende só do job diário: se o scheduler parar, o acesso pleno
+     * acaba na mesma na data de fim.
      */
     public function subscricaoAtiva(): bool
     {
-        return in_array($this->estado_subscricao, ['trial', 'ativa'], true);
+        if (! $this->estadoNominalAtivo()) {
+            return false;
+        }
+
+        return $this->subscricao_expira_em === null || $this->subscricao_expira_em->isFuture();
     }
 
     /**
-     * Está dentro do período de tolerância (acesso de leitura, sem poder
-     * emitir novas faturas)?
+     * Acesso de leitura, sem poder emitir. Cobre:
+     *  - empresa já suspensa pelo job (periodo_tolerancia_ate no futuro);
+     *  - empresa ainda marcada trial/ativa cuja data passou mas o job ainda
+     *    não correu: a tolerância conta a partir da data de fim.
      */
     public function emPeriodoDeTolerancia(): bool
     {
@@ -78,29 +83,32 @@ class Empresa extends Model
             return false;
         }
 
-        return $this->periodo_tolerancia_ate !== null
-            && $this->periodo_tolerancia_ate->isFuture();
+        if ($this->periodo_tolerancia_ate !== null) {
+            return $this->periodo_tolerancia_ate->isFuture();
+        }
+
+        if ($this->estadoNominalAtivo() && $this->subscricao_expira_em !== null) {
+            $dias = (int) Config::get('core.periodo_tolerancia_dias', 5);
+
+            return $this->subscricao_expira_em->copy()->addDays($dias)->isFuture();
+        }
+
+        return false;
     }
 
-    /**
-     * A empresa tem, neste momento, qualquer tipo de acesso à aplicação
-     * (ativa ou dentro do grace period)? Usado pelo middleware
-     * VerificarSubscricaoAtiva para decidir bloquear ou não o pedido.
-     */
     public function temAcesso(): bool
     {
         return $this->subscricaoAtiva() || $this->emPeriodoDeTolerancia();
     }
 
-    /**
-     * Pode emitir novas faturas, recibos, notas de crédito/débito, etc.?
-     * Módulos como o de Faturação devem chamar isto (via Policy/Gate) antes
-     * de qualquer operação de escrita crítica — durante o grace period isto
-     * é false mesmo que temAcesso() seja true.
-     */
     public function podeEmitirFaturas(): bool
     {
         return $this->subscricaoAtiva();
+    }
+
+    protected function estadoNominalAtivo(): bool
+    {
+        return in_array($this->estado_subscricao, ['trial', 'ativa'], true);
     }
 
     public function getActivitylogOptions(): LogOptions

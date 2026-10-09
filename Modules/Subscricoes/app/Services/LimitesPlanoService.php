@@ -15,9 +15,7 @@ use Modules\Subscricoes\Models\Subscricao;
  */
 class LimitesPlanoService implements LimitesDaEmpresa
 {
-    public function __construct(protected TenantManager $tenantManager)
-    {
-    }
+    public function __construct(protected TenantManager $tenantManager) {}
 
     public function limite(Empresa $empresa, string $chave): ?int
     {

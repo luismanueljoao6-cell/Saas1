@@ -2,6 +2,7 @@
 
 namespace Modules\Subscricoes\Services\Gateways;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -9,23 +10,15 @@ use Illuminate\Support\Facades\Log;
 use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
-use Throwable;
 
 /**
- * Integração com a ProxyPay (proxypay.co.ao) — pagamento por referência no
- * Multicaixa (ATM / homebanking). Escolhida como gateway "Multicaixa" desta
- * entrega por ser, das opções analisadas, a que tem documentação pública e
- * SDKs mais maduros para integração direta (ver README para a comparação
- * com o EMIS GPO/Multicaixa Express "oficial", que exige adesão bancária e
- * certificação antes de emitir uma única referência).
+ * Integração com a ProxyPay (pagamento por referência Multicaixa).
  *
- * IMPORTANTE: os nomes exatos do endpoint e dos campos abaixo foram
- * reconstruídos a partir da documentação pública e de SDKs de terceiros, não
- * de uma chamada real testada com credenciais válidas (este ambiente não
- * tem acesso à rede). Confirma cada um contra a documentação atual em
- * https://developer.proxypay.co.ao antes de ires para produção — o formato
- * geral (API key no cabeçalho Authorization, referência com amount +
- * expiry_date + custom_fields, webhook de confirmação) está correto.
+ * IMPORTANTE: endpoint e nomes de campos foram reconstruídos da documentação
+ * pública, não testados com credenciais reais. Confirma-os em
+ * https://developer.proxypay.co.ao antes de produção — incluindo o campo do
+ * valor pago no webhook (ver PagamentoService::extrairValorPago) e o
+ * mecanismo de autenticação do webhook.
  */
 class ProxyPayGateway implements GatewayPagamentoInterface
 {
@@ -37,7 +30,7 @@ class ProxyPayGateway implements GatewayPagamentoInterface
 
     public function __construct()
     {
-        $this->baseUrl = rtrim(config('subscricoes.gateways.proxypay.base_url'), '/');
+        $this->baseUrl = rtrim((string) config('subscricoes.gateways.proxypay.base_url'), '/');
         $this->apiKey = config('subscricoes.gateways.proxypay.api_key');
         $this->webhookToken = config('subscricoes.gateways.proxypay.webhook_token');
     }
@@ -56,7 +49,7 @@ class ProxyPayGateway implements GatewayPagamentoInterface
                 ->acceptJson()
                 ->timeout(10)
                 ->post("{$this->baseUrl}/references", [
-                    'amount' => (float) $pagamento->valor,
+                    'amount' => round((float) $pagamento->valor, 2),
                     'expiry_date' => $pagamento->expira_em?->toDateString(),
                     'custom_fields' => [
                         'invoice' => (string) $pagamento->id,
@@ -64,25 +57,6 @@ class ProxyPayGateway implements GatewayPagamentoInterface
                     ],
                 ])
                 ->throw();
-
-            $dados = $resposta->json();
-
-            // TODO: confirmar o nome exato do campo da referência devolvida
-            // pela tua conta ProxyPay (varia entre 'reference_id' e
-            // 'reference' consoante a versão da API/documentação).
-            $referencia = $dados['reference_id'] ?? $dados['reference'] ?? null;
-
-            if (! $referencia) {
-                throw GatewayPagamentoException::falhaAoGerarReferencia(
-                    $this->identificador(),
-                    'resposta do gateway não incluiu um número de referência reconhecível'
-                );
-            }
-
-            return [
-                'referencia_externa' => (string) $referencia,
-                'payload' => $dados,
-            ];
         } catch (RequestException $e) {
             Log::error('ProxyPay: falha HTTP ao gerar referência', [
                 'pagamento_id' => $pagamento->id,
@@ -90,15 +64,36 @@ class ProxyPayGateway implements GatewayPagamentoInterface
                 'corpo' => $e->response?->body(),
             ]);
 
-            throw GatewayPagamentoException::falhaAoGerarReferencia($this->identificador(), $e->getMessage());
-        } catch (Throwable $e) {
-            Log::error('ProxyPay: erro inesperado ao gerar referência', [
+            throw GatewayPagamentoException::falhaAoGerarReferencia(
+                $this->identificador(),
+                'resposta HTTP '.($e->response?->status() ?? 'desconhecida')
+            );
+        } catch (ConnectionException $e) {
+            Log::error('ProxyPay: falha de ligação ao gerar referência', [
                 'pagamento_id' => $pagamento->id,
                 'erro' => $e->getMessage(),
             ]);
 
-            throw GatewayPagamentoException::falhaAoGerarReferencia($this->identificador(), $e->getMessage());
+            throw GatewayPagamentoException::falhaAoGerarReferencia($this->identificador(), 'sem ligação ao gateway');
         }
+
+        $dados = $resposta->json();
+        $dados = is_array($dados) ? $dados : [];
+
+        // TODO: confirmar o nome exato do campo ('reference_id' vs 'reference').
+        $referencia = $dados['reference_id'] ?? $dados['reference'] ?? null;
+
+        if (! $referencia) {
+            throw GatewayPagamentoException::falhaAoGerarReferencia(
+                $this->identificador(),
+                'resposta do gateway não incluiu um número de referência reconhecível'
+            );
+        }
+
+        return [
+            'referencia_externa' => (string) $referencia,
+            'payload' => $dados,
+        ];
     }
 
     public function validarPedidoWebhook(Request $request): bool
@@ -109,12 +104,10 @@ class ProxyPayGateway implements GatewayPagamentoInterface
             return false;
         }
 
-        // TODO: confirmar o mecanismo de assinatura exato (cabeçalho
-        // 'Authorization: Token <valor>' vs. HMAC sobre o corpo do pedido)
-        // na configuração de webhooks da tua conta ProxyPay.
-        $cabecalho = $request->header('Authorization', '');
+        // TODO: confirmar o mecanismo (Authorization: Token vs HMAC do corpo).
+        $cabecalho = (string) $request->header('Authorization', '');
 
-        return hash_equals('Token '.$this->webhookToken, $cabecalho);
+        return $cabecalho !== '' && hash_equals('Token '.$this->webhookToken, $cabecalho);
     }
 
     public function interpretarNotificacao(Request $request): array
@@ -140,6 +133,13 @@ class ProxyPayGateway implements GatewayPagamentoInterface
             throw GatewayPagamentoException::falhaAoGerarReferencia(
                 $this->identificador(),
                 'PROXYPAY_API_KEY não está configurada'
+            );
+        }
+
+        if ($this->baseUrl === '') {
+            throw GatewayPagamentoException::falhaAoGerarReferencia(
+                $this->identificador(),
+                'URL base da ProxyPay não está configurado'
             );
         }
     }

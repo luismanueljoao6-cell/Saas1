@@ -1,10 +1,11 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\Core\Http\Controllers\EmpresaController;
-use Modules\Core\Http\Controllers\UtilizadorController;
 use Modules\Core\Http\Controllers\Auth\AuthenticatedSessionController;
 use Modules\Core\Http\Controllers\Auth\RegisteredTenantController;
+use Modules\Core\Http\Controllers\EmpresaController;
+use Modules\Core\Http\Controllers\PaginasController;
+use Modules\Core\Http\Controllers\UtilizadorController;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,27 +25,18 @@ Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
     ->name('core.logout');
 
 /*
-|--------------------------------------------------------------------------
-| Página de subscrição inativa
-|--------------------------------------------------------------------------
-| Sem o middleware 'subscricao.ativa' de propósito — é para onde esse
-| middleware redireciona, evitar criar aqui um ciclo de redirecionamentos.
+| Página de subscrição inativa — sem 'subscricao.ativa' de propósito, para
+| evitar um ciclo de redirecionamentos.
 */
-Route::get('/subscricao/expirada', function () {
-    return view('core::subscricao.expirada');
-})->middleware(['auth', 'tenant'])->name('core.subscricao.expirada');
+Route::get('/subscricao/expirada', [PaginasController::class, 'subscricaoExpirada'])
+    ->middleware(['auth', 'tenant'])
+    ->name('core.subscricao.expirada');
 
 /*
-|--------------------------------------------------------------------------
 | Rotas autenticadas de negócio (tenant identificado + subscrição ativa)
-|--------------------------------------------------------------------------
-| Todos os outros módulos devem seguir este mesmo padrão de middleware
-| nas suas próprias rotas autenticadas.
 */
 Route::middleware(['auth', 'tenant', 'subscricao.ativa'])->group(function () {
-    Route::get('/painel', function () {
-        return view('core::painel');
-    })->name('core.painel');
+    Route::get('/painel', [PaginasController::class, 'painel'])->name('core.painel');
 
     Route::get('/empresas/{empresa}/definicoes', [EmpresaController::class, 'editar'])
         ->name('core.empresa.editar');

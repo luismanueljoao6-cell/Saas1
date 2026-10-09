@@ -3,11 +3,13 @@
 namespace Modules\Subscricoes\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
@@ -18,32 +20,35 @@ use Modules\Subscricoes\Services\SubscricaoService;
 use Throwable;
 
 /**
- * Rotina diária (ver SubscricoesServiceProvider para o agendamento; para
- * correr à mão: php artisan subscricoes:verificar). Passos, por ordem:
+ * Rotina diária (php artisan subscricoes:verificar). Passos:
+ *  1. Referências pendentes fora de prazo -> 'expirado'.
+ *  2. Subscrições 'pendente' sem pagamento vivo -> 'cancelada'.
+ *  3. Trials terminados -> empresa suspensa (período de tolerância).
+ *  4. Subscrição ativa vencida -> empresa suspensa.
+ *  5. Tolerância terminada -> empresa expirada.
+ *  6. Subscrições a terminar em breve -> referência de renovação.
  *
- *  1. Referências de pagamento pendentes já fora de prazo -> 'expirado'.
- *  2. Subscrições 'pendente' sem nenhum pagamento vivo -> 'cancelada'.
- *  3. Trials terminados -> empresa em período de tolerância (suspensa).
- *  4. Subscrição ativa cujo termina_em passou -> empresa suspensa.
- *  5. Tolerância terminada -> empresa expirada (bloqueio total).
- *  6. Subscrições ativas a terminar em breve, com renovação ativa ->
- *     gera a referência de renovação e avisa a empresa.
- *
- * Percorre TODAS as empresas — precisa por isso do bypass explícito do
- * TenantManager, tal como o PagamentoService.
+ * Cada transição RELÊ o registo com lock e revalida a condição: um pagamento
+ * confirmado entretanto pelo webhook nunca é revertido por modelos antigos.
+ * Ordem de locks (igual à do PagamentoService): Subscricao -> Empresa.
+ * ShouldBeUnique: nunca há duas execuções em simultâneo.
  */
-class VerificarSubscricoesExpiradasJob implements ShouldQueue
+class VerificarSubscricoesExpiradasJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
     use SerializesModels;
 
-    /**
-     * Injeção via handle(), não via construtor: um Job ShouldQueue é
-     * serializado para ir para a fila, e os serviços não devem viajar nesse
-     * payload — o Laravel resolve-os de novo, do container, ao correr.
-     */
+    public int $timeout = 900;
+
+    public int $uniqueFor = 3600;
+
+    public function uniqueId(): string
+    {
+        return 'subscricoes-verificar';
+    }
+
     public function handle(TenantManager $tenantManager, TenantService $tenantService): void
     {
         $tenantManager->semTenant(function () use ($tenantService) {
@@ -58,6 +63,7 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
 
     protected function expirarPagamentosPendentes(): void
     {
+        // UPDATE condicional: só afeta o que ainda está 'pendente' neste instante.
         Pagamento::query()
             ->where('estado', 'pendente')
             ->where('expira_em', '<', now())
@@ -68,14 +74,30 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
     {
         Subscricao::query()
             ->where('estado', 'pendente')
-            ->with('pagamentos')
             ->chunkById(100, function ($subscricoes) {
                 foreach ($subscricoes as $subscricao) {
-                    $temPagamentoVivo = $subscricao->pagamentos
-                        ->contains(fn ($p) => in_array($p->estado, ['pendente', 'confirmado'], true));
+                    try {
+                        DB::transaction(function () use ($subscricao) {
+                            $atual = Subscricao::query()->lockForUpdate()->find($subscricao->id);
 
-                    if (! $temPagamentoVivo) {
-                        $subscricao->update(['estado' => 'cancelada', 'cancelada_em' => now()]);
+                            if (! $atual || $atual->estado !== 'pendente') {
+                                return;
+                            }
+
+                            $temPagamentoVivo = Pagamento::query()
+                                ->where('subscricao_id', $atual->id)
+                                ->whereIn('estado', ['pendente', 'confirmado'])
+                                ->exists();
+
+                            if (! $temPagamentoVivo) {
+                                $atual->update(['estado' => 'cancelada', 'cancelada_em' => now()]);
+                            }
+                        });
+                    } catch (Throwable $e) {
+                        Log::error('Falha ao cancelar subscrição sem pagamento', [
+                            'subscricao_id' => $subscricao->id,
+                            'erro' => $e->getMessage(),
+                        ]);
                     }
                 }
             });
@@ -83,8 +105,6 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
 
     protected function terminarTrials(TenantService $tenantService): void
     {
-        // Só trials COM data de fim: empresas antigas sem data (trial sem
-        // fim) não são tocadas.
         Empresa::query()
             ->where('estado_subscricao', 'trial')
             ->whereNotNull('subscricao_expira_em')
@@ -92,7 +112,20 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
             ->chunkById(100, function ($empresas) use ($tenantService) {
                 foreach ($empresas as $empresa) {
                     try {
-                        $tenantService->suspender($empresa);
+                        DB::transaction(function () use ($empresa, $tenantService) {
+                            $atual = Empresa::query()->lockForUpdate()->find($empresa->id);
+
+                            if (
+                                ! $atual
+                                || $atual->estado_subscricao !== 'trial'
+                                || ! $atual->subscricao_expira_em
+                                || $atual->subscricao_expira_em->isFuture()
+                            ) {
+                                return;
+                            }
+
+                            $tenantService->suspender($atual);
+                        });
                     } catch (Throwable $e) {
                         Log::error('Falha ao terminar o trial de uma empresa', [
                             'empresa_id' => $empresa->id,
@@ -108,12 +141,35 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
         Subscricao::query()
             ->where('estado', 'ativa')
             ->where('termina_em', '<', now())
-            ->with('empresa')
             ->chunkById(100, function ($subscricoes) use ($tenantService) {
                 foreach ($subscricoes as $subscricao) {
                     try {
-                        $subscricao->update(['estado' => 'expirada']);
-                        $tenantService->suspender($subscricao->empresa);
+                        DB::transaction(function () use ($subscricao, $tenantService) {
+                            $atual = Subscricao::query()->lockForUpdate()->find($subscricao->id);
+
+                            if (
+                                ! $atual
+                                || $atual->estado !== 'ativa'
+                                || ! $atual->termina_em
+                                || $atual->termina_em->isFuture()
+                            ) {
+                                return;
+                            }
+
+                            $empresa = Empresa::query()->lockForUpdate()->find($atual->empresa_id);
+
+                            $atual->update(['estado' => 'expirada']);
+
+                            // Só suspende se a empresa continua vencida: um pagamento
+                            // confirmado entretanto já empurrou a data para o futuro.
+                            if (
+                                $empresa
+                                && in_array($empresa->estado_subscricao, ['ativa', 'trial'], true)
+                                && (! $empresa->subscricao_expira_em || ! $empresa->subscricao_expira_em->isFuture())
+                            ) {
+                                $tenantService->suspender($empresa);
+                            }
+                        });
                     } catch (Throwable $e) {
                         Log::error('Falha ao suspender subscrição vencida', [
                             'subscricao_id' => $subscricao->id,
@@ -132,7 +188,20 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
             ->chunkById(100, function ($empresas) use ($tenantService) {
                 foreach ($empresas as $empresa) {
                     try {
-                        $tenantService->expirar($empresa);
+                        DB::transaction(function () use ($empresa, $tenantService) {
+                            $atual = Empresa::query()->lockForUpdate()->find($empresa->id);
+
+                            if (
+                                ! $atual
+                                || $atual->estado_subscricao !== 'suspensa'
+                                || ! $atual->periodo_tolerancia_ate
+                                || $atual->periodo_tolerancia_ate->isFuture()
+                            ) {
+                                return;
+                            }
+
+                            $tenantService->expirar($atual);
+                        });
                     } catch (Throwable $e) {
                         Log::error('Falha ao expirar empresa após período de tolerância', [
                             'empresa_id' => $empresa->id,
@@ -159,15 +228,8 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
             ->chunkById(100, function ($subscricoes) use ($subscricaoService) {
                 foreach ($subscricoes as $subscricao) {
                     try {
-                        $jaTemReferencia = Pagamento::query()
-                            ->where('subscricao_id', $subscricao->id)
-                            ->where('estado', 'pendente')
-                            ->where('expira_em', '>', now())
-                            ->exists();
-
-                        if (! $jaTemReferencia) {
-                            $subscricaoService->gerarRenovacao($subscricao);
-                        }
+                        // Idempotente: se já há referência válida, não duplica.
+                        $subscricaoService->gerarRenovacao($subscricao);
                     } catch (Throwable $e) {
                         Log::error('Falha ao gerar a renovação de uma subscrição', [
                             'subscricao_id' => $subscricao->id,

@@ -8,16 +8,10 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Modules\Subscricoes\Exceptions\PagamentoRejeitadoException;
 use Modules\Subscricoes\Services\PagamentoService;
 use Throwable;
 
-/**
- * O controller do webhook despacha este Job e responde 200 ao gateway de
- * imediato — o processamento em si (que pode envolver várias escritas na
- * base de dados e o envio de notificações) corre em segundo plano. Isto
- * evita que uma lentidão nossa faça o gateway considerar o webhook como
- * falhado e tentar reenviá-lo desnecessariamente.
- */
 class ProcessarPagamentoConfirmadoJob implements ShouldQueue
 {
     use Dispatchable;
@@ -33,15 +27,24 @@ class ProcessarPagamentoConfirmadoJob implements ShouldQueue
         protected string $gatewayIdentificador,
         protected string $referenciaExterna,
         protected array $payloadBruto,
-    ) {
-    }
+    ) {}
 
     public function handle(PagamentoService $pagamentoService): void
     {
         try {
-            $pagamento = $pagamentoService->localizarPorReferencia($this->referenciaExterna);
+            $pagamento = $pagamentoService->localizarPorReferencia($this->referenciaExterna, $this->payloadBruto);
 
             $pagamentoService->confirmar($pagamento, $this->payloadBruto);
+        } catch (PagamentoRejeitadoException $e) {
+            // Repetir não resolve: fica em failed_jobs para revisão manual.
+            Log::critical('Pagamento recebido mas REJEITADO — requer revisão manual', [
+                'gateway' => $this->gatewayIdentificador,
+                'referencia_externa' => $this->referenciaExterna,
+                'payload' => $this->payloadBruto,
+                'erro' => $e->getMessage(),
+            ]);
+
+            $this->fail($e);
         } catch (Throwable $e) {
             Log::error('ProcessarPagamentoConfirmadoJob falhou', [
                 'gateway' => $this->gatewayIdentificador,
@@ -50,7 +53,7 @@ class ProcessarPagamentoConfirmadoJob implements ShouldQueue
                 'erro' => $e->getMessage(),
             ]);
 
-            throw $e; // permite ao Laravel gerir novas tentativas / backoff
+            throw $e;
         }
     }
 }

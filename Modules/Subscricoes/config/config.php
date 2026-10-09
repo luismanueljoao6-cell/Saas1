@@ -63,4 +63,14 @@ return [
         'max_faturas_mes' => (int) env('SUBSCRICOES_TRIAL_MAX_FATURAS_MES', 50),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Exigir o valor pago no webhook
+    |--------------------------------------------------------------------------
+    | true (recomendado): o webhook tem de trazer o valor pago e este não pode
+    | ser inferior ao do pagamento, senão é recusado. Põe false SÓ enquanto
+    | testas contra a sandbox da ProxyPay e confirmas o nome do campo.
+    */
+    'exigir_valor_webhook' => env('SUBSCRICOES_EXIGIR_VALOR_WEBHOOK', true),
+
 ];
