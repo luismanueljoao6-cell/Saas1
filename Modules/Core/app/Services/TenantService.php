@@ -37,6 +37,7 @@ class TenantService
             $empresa->periodo_tolerancia_ate = null;
             $empresa->periodo_tolerancia_ate = null;
             $empresa->periodo_tolerancia_ate = null;
+            $empresa->periodo_tolerancia_ate = null;
             $empresa->save();
 
             return $empresa;
@@ -64,6 +65,7 @@ class TenantService
     {
         return $this->transacionar($empresa, function (Empresa $empresa) {
             $empresa->estado_subscricao = 'expirada';
+            $empresa->periodo_tolerancia_ate = null;
             $empresa->periodo_tolerancia_ate = null;
             $empresa->periodo_tolerancia_ate = null;
             $empresa->periodo_tolerancia_ate = null;
