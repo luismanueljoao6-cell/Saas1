@@ -1,5 +1,5 @@
 <?php
-
+ 
 namespace Modules\Core\Services;
 
 use Closure;
