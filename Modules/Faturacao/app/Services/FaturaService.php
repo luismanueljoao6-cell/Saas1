@@ -5,10 +5,10 @@ namespace Modules\Faturacao\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Core\Models\Empresa;
-use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
+use Modules\Faturacao\Support\Dinheiro;
 use Throwable;
 
 class FaturaService
@@ -16,7 +16,6 @@ class FaturaService
     public function __construct(
         protected NumeracaoService $numeracaoService,
         protected AssinaturaFiscalService $assinaturaFiscalService,
-        protected TenantManager $tenantManager,
     ) {
     }
 
@@ -29,14 +28,16 @@ class FaturaService
             throw new \InvalidArgumentException('Uma fatura precisa de pelo menos uma linha.');
         }
 
+        if ((int) $cliente->empresa_id !== (int) $empresa->id) {
+            throw new \DomainException('O cliente não pertence a esta empresa.');
+        }
+
         return DB::transaction(function () use ($empresa, $cliente, $linhas, $observacoes) {
             $fatura = Fatura::create([
                 'empresa_id' => $empresa->id,
                 'cliente_id' => $cliente->id,
-                // serie_id só é atribuída na emissão (ver emitir()) —
-                // um rascunho pode nunca chegar a ser emitido, e não faz
-                // sentido reservar/consumir uma série por isso. Usamos a
-                // série "por omissão" (FT/A) só como referência do tipo.
+                // Série do ano corrente, só como referência do tipo: a série
+                // DEFINITIVA (e o número) são atribuídos em emitir().
                 'serie_id' => $this->numeracaoService->obterOuCriarSerie($empresa->id, 'FT')->id,
                 'estado' => 'rascunho',
                 'moeda' => 'AOA',
@@ -51,69 +52,70 @@ class FaturaService
     }
 
     /**
-     * O passo que dá valor fiscal ao documento: atribui o número
-     * sequencial definitivo, encadeia com o hash do documento anterior da
-     * mesma série, assina com RSA, e só então marca como emitida — a
-     * partir daqui a Imutavel trait bloqueia qualquer alteração.
+     * Atribui número sequencial, encadeia o hash, assina (RSA) e marca como
+     * emitida. Idempotente: emitir duas vezes devolve a mesma fatura sem
+     * consumir um segundo número.
      *
      * @throws Throwable
      */
     public function emitir(Fatura $fatura): Fatura
-{
-    try {
-        return DB::transaction(function () use ($fatura) {
-            $fatura = Fatura::query()
-                ->lockForUpdate()
-                ->findOrFail($fatura->id);
+    {
+        try {
+            return DB::transaction(function () use ($fatura) {
+                // Lock explícito por empresa, SEM depender do tenant ambiente
+                // (jobs, comandos e testes não passam pelo middleware).
+                $fatura = Fatura::withoutGlobalScopes()
+                    ->where('empresa_id', $fatura->empresa_id)
+                    ->lockForUpdate()
+                    ->findOrFail($fatura->id);
 
-            if ($fatura->estaEmitido()) {
-                return $fatura->fresh('linhas');
-            }
+                if ($fatura->estaEmitido()) {
+                    return $fatura->fresh('linhas');
+                }
 
-            $resultado = $this->numeracaoService->proximoNumero(
-                $fatura->empresa_id,
-                'FT'
-            );
+                if ($fatura->linhas()->doesntExist()) {
+                    throw new \DomainException('Não é possível emitir uma fatura sem linhas.');
+                }
 
-            $hashAnterior = $this->tenantManager->semTenant(
-                fn () => Fatura::query()
+                // O valor assinado tem de bater exatamente com as linhas.
+                $this->recalcularTotais($fatura);
+
+                $resultado = $this->numeracaoService->proximoNumero($fatura->empresa_id, 'FT');
+
+                $hashAnterior = Fatura::withoutGlobalScopes()
                     ->where('serie_id', $resultado['serie']->id)
-                    ->where(
-                        'numero_sequencial',
-                        $resultado['numero_sequencial'] - 1
-                    )
-                    ->value('hash')
-            );
+                    ->where('numero_sequencial', $resultado['numero_sequencial'] - 1)
+                    ->value('hash');
 
-            $fatura->serie_id = $resultado['serie']->id;
+                $fatura->serie_id = $resultado['serie']->id;
 
-            $this->assinaturaFiscalService->assinarEEmitir(
-                $fatura,
-                $resultado['numero_sequencial'],
-                $resultado['numero_documento'],
-                now(),
-                $hashAnterior,
-            );
+                $this->assinaturaFiscalService->assinarEEmitir(
+                    $fatura,
+                    $resultado['numero_sequencial'],
+                    $resultado['numero_documento'],
+                    now(),
+                    $hashAnterior,
+                );
 
-            $fatura->save();
+                $fatura->save();
 
-            Log::info('Fatura emitida', [
+                Log::info('Fatura emitida', [
+                    'fatura_id' => $fatura->id,
+                    'numero_documento' => $fatura->numero_documento,
+                    'empresa_id' => $fatura->empresa_id,
+                ]);
+
+                return $fatura->fresh('linhas');
+            }, attempts: 5);
+        } catch (Throwable $e) {
+            Log::error('Falha ao emitir fatura', [
                 'fatura_id' => $fatura->id,
-                'numero_documento' => $fatura->numero_documento,
-                'empresa_id' => $fatura->empresa_id,
+                'erro' => $e->getMessage(),
             ]);
 
-            return $fatura->fresh('linhas');
-        }, attempts: 5);
-    } catch (Throwable $e) {
-        Log::error('Falha ao emitir fatura', [
-            'fatura_id' => $fatura->id,
-            'erro' => $e->getMessage(),
-        ]);
-
-        throw $e;
+            throw $e;
+        }
     }
-}
 
     /**
      * @param  array<int, array{produto_id?: int, descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float}>  $linhas
@@ -141,10 +143,14 @@ class FaturaService
     {
         $linhas = $fatura->linhas()->get();
 
+        $soma = fn (string $campo): string => Dinheiro::formatar(
+            (int) $linhas->sum(fn ($l) => Dinheiro::centimos($l->{$campo}))
+        );
+
         $fatura->update([
-            'valor_sem_iva' => $linhas->sum('valor_sem_iva'),
-            'valor_iva' => $linhas->sum('valor_iva'),
-            'valor_total' => $linhas->sum('valor_total'),
+            'valor_sem_iva' => $soma('valor_sem_iva'),
+            'valor_iva' => $soma('valor_iva'),
+            'valor_total' => $soma('valor_total'),
         ]);
     }
 }

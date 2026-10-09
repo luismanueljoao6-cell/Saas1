@@ -4,33 +4,28 @@ namespace Modules\Faturacao\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Modules\Core\Services\TenantManager;
+use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
+use Modules\Faturacao\Support\Dinheiro;
 use Throwable;
 
 /**
- * Como uma Fatura emitida é imutável (ver Traits\Imutavel), a ÚNICA forma
- * de corrigir um erro nela é emitir uma Nota de Crédito a anulá-la (no todo
- * ou em parte) — nunca editar a fatura original. Esta classe segue
- * deliberadamente a mesma disciplina do FaturaService (numeração + hash
- * encadeado + imutabilidade), mas com a sua PRÓPRIA cadeia de hash (série
- * NC/ND, nunca partilhada com a série FT).
+ * Uma Fatura emitida é imutável: a ÚNICA forma de a corrigir é uma Nota de
+ * Crédito (total ou parcial). Cadeia de hash própria (série NC/ND).
  */
 class NotaCreditoDebitoService
 {
     public function __construct(
         protected NumeracaoService $numeracaoService,
         protected AssinaturaFiscalService $assinaturaFiscalService,
-        protected TenantManager $tenantManager,
     ) {
     }
 
     /**
-     * Gera uma nota de crédito que anula uma fatura na totalidade,
-     * replicando as suas linhas. Para anulação PARCIAL, usa
-     * criarRascunho() diretamente com as linhas que quiseres corrigir.
+     * Anulação TOTAL (uma única vez por fatura). Para correções parciais usa
+     * criarRascunho() com as linhas a corrigir.
      */
     public function criarParaAnularFatura(Fatura $fatura, string $motivo): NotaCreditoDebito
     {
@@ -38,11 +33,21 @@ class NotaCreditoDebitoService
             throw new \InvalidArgumentException('Só é possível emitir uma nota de crédito sobre uma fatura já emitida.');
         }
 
-        $linhas = $fatura->linhas->map(fn ($linha) => [
+        $jaTemCredito = NotaCreditoDebito::withoutGlobalScopes()
+            ->where('empresa_id', $fatura->empresa_id)
+            ->where('fatura_id', $fatura->id)
+            ->where('tipo', 'credito')
+            ->exists();
+
+        if ($jaTemCredito) {
+            throw new \DomainException('Esta fatura já tem uma nota de crédito associada.');
+        }
+
+        $linhas = $fatura->linhas()->get()->map(fn ($linha) => [
             'descricao' => $linha->descricao,
-            'quantidade' => (float) $linha->quantidade,
-            'preco_unitario' => (float) $linha->preco_unitario,
-            'taxa_iva' => (float) $linha->taxa_iva,
+            'quantidade' => $linha->quantidade,
+            'preco_unitario' => $linha->preco_unitario,
+            'taxa_iva' => $linha->taxa_iva,
         ])->all();
 
         return $this->criarRascunho($fatura->empresa_id, $fatura->cliente_id, 'credito', $motivo, $linhas, $fatura->id);
@@ -59,8 +64,34 @@ class NotaCreditoDebitoService
         array $linhas,
         ?int $faturaId = null,
     ): NotaCreditoDebito {
+        if (! in_array($tipo, ['credito', 'debito'], true)) {
+            throw new \InvalidArgumentException("Tipo inválido: usa 'credito' ou 'debito'.");
+        }
+
+        if (trim($motivo) === '') {
+            throw new \InvalidArgumentException('O motivo é obrigatório.');
+        }
+
         if (empty($linhas)) {
             throw new \InvalidArgumentException('Uma nota de crédito/débito precisa de pelo menos uma linha.');
+        }
+
+        $cliente = Cliente::withoutGlobalScopes()->where('empresa_id', $empresaId)->find($clienteId);
+
+        if (! $cliente) {
+            throw new \DomainException('O cliente não pertence a esta empresa.');
+        }
+
+        if ($faturaId !== null) {
+            $origem = Fatura::withoutGlobalScopes()->where('empresa_id', $empresaId)->find($faturaId);
+
+            if (! $origem || ! $origem->estaEmitido()) {
+                throw new \DomainException('A fatura de origem tem de existir nesta empresa e estar emitida.');
+            }
+
+            if ((int) $origem->cliente_id !== $clienteId) {
+                throw new \DomainException('O cliente da nota tem de ser o da fatura de origem.');
+            }
         }
 
         return DB::transaction(function () use ($empresaId, $clienteId, $tipo, $motivo, $linhas, $faturaId) {
@@ -78,47 +109,52 @@ class NotaCreditoDebitoService
             ]);
 
             foreach (array_values($linhas) as $indice => $dadosLinha) {
-                $linha = new NotaCreditoDebitoLinha([
+                (new NotaCreditoDebitoLinha([
                     'nota_credito_debito_id' => $nota->id,
                     'descricao' => $dadosLinha['descricao'],
                     'quantidade' => $dadosLinha['quantidade'],
                     'preco_unitario' => $dadosLinha['preco_unitario'],
                     'taxa_iva' => $dadosLinha['taxa_iva'],
                     'ordem' => $indice,
-                ]);
-
-                $linha->calcularValores()->save();
+                ]))->calcularValores()->save();
             }
 
-            $linhasCriadas = $nota->linhas()->get();
-            $nota->update([
-                'valor_sem_iva' => $linhasCriadas->sum('valor_sem_iva'),
-                'valor_iva' => $linhasCriadas->sum('valor_iva'),
-                'valor_total' => $linhasCriadas->sum('valor_total'),
-            ]);
+            $this->recalcularTotais($nota);
 
             return $nota->fresh('linhas');
         });
     }
 
+    /**
+     * Idempotente e seguro sob concorrência: relê a nota com lock dentro da
+     * transação (antes verificava um objeto em memória → números duplicados).
+     */
     public function emitir(NotaCreditoDebito $nota): NotaCreditoDebito
     {
-        if ($nota->estaEmitido()) {
-            return $nota;
-        }
-
         try {
             return DB::transaction(function () use ($nota) {
-                $tipoDocumento = $nota->tipoDocumentoFiscal();
+                $nota = NotaCreditoDebito::withoutGlobalScopes()
+                    ->where('empresa_id', $nota->empresa_id)
+                    ->lockForUpdate()
+                    ->findOrFail($nota->id);
 
-                $resultado = $this->numeracaoService->proximoNumero($nota->empresa_id, $tipoDocumento);
+                if ($nota->estaEmitido()) {
+                    return $nota->fresh('linhas');
+                }
 
-                $hashAnterior = $this->tenantManager->semTenant(
-                    fn () => NotaCreditoDebito::query()
-                        ->where('serie_id', $resultado['serie']->id)
-                        ->where('numero_sequencial', $resultado['numero_sequencial'] - 1)
-                        ->value('hash')
-                );
+                if ($nota->linhas()->doesntExist()) {
+                    throw new \DomainException('Não é possível emitir uma nota sem linhas.');
+                }
+
+                $this->recalcularTotais($nota);
+                $this->garantirLimiteDeCredito($nota);
+
+                $resultado = $this->numeracaoService->proximoNumero($nota->empresa_id, $nota->tipoDocumentoFiscal());
+
+                $hashAnterior = NotaCreditoDebito::withoutGlobalScopes()
+                    ->where('serie_id', $resultado['serie']->id)
+                    ->where('numero_sequencial', $resultado['numero_sequencial'] - 1)
+                    ->value('hash');
 
                 $nota->serie_id = $resultado['serie']->id;
 
@@ -139,7 +175,7 @@ class NotaCreditoDebitoService
                 ]);
 
                 return $nota->fresh('linhas');
-            });
+            }, attempts: 5);
         } catch (Throwable $e) {
             Log::error('Falha ao emitir nota de crédito/débito', [
                 'nota_id' => $nota->id,
@@ -148,5 +184,47 @@ class NotaCreditoDebitoService
 
             throw $e;
         }
+    }
+
+    /** Soma das NC emitidas + esta nota nunca pode exceder o valor da fatura. */
+    protected function garantirLimiteDeCredito(NotaCreditoDebito $nota): void
+    {
+        if ($nota->tipo !== 'credito' || ! $nota->fatura_id) {
+            return;
+        }
+
+        // Lock na fatura serializa emissões concorrentes de NC sobre ela.
+        $fatura = Fatura::withoutGlobalScopes()
+            ->where('empresa_id', $nota->empresa_id)
+            ->lockForUpdate()
+            ->findOrFail($nota->fatura_id);
+
+        $jaCreditado = NotaCreditoDebito::withoutGlobalScopes()
+            ->where('empresa_id', $nota->empresa_id)
+            ->where('fatura_id', $fatura->id)
+            ->where('tipo', 'credito')
+            ->where('estado', 'emitida')
+            ->where('id', '!=', $nota->id)
+            ->get(['valor_total'])
+            ->sum(fn ($n) => Dinheiro::centimos($n->valor_total));
+
+        if ($jaCreditado + Dinheiro::centimos($nota->valor_total) > Dinheiro::centimos($fatura->valor_total)) {
+            throw new \DomainException('O total creditado excede o valor da fatura de origem.');
+        }
+    }
+
+    protected function recalcularTotais(NotaCreditoDebito $nota): void
+    {
+        $linhas = $nota->linhas()->get();
+
+        $soma = fn (string $campo): string => Dinheiro::formatar(
+            (int) $linhas->sum(fn ($l) => Dinheiro::centimos($l->{$campo}))
+        );
+
+        $nota->update([
+            'valor_sem_iva' => $soma('valor_sem_iva'),
+            'valor_iva' => $soma('valor_iva'),
+            'valor_total' => $soma('valor_total'),
+        ]);
     }
 }
