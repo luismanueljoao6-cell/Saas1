@@ -13,9 +13,7 @@ use Throwable;
 
 class EmpresaController extends Controller
 {
-    public function __construct(protected EmpresaRepositoryInterface $empresaRepository)
-    {
-    }
+    public function __construct(protected EmpresaRepositoryInterface $empresaRepository) {}
 
     public function editar(Empresa $empresa): View
     {

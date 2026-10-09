@@ -32,8 +32,7 @@ class ProcessarPagamentoConfirmadoJob implements ShouldQueue
         protected string $referenciaExterna,
         protected array $payloadBruto,
         protected ?string $valorRecebido = null,
-    ) {
-    }
+    ) {}
 
     public function handle(PagamentoService $pagamentoService): void
     {

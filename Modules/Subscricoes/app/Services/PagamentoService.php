@@ -20,8 +20,7 @@ class PagamentoService
     public function __construct(
         protected TenantService $tenantService,
         protected TenantManager $tenantManager,
-    ) {
-    }
+    ) {}
 
     /**
      * Ponto único de confirmação de pagamento — chamado tanto pelo Job que
