@@ -5,6 +5,8 @@ namespace Modules\Subscricoes\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
+use Modules\Subscricoes\Exceptions\PagamentoRejeitadoException;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
@@ -20,15 +22,12 @@ class FluxoPagamentoTest extends TestCase
     {
         parent::setUp();
 
-        $contador = 0;
-
-        // Gateway falso: evita qualquer chamada HTTP real durante os testes
-        // e torna o comportamento determinístico. Referência incremental
-        // (não baseada no id do Pagamento) para expor, sem ambiguidade, o
-        // teste de reutilização de referência pendente.
-        $this->app->bind(GatewayPagamentoInterface::class, fn () => new class($contador) implements GatewayPagamentoInterface
+        // Gateway falso: sem HTTP real, determinístico. É um singleton para
+        // o contador de referências persistir entre serviços resolvidos no
+        // mesmo teste (referências únicas: REF-1, REF-2, ...).
+        $this->app->singleton(GatewayPagamentoInterface::class, fn () => new class implements GatewayPagamentoInterface
         {
-            public function __construct(private int &$contador) {}
+            private int $contador = 0;
 
             public function identificador(): string
             {
@@ -67,11 +66,20 @@ class FluxoPagamentoTest extends TestCase
         return Plano::create(['nome' => 'Plano '.$slug, 'slug' => $slug, 'preco' => 9900, 'periodo_dias' => $periodoDias]);
     }
 
+    /**
+     * Simula a notificação do gateway: o payload traz o valor pago, que a
+     * regra de negócio exige (SUBSCRICOES_EXIGIR_VALOR_WEBHOOK=true).
+     */
+    protected function confirmarComoGateway(Pagamento $pagamento, ?float $valorPago = null): Pagamento
+    {
+        return app(PagamentoService::class)->confirmar(
+            $pagamento,
+            ['amount' => $valorPago ?? (float) $pagamento->valor]
+        );
+    }
+
     public function test_iniciar_subscricao_durante_o_trial_nao_bloqueia_a_empresa(): void
     {
-        // Este é o comportamento corrigido: uma empresa em trial (com
-        // acesso) que começa a subscrever um plano NÃO fica bloqueada só
-        // por isso — só passa a 'pendente' se já não tivesse acesso.
         $empresa = $this->criarEmpresa('200000001', 'trial');
         $plano = $this->criarPlano('basico-trial');
 
@@ -101,7 +109,13 @@ class FluxoPagamentoTest extends TestCase
 
         $this->assertSame($primeiro->id, $segundo->id);
         $this->assertSame($primeiro->referencia_externa, $segundo->referencia_externa);
-        $this->assertSame(1, Pagamento::where('empresa_id', $empresa->id)->count());
+
+        // Pagamento tem TenantScope (fail-closed): sem tenant, a contagem
+        // seria sempre 0 — por isso a leitura é feita fora do tenant.
+        $total = app(TenantManager::class)->semTenant(
+            fn () => Pagamento::where('empresa_id', $empresa->id)->count()
+        );
+        $this->assertSame(1, $total);
     }
 
     public function test_confirmar_pagamento_ativa_subscricao_e_empresa(): void
@@ -110,7 +124,7 @@ class FluxoPagamentoTest extends TestCase
         $plano = $this->criarPlano('profissional');
 
         $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
-        $pagamentoConfirmado = app(PagamentoService::class)->confirmar($pagamento);
+        $pagamentoConfirmado = $this->confirmarComoGateway($pagamento);
 
         $this->assertSame('confirmado', $pagamentoConfirmado->estado);
         $this->assertSame('ativa', $pagamentoConfirmado->subscricao->fresh()->estado);
@@ -125,11 +139,10 @@ class FluxoPagamentoTest extends TestCase
 
         $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
 
-        $servico = app(PagamentoService::class);
-        $servico->confirmar($pagamento);
+        $this->confirmarComoGateway($pagamento);
         $terminaEmPrimeiraConfirmacao = $empresa->fresh()->subscricao_expira_em;
 
-        $servico->confirmar($pagamento->fresh());
+        $this->confirmarComoGateway($pagamento->fresh());
 
         $this->assertEquals($terminaEmPrimeiraConfirmacao, $empresa->fresh()->subscricao_expira_em);
     }
@@ -140,19 +153,52 @@ class FluxoPagamentoTest extends TestCase
         $plano = $this->criarPlano('mensal-soma', periodoDias: 30);
 
         $primeiroPagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
-        app(PagamentoService::class)->confirmar($primeiroPagamento);
+        $this->confirmarComoGateway($primeiroPagamento);
 
         $terminaAntes = $empresa->fresh()->subscricao_expira_em;
 
-        // Paga a renovação antes do fim do período atual — 10 dias antes,
-        // por exemplo — e os 10 dias restantes não podem perder-se.
         $segundoPagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
-        app(PagamentoService::class)->confirmar($segundoPagamento);
+        $this->confirmarComoGateway($segundoPagamento);
 
         $terminaDepois = $empresa->fresh()->subscricao_expira_em;
 
-        // 30 dias novos a somar aos que já lá estavam: a diferença tem de
-        // ser (muito perto de) 30 dias, nunca menos.
         $this->assertGreaterThanOrEqual(29, $terminaAntes->diffInDays($terminaDepois));
+    }
+
+    public function test_notificacao_sem_valor_pago_e_rejeitada_e_o_pagamento_continua_pendente(): void
+    {
+        $empresa = $this->criarEmpresa('200000007');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $this->criarPlano('sem-valor'));
+
+        try {
+            app(PagamentoService::class)->confirmar($pagamento, []);
+            $this->fail('Uma notificação sem valor pago devia ter sido rejeitada.');
+        } catch (PagamentoRejeitadoException) {
+            $this->assertSame('pendente', $pagamento->fresh()->estado);
+            $this->assertNotSame('ativa', $empresa->fresh()->estado_subscricao);
+        }
+    }
+
+    public function test_notificacao_com_valor_inferior_ao_esperado_e_rejeitada(): void
+    {
+        $empresa = $this->criarEmpresa('200000008');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $this->criarPlano('valor-baixo'));
+
+        try {
+            $this->confirmarComoGateway($pagamento, 5000.0);
+            $this->fail('Um valor inferior ao esperado devia ter sido rejeitado.');
+        } catch (PagamentoRejeitadoException) {
+            $this->assertSame('pendente', $pagamento->fresh()->estado);
+        }
+    }
+
+    public function test_notificacao_com_valor_superior_ao_esperado_e_aceite(): void
+    {
+        $empresa = $this->criarEmpresa('200000009');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $this->criarPlano('valor-alto'));
+
+        $confirmado = $this->confirmarComoGateway($pagamento, 12000.0);
+
+        $this->assertSame('confirmado', $confirmado->estado);
     }
 }
