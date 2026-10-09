@@ -62,9 +62,11 @@ class FaturaService
 {
     try {
         return DB::transaction(function () use ($fatura) {
-            $fatura = Fatura::query()
-                ->lockForUpdate()
-                ->findOrFail($fatura->id);
+            $fatura = $this->tenantManager->semTenant(
+                fn () => Fatura::query()
+                    ->lockForUpdate()
+                    ->findOrFail($fatura->id)
+            );
 
             if ($fatura->estaEmitido()) {
                 return $fatura->fresh('linhas');
