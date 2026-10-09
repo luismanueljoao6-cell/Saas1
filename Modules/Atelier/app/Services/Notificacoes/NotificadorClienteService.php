@@ -8,6 +8,7 @@ use Modules\Atelier\Exceptions\NotificacaoException;
 use Modules\Atelier\Notifications\ClienteAtelierNotification;
 use Modules\Atelier\Services\Notificacoes\Contracts\CanalNotificacaoInterface;
 use Modules\Faturacao\Models\Cliente;
+use Throwable;
 
 /**
  * Ponto único de disparo de notificações ao cliente (requisito C). Percorre
@@ -29,13 +30,21 @@ class NotificadorClienteService
         foreach ((array) config('atelier.canais_notificacao') as $canal) {
             $canal = trim($canal);
 
-            match ($canal) {
-                'mail' => $this->enviarMail($cliente, $assunto, $mensagem, $linkAcao, $textoAcao),
-                'whatsapp' => $this->enviarViaCanal(app(WhatsAppCanal::class), $cliente, $mensagem),
-                'sms' => $this->enviarViaCanal(app(SmsCanal::class), $cliente, $mensagem),
-                '' => null,
-                default => Log::warning("Atelier: canal de notificação desconhecido \"{$canal}\"."),
-            };
+            try {
+                match ($canal) {
+                    'mail' => $this->enviarMail($cliente, $assunto, $mensagem, $linkAcao, $textoAcao),
+                    'whatsapp' => $this->enviarViaCanal(app(WhatsAppCanal::class), $cliente, $mensagem),
+                    'sms' => $this->enviarViaCanal(app(SmsCanal::class), $cliente, $mensagem),
+                    '' => null,
+                    default => Log::warning("Atelier: canal de notificação desconhecido \"{$canal}\"."),
+                };
+            } catch (Throwable $e) {
+                Log::warning('Atelier: falha ao notificar cliente por um canal', [
+                    'canal' => $canal,
+                    'cliente_id' => $cliente->id,
+                    'erro' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
