@@ -1,10 +1,10 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\Core\Http\Controllers\EmpresaController;
-use Modules\Core\Http\Controllers\UtilizadorController;
 use Modules\Core\Http\Controllers\Auth\AuthenticatedSessionController;
 use Modules\Core\Http\Controllers\Auth\RegisteredTenantController;
+use Modules\Core\Http\Controllers\EmpresaController;
+use Modules\Core\Http\Controllers\UtilizadorController;
 
 /*
 |--------------------------------------------------------------------------

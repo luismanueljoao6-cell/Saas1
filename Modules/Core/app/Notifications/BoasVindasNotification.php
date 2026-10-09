@@ -18,9 +18,7 @@ class BoasVindasNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(protected Empresa $empresa)
-    {
-    }
+    public function __construct(protected Empresa $empresa) {}
 
     public function via(object $notifiable): array
     {
@@ -30,7 +28,7 @@ class BoasVindasNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('Bem-vindo(a) à plataforma — ' . $this->empresa->nome_comercial)
+            ->subject('Bem-vindo(a) à plataforma — '.$this->empresa->nome_comercial)
             ->greeting("Olá, {$notifiable->name}!")
             ->line("A empresa {$this->empresa->nome_comercial} foi registada com sucesso.")
             ->line('Está em período experimental. Podes configurar os dados fiscais e convidar a tua equipa a qualquer momento.')

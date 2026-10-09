@@ -4,6 +4,7 @@ namespace Modules\Atelier\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
 class PedidoFoto extends Model
 {
@@ -18,6 +19,6 @@ class PedidoFoto extends Model
 
     public function url(): string
     {
-        return \Illuminate\Support\Facades\Storage::disk('public')->url($this->caminho);
+        return Storage::disk('public')->url($this->caminho);
     }
 }

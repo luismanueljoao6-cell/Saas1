@@ -15,9 +15,7 @@ use Throwable;
 
 class SubscricaoController extends Controller
 {
-    public function __construct(protected SubscricaoService $subscricaoService)
-    {
-    }
+    public function __construct(protected SubscricaoService $subscricaoService) {}
 
     public function iniciar(IniciarSubscricaoRequest $request): RedirectResponse
     {

@@ -56,9 +56,7 @@ class UtilizadoresEPapeisTest extends TestCase
     {
         $this->app->bind(LimitesDaEmpresa::class, fn () => new class($limite) implements LimitesDaEmpresa
         {
-            public function __construct(protected ?int $limite)
-            {
-            }
+            public function __construct(protected ?int $limite) {}
 
             public function limite(Empresa $empresa, string $chave): ?int
             {

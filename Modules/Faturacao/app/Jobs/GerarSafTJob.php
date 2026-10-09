@@ -36,8 +36,7 @@ class GerarSafTJob implements ShouldBeUnique, ShouldQueue
         protected Empresa $empresa,
         protected string $dataInicio,
         protected string $dataFim,
-    ) {
-    }
+    ) {}
 
     public function uniqueId(): string
     {

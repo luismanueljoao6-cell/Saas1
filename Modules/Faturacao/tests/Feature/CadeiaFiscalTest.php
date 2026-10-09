@@ -2,8 +2,10 @@
 
 namespace Modules\Faturacao\Tests\Feature;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Exceptions\DocumentoImutavelException;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
@@ -117,9 +119,9 @@ class CadeiaFiscalTest extends TestCase
         // "1 = 0" à query: o UPDATE não apanharia nenhuma linha e o
         // trigger nunca chegaria a disparar. Com o tenant certo definido,
         // a query apanha a fatura e é o trigger que a trava.
-        app(\Modules\Core\Services\TenantManager::class)->set($empresa->id);
+        app(TenantManager::class)->set($empresa->id);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         Fatura::where('id', $fatura->id)->update(['observacoes' => 'tentativa de alteração em massa']);
     }

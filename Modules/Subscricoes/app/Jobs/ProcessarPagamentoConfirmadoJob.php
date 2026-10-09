@@ -33,8 +33,7 @@ class ProcessarPagamentoConfirmadoJob implements ShouldQueue
         protected string $gatewayIdentificador,
         protected string $referenciaExterna,
         protected array $payloadBruto,
-    ) {
-    }
+    ) {}
 
     public function handle(PagamentoService $pagamentoService): void
     {

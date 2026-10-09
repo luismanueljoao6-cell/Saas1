@@ -20,9 +20,7 @@ use Throwable;
  */
 class FaturaController extends Controller
 {
-    public function __construct(protected FaturaService $faturaService)
-    {
-    }
+    public function __construct(protected FaturaService $faturaService) {}
 
     public function index(): View
     {

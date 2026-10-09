@@ -18,9 +18,7 @@ use Throwable;
  */
 class ProxyPayWebhookController extends Controller
 {
-    public function __construct(protected GatewayPagamentoInterface $gateway)
-    {
-    }
+    public function __construct(protected GatewayPagamentoInterface $gateway) {}
 
     public function __invoke(Request $request): JsonResponse
     {

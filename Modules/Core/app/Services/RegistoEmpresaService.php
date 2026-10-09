@@ -26,7 +26,7 @@ class RegistoEmpresaService
      * @param  array{name: string, email: string, password: string}  $dadosAdmin
      *
      * @throws Throwable Relança qualquer falha após registar o erro, para
-     *                    que o controller decida como responder ao utilizador.
+     *                   que o controller decida como responder ao utilizador.
      */
     public function registar(array $dadosEmpresa, array $dadosAdmin): User
     {

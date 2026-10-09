@@ -39,8 +39,7 @@ class EnviarMensagemClienteJob implements ShouldQueue
         public ?string $email,
         public string $assunto,
         public string $mensagem,
-    ) {
-    }
+    ) {}
 
     public function handle(CanalWhatsAppInterface $canalWhatsapp, CanalSmsInterface $canalSms): void
     {

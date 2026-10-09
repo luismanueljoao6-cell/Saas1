@@ -3,6 +3,7 @@
 namespace Modules\Faturacao\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Modules\Core\Services\MenuRegistry;
 
 class FaturacaoServiceProvider extends ServiceProvider
 {
@@ -18,7 +19,7 @@ class FaturacaoServiceProvider extends ServiceProvider
 
         $this->app->register(RouteServiceProvider::class);
 
-        $menu = $this->app->make(\Modules\Core\Services\MenuRegistry::class);
+        $menu = $this->app->make(MenuRegistry::class);
         $menu->adicionar('faturacao.faturas.index', 'Faturas', 20);
         $menu->adicionar('faturacao.clientes.index', 'Clientes', 30);
         $menu->adicionar('faturacao.produtos.index', 'Produtos', 40);

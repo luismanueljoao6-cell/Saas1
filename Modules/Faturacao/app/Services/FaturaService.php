@@ -16,8 +16,7 @@ class FaturaService
     public function __construct(
         protected NumeracaoService $numeracaoService,
         protected AssinaturaFiscalService $assinaturaFiscalService,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<int, array{produto_id?: int, descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float}>  $linhas

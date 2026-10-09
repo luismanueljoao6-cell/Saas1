@@ -27,8 +27,7 @@ class ClienteAtelierNotification extends Notification implements ShouldQueue
         protected string $mensagem,
         protected ?string $linkAcao = null,
         protected ?string $textoAcao = null,
-    ) {
-    }
+    ) {}
 
     public function via(object $notifiable): array
     {

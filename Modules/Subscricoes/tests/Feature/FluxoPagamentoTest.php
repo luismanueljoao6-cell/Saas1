@@ -28,9 +28,7 @@ class FluxoPagamentoTest extends TestCase
         // teste de reutilização de referência pendente.
         $this->app->bind(GatewayPagamentoInterface::class, fn () => new class($contador) implements GatewayPagamentoInterface
         {
-            public function __construct(private int &$contador)
-            {
-            }
+            public function __construct(private int &$contador) {}
 
             public function identificador(): string
             {

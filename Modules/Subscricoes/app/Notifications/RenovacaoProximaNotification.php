@@ -19,8 +19,7 @@ class RenovacaoProximaNotification extends Notification implements ShouldQueue
         protected string $valor,
         protected string $moeda,
         protected string $expiraEm,
-    ) {
-    }
+    ) {}
 
     public function via(object $notifiable): array
     {
@@ -34,7 +33,7 @@ class RenovacaoProximaNotification extends Notification implements ShouldQueue
             ->greeting("Olá, {$notifiable->name}!")
             ->line("A subscrição da tua empresa termina a {$this->terminaEm}.")
             ->line(
-                "Para continuares sem interrupção, paga a referência ".
+                'Para continuares sem interrupção, paga a referência '.
                 "{$this->referenciaExterna} — {$this->valor} {$this->moeda} — ".
                 "até {$this->expiraEm}."
             )

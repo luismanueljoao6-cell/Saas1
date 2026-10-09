@@ -31,8 +31,7 @@ class FaturacaoEstudioService
         protected NumeracaoService $numeracaoService,
         protected AssinaturaFiscalService $assinaturaFiscalService,
         protected TenantManager $tenantManager,
-    ) {
-    }
+    ) {}
 
     /**
      * Fatura de sinal/adiantamento (secção E: "30% a 50% para confirmar a

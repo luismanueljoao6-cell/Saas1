@@ -22,8 +22,7 @@ class SubscricaoService
         protected GatewayPagamentoInterface $gateway,
         protected TenantService $tenantService,
         protected TenantManager $tenantManager,
-    ) {
-    }
+    ) {}
 
     /**
      * Cria uma subscrição pendente e pede ao gateway uma referência de
@@ -102,12 +101,12 @@ class SubscricaoService
 
                 $subscricao->empresa->utilizadores()->where('ativo', true)->get()
                     ->each(fn (User $utilizador) => $utilizador->notify(new RenovacaoProximaNotification(
-    $subscricao->termina_em->format('d/m/Y'),
-    (string) $pagamento->referencia_externa,
-    (string) $pagamento->valor,
-    $pagamento->moeda,
-    $pagamento->expira_em->format('d/m/Y'),
-)));
+                        $subscricao->termina_em->format('d/m/Y'),
+                        (string) $pagamento->referencia_externa,
+                        (string) $pagamento->valor,
+                        $pagamento->moeda,
+                        $pagamento->expira_em->format('d/m/Y'),
+                    )));
 
                 Log::info('Referência de renovação gerada', [
                     'subscricao_id' => $subscricao->id,

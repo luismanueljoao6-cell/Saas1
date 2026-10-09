@@ -18,8 +18,7 @@ class PagamentoService
     public function __construct(
         protected TenantService $tenantService,
         protected TenantManager $tenantManager,
-    ) {
-    }
+    ) {}
 
     /**
      * Ponto único de confirmação de pagamento — chamado tanto pelo Job que
@@ -91,10 +90,10 @@ class PagamentoService
 
                     $empresa->utilizadores()->where('ativo', true)->get()
                         ->each(fn (User $utilizador) => $utilizador->notify(new PagamentoConfirmadoNotification(
-    (string) $pagamento->valor,
-    $pagamento->moeda,
-    $subscricao->termina_em->format('d/m/Y'),
-)));
+                            (string) $pagamento->valor,
+                            $pagamento->moeda,
+                            $subscricao->termina_em->format('d/m/Y'),
+                        )));
 
                     Log::info('Pagamento confirmado e subscrição ativada', [
                         'pagamento_id' => $pagamento->id,

@@ -15,9 +15,7 @@ use Modules\Atelier\Services\EquipaService;
  */
 class EquipaController extends Controller
 {
-    public function __construct(protected EquipaService $equipaService)
-    {
-    }
+    public function __construct(protected EquipaService $equipaService) {}
 
     public function index(): View
     {

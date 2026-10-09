@@ -25,9 +25,7 @@ use Modules\Faturacao\Models\Serie;
  */
 class NumeracaoService
 {
-    public function __construct(protected TenantManager $tenantManager)
-    {
-    }
+    public function __construct(protected TenantManager $tenantManager) {}
 
     /**
      * @return array{serie: Serie, numero_sequencial: int, numero_documento: string}

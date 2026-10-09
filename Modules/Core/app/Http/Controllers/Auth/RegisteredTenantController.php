@@ -13,9 +13,7 @@ use Throwable;
 
 class RegisteredTenantController extends Controller
 {
-    public function __construct(protected RegistoEmpresaService $registoEmpresaService)
-    {
-    }
+    public function __construct(protected RegistoEmpresaService $registoEmpresaService) {}
 
     public function create(): View
     {

@@ -26,9 +26,7 @@ use Throwable;
  */
 class UtilizadorController extends Controller
 {
-    public function __construct(protected LimitesDaEmpresa $limites)
-    {
-    }
+    public function __construct(protected LimitesDaEmpresa $limites) {}
 
     public function index(Request $request): View
     {

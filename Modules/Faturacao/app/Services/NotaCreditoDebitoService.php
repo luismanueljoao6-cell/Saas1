@@ -20,8 +20,7 @@ class NotaCreditoDebitoService
     public function __construct(
         protected NumeracaoService $numeracaoService,
         protected AssinaturaFiscalService $assinaturaFiscalService,
-    ) {
-    }
+    ) {}
 
     /**
      * Anulação TOTAL (uma única vez por fatura). Para correções parciais usa
