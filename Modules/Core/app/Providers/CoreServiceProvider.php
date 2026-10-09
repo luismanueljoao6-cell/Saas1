@@ -2,7 +2,11 @@
 
 namespace Modules\Core\Providers;
 
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Http\Middleware\ExigirPapel;
@@ -49,6 +53,7 @@ class CoreServiceProvider extends ServiceProvider
         $this->registerMigrations();
         $this->registerMiddlewareAliases();
         $this->registerMenuItems();
+        $this->limparTenantEntreJobs();
 
         $this->app->register(RouteServiceProvider::class);
 
@@ -97,5 +102,21 @@ class CoreServiceProvider extends ServiceProvider
             90,
             fn () => [auth()->user()?->empresa_id],
         );
+    }
+
+    /**
+     * Num `queue:work` o processo é reutilizado: sem isto, o tenant definido
+     * por um job vazaria para o seguinte. Ignora o driver 'sync' (corre dentro
+     * do próprio pedido, onde o tenant tem de se manter).
+     */
+    protected function limparTenantEntreJobs(): void
+    {
+        Event::listen([JobProcessing::class, JobProcessed::class, JobFailed::class], function ($evento): void {
+            if ($evento->connectionName === 'sync') {
+                return;
+            }
+
+            $this->app->make(TenantManager::class)->clear();
+        });
     }
 }
