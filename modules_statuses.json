@@ -2,6 +2,6 @@
     "Core": true,
     "Faturacao": true,
     "Subscricoes": true,
-    "Atelier": false,
-    "EstudioMusica": false
+    "Atelier": true,
+    "EstudioMusica": true
 }

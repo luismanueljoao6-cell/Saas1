@@ -26,7 +26,7 @@ class FluxoPagamentoTest extends TestCase
         // e torna o comportamento determinístico. Referência incremental
         // (não baseada no id do Pagamento) para expor, sem ambiguidade, o
         // teste de reutilização de referência pendente.
-        $this->app->bind(GatewayPagamentoInterface::class, fn () => new class($contador) implements GatewayPagamentoInterface
+        $this->app->singleton(GatewayPagamentoInterface::class, fn () => new class($contador) implements GatewayPagamentoInterface
         {
             public function __construct(private int &$contador) {}
 
@@ -101,7 +101,7 @@ class FluxoPagamentoTest extends TestCase
 
         $this->assertSame($primeiro->id, $segundo->id);
         $this->assertSame($primeiro->referencia_externa, $segundo->referencia_externa);
-        $this->assertSame(1, Pagamento::where('empresa_id', $empresa->id)->count());
+        $this->assertSame(1, Pagamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->count());
     }
 
     public function test_confirmar_pagamento_ativa_subscricao_e_empresa(): void
