@@ -22,18 +22,17 @@ class SubscricaoService
         protected GatewayPagamentoInterface $gateway,
         protected TenantService $tenantService,
         protected TenantManager $tenantManager,
-    ) {
-    }
+    ) {}
 
     /**
      * Cria uma subscrição pendente e pede ao gateway uma referência de
      * pagamento. Se já existir uma referência pendente e ainda válida para
-     * o MESMO plano, devolve-a em vez de gerar outra (cliques repetidos em
-     * "Subscrever" não acumulam referências).
+     * o MESMO plano, devolve-a em vez de gerar outra.
      *
-     * O estado da empresa só muda aqui se ela já estiver SEM acesso; uma
-     * empresa em trial ou com subscrição ativa mantém o acesso até o
-     * pagamento ser confirmado (ver PagamentoService::confirmar()).
+     * Duas fases, de propósito: (1) transação curta só com escritas na BD;
+     * (2) chamada HTTP ao gateway FORA da transação (não segura uma ligação
+     * à BD até 10 s). Se o gateway falhar, o pagamento fica 'expirado' e a
+     * subscrição 'cancelada' — nunca um "pendente" sem referência.
      *
      * @throws Throwable
      */
@@ -49,7 +48,7 @@ class SubscricaoService
                 return $existente;
             }
 
-            return DB::transaction(function () use ($empresa, $plano) {
+            [$subscricao, $pagamento] = DB::transaction(function () use ($empresa, $plano) {
                 $subscricao = Subscricao::create([
                     'empresa_id' => $empresa->id,
                     'plano_id' => $plano->id,
@@ -57,21 +56,31 @@ class SubscricaoService
                     'renovacao_automatica' => true,
                 ]);
 
-                $pagamento = $this->criarPagamentoComReferencia($subscricao, $plano);
+                $pagamento = $this->criarPagamento($subscricao, $plano);
 
                 if (! $empresa->temAcesso()) {
                     $this->tenantService->marcarPendente($empresa);
                 }
 
-                Log::info('Subscrição iniciada, aguarda pagamento', [
-                    'empresa_id' => $empresa->id,
-                    'plano_id' => $plano->id,
-                    'pagamento_id' => $pagamento->id,
-                    'referencia_externa' => $pagamento->referencia_externa,
-                ]);
-
-                return $this->tenantManager->semTenant(fn () => $pagamento->fresh(['subscricao.plano']));
+                return [$subscricao, $pagamento];
             });
+
+            try {
+                $pagamento = $this->pedirReferenciaAoGateway($pagamento);
+            } catch (Throwable $e) {
+                $subscricao->update(['estado' => 'cancelada', 'cancelada_em' => now()]);
+
+                throw $e;
+            }
+
+            Log::info('Subscrição iniciada, aguarda pagamento', [
+                'empresa_id' => $empresa->id,
+                'plano_id' => $plano->id,
+                'pagamento_id' => $pagamento->id,
+                'referencia_externa' => $pagamento->referencia_externa,
+            ]);
+
+            return $this->tenantManager->semTenant(fn () => $pagamento->fresh(['subscricao.plano']));
         } catch (Throwable $e) {
             Log::error('Falha ao iniciar subscrição', [
                 'empresa_id' => $empresa->id,
@@ -85,37 +94,41 @@ class SubscricaoService
 
     /**
      * Gera a referência de pagamento do PRÓXIMO período de uma subscrição
-     * ativa e avisa os utilizadores da empresa. Chamado pela rotina diária
-     * quando faltam poucos dias para o fim e a renovação está ativa.
-     *
-     * Com referências de pagamento não há débito automático: "renovação
-     * automática" significa que o sistema trata de gerar e enviar a
-     * referência a tempo; quem paga é sempre a empresa.
+     * ativa e avisa os utilizadores da empresa (e-mails depois de tudo
+     * gravado; uma falha de e-mail não invalida a referência).
      */
     public function gerarRenovacao(Subscricao $subscricao): Pagamento
     {
         return $this->tenantManager->semTenant(function () use ($subscricao) {
-            return DB::transaction(function () use ($subscricao) {
-                $subscricao->loadMissing('plano', 'empresa');
+            $subscricao->loadMissing('plano', 'empresa');
 
-                $pagamento = $this->criarPagamentoComReferencia($subscricao, $subscricao->plano);
+            $pagamento = DB::transaction(fn () => $this->criarPagamento($subscricao, $subscricao->plano));
+            $pagamento = $this->pedirReferenciaAoGateway($pagamento);
 
-                $subscricao->empresa->utilizadores()->where('ativo', true)->get()
-                    ->each(fn (User $utilizador) => $utilizador->notify(new RenovacaoProximaNotification(
-    $subscricao->termina_em->format('d/m/Y'),
-    (string) $pagamento->referencia_externa,
-    (string) $pagamento->valor,
-    $pagamento->moeda,
-    $pagamento->expira_em->format('d/m/Y'),
-)));
+            $subscricao->empresa->utilizadores()->where('ativo', true)->get()
+                ->each(function (User $utilizador) use ($subscricao, $pagamento) {
+                    try {
+                        $utilizador->notify(new RenovacaoProximaNotification(
+                            $subscricao->termina_em->format('d/m/Y'),
+                            (string) $pagamento->referencia_externa,
+                            (string) $pagamento->valor,
+                            $pagamento->moeda,
+                            $pagamento->expira_em->format('d/m/Y'),
+                        ));
+                    } catch (Throwable $e) {
+                        Log::warning('Referência de renovação gerada, mas o aviso falhou', [
+                            'utilizador_id' => $utilizador->id,
+                            'erro' => $e->getMessage(),
+                        ]);
+                    }
+                });
 
-                Log::info('Referência de renovação gerada', [
-                    'subscricao_id' => $subscricao->id,
-                    'pagamento_id' => $pagamento->id,
-                ]);
+            Log::info('Referência de renovação gerada', [
+                'subscricao_id' => $subscricao->id,
+                'pagamento_id' => $pagamento->id,
+            ]);
 
-                return $pagamento;
-            });
+            return $pagamento;
         });
     }
 
@@ -147,9 +160,9 @@ class SubscricaoService
         return $subscricao->fresh();
     }
 
-    protected function criarPagamentoComReferencia(Subscricao $subscricao, Plano $plano): Pagamento
+    protected function criarPagamento(Subscricao $subscricao, Plano $plano): Pagamento
     {
-        $pagamento = Pagamento::create([
+        return Pagamento::create([
             'empresa_id' => $subscricao->empresa_id,
             'subscricao_id' => $subscricao->id,
             'gateway' => $this->gateway->identificador(),
@@ -158,15 +171,29 @@ class SubscricaoService
             'estado' => 'pendente',
             'expira_em' => now()->addDays((int) Config::get('subscricoes.validade_referencia_dias', 3)),
         ]);
+    }
 
-        $resultado = $this->gateway->gerarReferencia($pagamento);
+    /**
+     * Chamada ao gateway, fora de qualquer transação. Sem referência, o
+     * pagamento é inútil: marca-o 'expirado' para nunca ser reutilizado por
+     * referenciaPendenteDoMesmoPlano().
+     */
+    protected function pedirReferenciaAoGateway(Pagamento $pagamento): Pagamento
+    {
+        try {
+            $resultado = $this->gateway->gerarReferencia($pagamento);
 
-        $pagamento->update([
-            'referencia_externa' => $resultado['referencia_externa'],
-            'payload_bruto' => $resultado['payload'],
-        ]);
+            $pagamento->update([
+                'referencia_externa' => $resultado['referencia_externa'],
+                'payload_bruto' => $resultado['payload'],
+            ]);
 
-        return $pagamento;
+            return $pagamento;
+        } catch (Throwable $e) {
+            $pagamento->update(['estado' => 'expirado']);
+
+            throw $e;
+        }
     }
 
     protected function referenciaPendenteDoMesmoPlano(Empresa $empresa, Plano $plano): ?Pagamento

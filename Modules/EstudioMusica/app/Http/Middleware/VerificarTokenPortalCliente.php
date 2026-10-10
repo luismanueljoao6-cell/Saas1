@@ -24,9 +24,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class VerificarTokenPortalCliente
 {
-    public function __construct(protected TenantManager $tenantManager)
-    {
-    }
+    public function __construct(protected TenantManager $tenantManager) {}
 
     public function handle(Request $request, Closure $next): Response
     {

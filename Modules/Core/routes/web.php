@@ -1,10 +1,10 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\Core\Http\Controllers\EmpresaController;
-use Modules\Core\Http\Controllers\UtilizadorController;
 use Modules\Core\Http\Controllers\Auth\AuthenticatedSessionController;
 use Modules\Core\Http\Controllers\Auth\RegisteredTenantController;
+use Modules\Core\Http\Controllers\EmpresaController;
+use Modules\Core\Http\Controllers\UtilizadorController;
 
 /*
 |--------------------------------------------------------------------------
@@ -13,10 +13,12 @@ use Modules\Core\Http\Controllers\Auth\RegisteredTenantController;
 */
 Route::middleware('guest')->group(function () {
     Route::get('/registo', [RegisteredTenantController::class, 'create'])->name('core.registo');
-    Route::post('/registo', [RegisteredTenantController::class, 'store']);
+    // 5 registos / 10 min por IP: trava criação massiva de empresas.
+    Route::post('/registo', [RegisteredTenantController::class, 'store'])->middleware('throttle:5,10');
 
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('core.login');
-    Route::post('/login', [AuthenticatedSessionController::class, 'store']);
+    // Camada grossa por IP; o LoginRequest pode ter a sua própria por conta.
+    Route::post('/login', [AuthenticatedSessionController::class, 'store'])->middleware('throttle:20,1');
 });
 
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])

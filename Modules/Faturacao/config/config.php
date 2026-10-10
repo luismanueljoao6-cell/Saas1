@@ -76,4 +76,11 @@ return [
     */
     'saft_numero_certificado' => env('FATURACAO_SAFT_NUMERO_CERTIFICADO', '0'),
 
+    /*
+    | Taxas de IVA aceites na emissão (percentagens, separadas por vírgula no .env).
+    | Confirma contra a tabela atual da AGT antes de produção. Taxa 0 (isenção)
+    | exigirá motivo de isenção — ainda por implementar (ver README).
+    */
+    'taxas_iva_permitidas' => array_map('floatval', array_filter(explode(',', (string) env('FATURACAO_TAXAS_IVA_PERMITIDAS', '0,14')), 'strlen')),
+
 ];

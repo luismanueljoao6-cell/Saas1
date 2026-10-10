@@ -4,8 +4,8 @@ namespace Modules\EstudioMusica\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Controller;
-use Illuminate\View\View;
 use Illuminate\Support\Facades\DB;
+use Illuminate\View\View;
 use InvalidArgumentException;
 use Modules\EstudioMusica\Exceptions\ConflitoAgendamentoException;
 use Modules\EstudioMusica\Http\Requests\GuardarSessaoEstudioRequest;
@@ -20,8 +20,7 @@ class SessaoEstudioController extends Controller
     public function __construct(
         protected AgendamentoService $agendamento,
         protected FaturacaoEstudioService $faturacaoEstudio,
-    ) {
-    }
+    ) {}
 
     public function index(): View
     {

@@ -31,9 +31,7 @@ use Modules\Faturacao\Models\Cliente;
  */
 class CampanhaMarketingService
 {
-    public function __construct(protected NotificacaoEstudioService $notificacao)
-    {
-    }
+    public function __construct(protected NotificacaoEstudioService $notificacao) {}
 
     /**
      * Corre para TODAS as empresas — ver Jobs\EnviarCampanhaAniversarioJob

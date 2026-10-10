@@ -2,6 +2,8 @@
 
 namespace Modules\Atelier\Services\Notificacoes\Contracts;
 
+use Modules\Atelier\Exceptions\NotificacaoException;
+
 /**
  * Mesma abstração deliberada de GatewayPagamentoInterface (módulo
  * Subscricoes): o resto do módulo nunca fala diretamente com a API do
@@ -18,7 +20,7 @@ interface CanalNotificacaoInterface
      * Envia uma mensagem de texto simples para o destino indicado (número
      * de telefone em formato internacional, tipicamente).
      *
-     * @throws \Modules\Atelier\Exceptions\NotificacaoException
+     * @throws NotificacaoException
      */
     public function enviar(string $destino, string $mensagem): void;
 }

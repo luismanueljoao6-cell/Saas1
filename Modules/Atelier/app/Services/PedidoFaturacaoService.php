@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Atelier\Exceptions\PedidoException;
 use Modules\Atelier\Models\Pedido;
 use Modules\Core\Services\TenantManager;
+use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Services\AssinaturaFiscalService;
 use Modules\Faturacao\Services\FaturaService;
@@ -46,8 +47,7 @@ class PedidoFaturacaoService
         protected AssinaturaFiscalService $assinaturaFiscalService,
         protected FaturaService $faturaService,
         protected TenantManager $tenantManager,
-    ) {
-    }
+    ) {}
 
     /**
      * @throws PedidoException|Throwable
@@ -82,7 +82,7 @@ class PedidoFaturacaoService
      *
      * @throws PedidoException
      */
-    public function gerarFaturaFinalRascunho(Pedido $pedido, ?string $observacoes = null): \Modules\Faturacao\Models\Fatura
+    public function gerarFaturaFinalRascunho(Pedido $pedido, ?string $observacoes = null): Fatura
     {
         if ($pedido->jaTemFaturaFinal()) {
             throw PedidoException::faturaFinalJaGerada();

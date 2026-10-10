@@ -13,7 +13,7 @@ use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterfac
  * ambiente sem acesso à rede — troca para os canais reais só quando
  * tiveres credenciais válidas.
  */
-class LogChannel implements CanalWhatsAppInterface, CanalSmsInterface
+class LogChannel implements CanalSmsInterface, CanalWhatsAppInterface
 {
     public function identificador(): string
     {

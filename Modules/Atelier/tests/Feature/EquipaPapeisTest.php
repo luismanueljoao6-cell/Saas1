@@ -6,8 +6,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Atelier\Services\EquipaService;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
-use Spatie\Permission\PermissionRegistrar;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 class EquipaPapeisTest extends TestCase

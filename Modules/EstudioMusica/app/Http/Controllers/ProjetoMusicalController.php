@@ -24,9 +24,7 @@ use Modules\Faturacao\Models\Cliente;
  */
 class ProjetoMusicalController extends Controller
 {
-    public function __construct(protected FaturacaoEstudioService $faturacaoEstudio)
-    {
-    }
+    public function __construct(protected FaturacaoEstudioService $faturacaoEstudio) {}
 
     public function index(): View
     {

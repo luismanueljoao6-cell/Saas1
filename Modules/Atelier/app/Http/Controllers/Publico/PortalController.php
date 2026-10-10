@@ -32,8 +32,7 @@ class PortalController extends Controller
     public function __construct(
         protected TenantManager $tenantManager,
         protected PortalLinkService $linkService,
-    ) {
-    }
+    ) {}
 
     public function mostrar(int $cliente): View
     {

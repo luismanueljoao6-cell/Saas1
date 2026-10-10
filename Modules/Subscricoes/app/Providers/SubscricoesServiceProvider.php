@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Contracts\LimitesDaEmpresa;
+use Modules\Core\Services\MenuRegistry;
 use Modules\Subscricoes\Console\VerificarSubscricoesCommand;
 use Modules\Subscricoes\Http\Middleware\VerificarAssinaturaWebhook;
 use Modules\Subscricoes\Jobs\VerificarSubscricoesExpiradasJob;
@@ -57,7 +58,7 @@ class SubscricoesServiceProvider extends ServiceProvider
 
         $this->app->register(RouteServiceProvider::class);
 
-        $this->app->make(\Modules\Core\Services\MenuRegistry::class)
+        $this->app->make(MenuRegistry::class)
             ->adicionar('subscricoes.planos', 'Planos', 50);
 
         $this->publishes([
@@ -83,7 +84,7 @@ class SubscricoesServiceProvider extends ServiceProvider
         $this->app->booted(function () {
             $schedule = $this->app->make(Schedule::class);
 
-            $schedule->job(new VerificarSubscricoesExpiradasJob)
+            $schedule->call(fn () => VerificarSubscricoesExpiradasJob::dispatchSync())
                 ->dailyAt('02:00')
                 ->name('subscricoes:verificar-expiradas')
                 ->withoutOverlapping();

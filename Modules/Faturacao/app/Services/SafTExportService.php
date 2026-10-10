@@ -8,43 +8,53 @@ use Illuminate\Support\Carbon;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
+use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\Produto;
+use Modules\Faturacao\Support\Dinheiro;
 
 /**
- * Gera a ESTRUTURA do ficheiro SAF-T (AO) — cabeçalho, tabelas mestres
- * (clientes, produtos) e os documentos de venda do período. Construída a
- * partir do que é publicamente descrito para o SAF-T (AO) (Decreto
- * Executivo n.º 317/20: "cabeçalho, tabelas mestres e movimentos
- * contabilísticos") e da estrutura comum à família SAF-T lusófona.
+ * ESTRUTURA PROVISÓRIA do SAF-T (AO): ainda NÃO validada contra o XSD oficial
+ * da AGT (faltam namespace, TaxTable, DocumentTotals, etc.). Não submeter à AGT
+ * sem validação XSD e software certificado — ver README.
  *
- * NÃO tomes isto como validado contra o XSD oficial da AGT — não tive
- * acesso de rede neste ambiente para o descarregar e validar campo a
- * campo. Antes de submeteres um ficheiro real à AGT: (1) confirma cada
- * elemento/atributo contra a especificação técnica atual, (2) corre o
- * ficheiro gerado por um validador XSD, e (3) lembra-te de que, mesmo
- * estruturalmente correto, isto não substitui teres um software
- * certificado pela AGT — ver README.
+ * Todas as queries filtram explicitamente por empresa_id e ignoram a
+ * TenantScope, por isso não dependem de tenant ambiente (jobs/comandos).
  */
 class SafTExportService
 {
     public function gerar(Empresa $empresa, Carbon $inicio, Carbon $fim): string
     {
-        $documento = new DOMDocument('1.0', 'UTF-8');
-        $documento->formatOutput = true;
+        if (app()->isProduction() && (string) config('faturacao.saft_numero_certificado', '0') === '0') {
+            throw new \RuntimeException('Exportação SAF-T bloqueada em produção: software sem número de certificação AGT configurado.');
+        }
 
-        $raiz = $documento->createElement('AuditFile');
-        $documento->appendChild($raiz);
+        $doc = new DOMDocument('1.0', 'UTF-8');
+        $doc->formatOutput = true;
 
-        $raiz->appendChild($this->construirCabecalho($documento, $empresa, $inicio, $fim));
-        $raiz->appendChild($this->construirTabelasMestras($documento, $empresa));
-        $raiz->appendChild($this->construirDocumentosFonte($documento, $empresa, $inicio, $fim));
+        $raiz = $doc->createElement('AuditFile');
+        $doc->appendChild($raiz);
 
-        return $documento->saveXML();
+        $raiz->appendChild($this->cabecalho($doc, $empresa, $inicio, $fim));
+        $raiz->appendChild($this->tabelasMestras($doc, $empresa));
+        $raiz->appendChild($this->documentosFonte($doc, $empresa, $inicio, $fim));
+
+        return $doc->saveXML();
     }
 
-    protected function construirCabecalho(DOMDocument $doc, Empresa $empresa, Carbon $inicio, Carbon $fim): DOMElement
+    /** Texto seguro: escapa automaticamente e remove caracteres inválidos em XML. */
+    protected function no(DOMDocument $doc, string $nome, string|int|float|null $valor): DOMElement
     {
-        $cabecalho = $doc->createElement('Header');
+        $limpo = preg_replace('/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}]/u', '', (string) $valor) ?? '';
+
+        $no = $doc->createElement($nome);
+        $no->appendChild($doc->createTextNode($limpo));
+
+        return $no;
+    }
+
+    protected function cabecalho(DOMDocument $doc, Empresa $empresa, Carbon $inicio, Carbon $fim): DOMElement
+    {
+        $cab = $doc->createElement('Header');
 
         $campos = [
             'AuditFileVersion' => '1.0',
@@ -52,104 +62,125 @@ class SafTExportService
             'TaxRegistrationNumber' => $empresa->nif,
             'CompanyName' => $empresa->nome_legal ?: $empresa->nome_comercial,
             'CompanyAddress' => $empresa->morada,
-            'FiscalYear' => (string) $inicio->year,
+            'FiscalYear' => $inicio->year,
             'StartDate' => $inicio->format('Y-m-d'),
             'EndDate' => $fim->format('Y-m-d'),
             'CurrencyCode' => 'AOA',
             'DateCreated' => now()->format('Y-m-d'),
-            'TaxAccountingBasis' => 'F', // faturação — confirmar valores válidos no XSD da AGT
-            // TODO: preencher com o número de certificação AGT do software
-            // assim que o processo de certificação estiver concluído.
-            'SoftwareCertificateNumber' => (string) config('faturacao.saft_numero_certificado', '0'),
+            'TaxAccountingBasis' => 'F',
+            'SoftwareCertificateNumber' => config('faturacao.saft_numero_certificado', '0'),
             'ProductID' => 'Plataforma de Gestão/1.0',
         ];
 
         foreach ($campos as $nome => $valor) {
-            $cabecalho->appendChild($doc->createElement($nome, htmlspecialchars((string) $valor)));
+            $cab->appendChild($this->no($doc, $nome, $valor));
         }
 
-        return $cabecalho;
+        return $cab;
     }
 
-    protected function construirTabelasMestras(DOMDocument $doc, Empresa $empresa): DOMElement
+    protected function tabelasMestras(DOMDocument $doc, Empresa $empresa): DOMElement
     {
         $tabelas = $doc->createElement('MasterFiles');
 
-        Cliente::where('empresa_id', $empresa->id)->chunk(200, function ($clientes) use ($doc, $tabelas) {
-            foreach ($clientes as $cliente) {
-                $no = $doc->createElement('Customer');
-                $no->appendChild($doc->createElement('CustomerID', (string) $cliente->id));
-                $no->appendChild($doc->createElement('CustomerTaxID', htmlspecialchars($cliente->nif ?: '999999999')));
-                $no->appendChild($doc->createElement('CompanyName', htmlspecialchars($cliente->nome)));
-                $no->appendChild($doc->createElement('Address', htmlspecialchars($cliente->morada ?: '')));
-                $tabelas->appendChild($no);
-            }
-        });
+        $clientes = Cliente::withoutGlobalScopes()->where('empresa_id', $empresa->id)->orderBy('id')->lazy(200);
+        foreach ($clientes as $cliente) {
+            $c = $doc->createElement('Customer');
+            $c->appendChild($this->no($doc, 'CustomerID', $cliente->id));
+            $c->appendChild($this->no($doc, 'CustomerTaxID', $cliente->nif ?: '999999999'));
+            $c->appendChild($this->no($doc, 'CompanyName', $cliente->nome));
+            $c->appendChild($this->no($doc, 'Address', $cliente->morada));
+            $tabelas->appendChild($c);
+        }
 
-        Produto::where('empresa_id', $empresa->id)->chunk(200, function ($produtos) use ($doc, $tabelas) {
-            foreach ($produtos as $produto) {
-                $no = $doc->createElement('Product');
-                $no->appendChild($doc->createElement('ProductCode', htmlspecialchars($produto->codigo ?: (string) $produto->id)));
-                $no->appendChild($doc->createElement('ProductDescription', htmlspecialchars($produto->nome)));
-                $tabelas->appendChild($no);
-            }
-        });
+        $produtos = Produto::withoutGlobalScopes()->where('empresa_id', $empresa->id)->orderBy('id')->lazy(200);
+        foreach ($produtos as $produto) {
+            $p = $doc->createElement('Product');
+            $p->appendChild($this->no($doc, 'ProductCode', $produto->codigo ?: $produto->id));
+            $p->appendChild($this->no($doc, 'ProductDescription', $produto->nome));
+            $tabelas->appendChild($p);
+        }
 
         return $tabelas;
     }
 
-    protected function construirDocumentosFonte(DOMDocument $doc, Empresa $empresa, Carbon $inicio, Carbon $fim): DOMElement
+    protected function documentosFonte(DOMDocument $doc, Empresa $empresa, Carbon $inicio, Carbon $fim): DOMElement
     {
-        $documentosFonte = $doc->createElement('SourceDocuments');
-        $faturasNo = $doc->createElement('SalesInvoices');
+        $fonte = $doc->createElement('SourceDocuments');
+        $vendas = $doc->createElement('SalesInvoices');
 
-        $faturas = Fatura::query()
-            ->where('empresa_id', $empresa->id)
-            ->where('estado', 'emitida')
-            ->whereBetween('data_emissao', [$inicio->toDateString(), $fim->toDateString()])
-            ->orderBy('numero_sequencial')
-            ->with('linhas')
-            ->get();
+        $noEntradas = $this->no($doc, 'NumberOfEntries', 0);
+        $noDebito = $this->no($doc, 'TotalDebit', '0.00');
+        $noCredito = $this->no($doc, 'TotalCredit', '0.00');
+        $vendas->appendChild($noEntradas);
+        $vendas->appendChild($noDebito);
+        $vendas->appendChild($noCredito);
 
-        $faturasNo->appendChild($doc->createElement('NumberOfEntries', (string) $faturas->count()));
-        $faturasNo->appendChild($doc->createElement('TotalDebit', '0.00'));
-        $faturasNo->appendChild($doc->createElement('TotalCredit', number_format((float) $faturas->sum('valor_total'), 2, '.', '')));
+        $entradas = 0;
+        $totalDebito = 0;   // linhas de NC (DebitAmount, valores líquidos)
+        $totalCredito = 0;  // linhas de FT/ND (CreditAmount, valores líquidos)
 
-        foreach ($faturas as $fatura) {
-            $faturasNo->appendChild($this->construirNoFatura($doc, $fatura));
+        $de = $inicio->toDateString();
+        $ate = $fim->toDateString();
+
+        $faturas = Fatura::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)->where('estado', 'emitida')
+            ->whereBetween('data_emissao', [$de, $ate])
+            ->with('linhas')->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
+
+        foreach ($faturas as $f) {
+            $vendas->appendChild($this->documento($doc, 'FT', $f, 'CreditAmount'));
+            $totalCredito += Dinheiro::centimos($f->valor_sem_iva);
+            $entradas++;
         }
 
-        $documentosFonte->appendChild($faturasNo);
+        $notas = NotaCreditoDebito::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)->where('estado', 'emitida')
+            ->whereBetween('data_emissao', [$de, $ate])
+            ->with('linhas')->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
 
-        return $documentosFonte;
+        foreach ($notas as $n) {
+            $ehCredito = $n->tipo === 'credito';
+            $vendas->appendChild($this->documento($doc, $n->tipoDocumentoFiscal(), $n, $ehCredito ? 'DebitAmount' : 'CreditAmount'));
+            $ehCredito
+                ? $totalDebito += Dinheiro::centimos($n->valor_sem_iva)
+                : $totalCredito += Dinheiro::centimos($n->valor_sem_iva);
+            $entradas++;
+        }
+
+        $noEntradas->textContent = (string) $entradas;
+        $noDebito->textContent = Dinheiro::formatar($totalDebito);
+        $noCredito->textContent = Dinheiro::formatar($totalCredito);
+
+        $fonte->appendChild($vendas);
+
+        return $fonte;
     }
 
-    protected function construirNoFatura(DOMDocument $doc, Fatura $fatura): DOMElement
+    protected function documento(DOMDocument $doc, string $tipo, Fatura|NotaCreditoDebito $m, string $campoValor): DOMElement
     {
         $no = $doc->createElement('Invoice');
 
-        $no->appendChild($doc->createElement('InvoiceNo', htmlspecialchars($fatura->numero_documento)));
-        $no->appendChild($doc->createElement('InvoiceDate', $fatura->data_emissao->format('Y-m-d')));
-        $no->appendChild($doc->createElement('SystemEntryDate', $fatura->data_hora_sistema->format('Y-m-d\TH:i:s')));
-        $no->appendChild($doc->createElement('CustomerID', (string) $fatura->cliente_id));
+        $no->appendChild($this->no($doc, 'InvoiceNo', $m->numero_documento));
+        $no->appendChild($this->no($doc, 'InvoiceType', $tipo));
+        $no->appendChild($this->no($doc, 'InvoiceStatus', 'N'));
+        $no->appendChild($this->no($doc, 'InvoiceDate', $m->data_emissao->format('Y-m-d')));
+        $no->appendChild($this->no($doc, 'SystemEntryDate', $m->data_hora_sistema->format('Y-m-d\TH:i:s')));
+        $no->appendChild($this->no($doc, 'CustomerID', $m->cliente_id));
+        $no->appendChild($this->no($doc, 'Hash', $m->hash));
+        $no->appendChild($this->no($doc, 'HashControl', $m->chave_versao));
+        $no->appendChild($this->no($doc, 'GrossTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_total))));
+        $no->appendChild($this->no($doc, 'NetTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_sem_iva))));
+        $no->appendChild($this->no($doc, 'TaxPayable', Dinheiro::formatar(Dinheiro::centimos($m->valor_iva))));
 
-        // Hash e HashControl (versão da chave) são exatamente os campos
-        // que permitem à AGT validar a cadeia de assinatura descrita em
-        // AssinaturaFiscalService — não os omitas nem os simplifiques.
-        $no->appendChild($doc->createElement('Hash', htmlspecialchars((string) $fatura->hash)));
-        $no->appendChild($doc->createElement('HashControl', (string) $fatura->chave_versao));
-
-        $no->appendChild($doc->createElement('GrossTotal', number_format((float) $fatura->valor_total, 2, '.', '')));
-        $no->appendChild($doc->createElement('NetTotal', number_format((float) $fatura->valor_sem_iva, 2, '.', '')));
-        $no->appendChild($doc->createElement('TaxPayable', number_format((float) $fatura->valor_iva, 2, '.', '')));
-
-        foreach ($fatura->linhas as $linha) {
-            $linhaNo = $doc->createElement('Line');
-            $linhaNo->appendChild($doc->createElement('Description', htmlspecialchars($linha->descricao)));
-            $linhaNo->appendChild($doc->createElement('Quantity', (string) $linha->quantidade));
-            $linhaNo->appendChild($doc->createElement('UnitPrice', number_format((float) $linha->preco_unitario, 2, '.', '')));
-            $linhaNo->appendChild($doc->createElement('CreditAmount', number_format((float) $linha->valor_sem_iva, 2, '.', '')));
-            $no->appendChild($linhaNo);
+        foreach ($m->linhas as $linha) {
+            $l = $doc->createElement('Line');
+            $l->appendChild($this->no($doc, 'Description', $linha->descricao));
+            $l->appendChild($this->no($doc, 'Quantity', $linha->quantidade));
+            $l->appendChild($this->no($doc, 'UnitPrice', Dinheiro::formatar(Dinheiro::centimos($linha->preco_unitario))));
+            $l->appendChild($this->no($doc, $campoValor, Dinheiro::formatar(Dinheiro::centimos($linha->valor_sem_iva))));
+            $l->appendChild($this->no($doc, 'TaxPercentage', $linha->taxa_iva));
+            $no->appendChild($l);
         }
 
         return $no;

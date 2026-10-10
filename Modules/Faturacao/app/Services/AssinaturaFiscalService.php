@@ -72,20 +72,23 @@ class AssinaturaFiscalService
      */
     public function verificar(string $conteudo, string $assinaturaBase64, string $caminhoChavePublica): bool
     {
-        $chavePublica = openssl_pkey_get_public(file_get_contents($caminhoChavePublica));
-
-        if (! $chavePublica) {
-            throw AssinaturaFiscalException::chavePrivadaInvalida();
+        if (! is_file($caminhoChavePublica)) {
+            throw AssinaturaFiscalException::chavePublicaNaoEncontrada();
         }
 
-        $resultado = openssl_verify(
-            $conteudo,
-            base64_decode($assinaturaBase64),
-            $chavePublica,
-            (int) config('faturacao.algoritmo_assinatura'),
-        );
+        $chavePublica = openssl_pkey_get_public((string) file_get_contents($caminhoChavePublica));
 
-        return $resultado === 1;
+        if (! $chavePublica) {
+            throw AssinaturaFiscalException::chavePublicaInvalida();
+        }
+
+        $assinatura = base64_decode($assinaturaBase64, true);
+
+        if ($assinatura === false) {
+            return false;
+        }
+
+        return openssl_verify($conteudo, $assinatura, $chavePublica, (int) config('faturacao.algoritmo_assinatura')) === 1;
     }
 
     protected function carregarChavePrivada(): \OpenSSLAsymmetricKey

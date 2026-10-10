@@ -25,8 +25,7 @@ class EnviarNotificacaoMudancaEstado implements ShouldQueue
     public function __construct(
         protected NotificadorClienteService $notificador,
         protected TenantManager $tenantManager,
-    ) {
-    }
+    ) {}
 
     public function handle(PedidoMudouEstado $event): void
     {

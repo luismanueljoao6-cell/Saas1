@@ -38,6 +38,12 @@ trait BelongsToTenant
     {
         static::addGlobalScope(new TenantScope);
 
+        static::updating(function ($model): void {
+            if ($model->isDirty('empresa_id') && $model->getOriginal('empresa_id') !== null) {
+                throw new \LogicException('empresa_id não pode ser alterado depois de o registo ser criado.');
+            }
+        });
+
         static::creating(function ($model): void {
             $tenantManager = app(TenantManager::class);
 

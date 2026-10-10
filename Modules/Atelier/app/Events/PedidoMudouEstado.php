@@ -16,6 +16,5 @@ class PedidoMudouEstado
     public function __construct(
         public Pedido $pedido,
         public string $estadoAnterior,
-    ) {
-    }
+    ) {}
 }

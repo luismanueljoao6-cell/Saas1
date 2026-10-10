@@ -16,9 +16,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class VerificarAssinaturaWebhook
 {
-    public function __construct(protected GatewayPagamentoInterface $gateway)
-    {
-    }
+    public function __construct(protected GatewayPagamentoInterface $gateway) {}
 
     public function handle(Request $request, Closure $next): Response
     {

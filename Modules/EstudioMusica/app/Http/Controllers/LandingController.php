@@ -26,9 +26,7 @@ use Modules\EstudioMusica\Models\SolicitacaoOrcamento;
  */
 class LandingController extends Controller
 {
-    public function __construct(protected TenantManager $tenantManager)
-    {
-    }
+    public function __construct(protected TenantManager $tenantManager) {}
 
     public function mostrar(Empresa $empresa): View
     {

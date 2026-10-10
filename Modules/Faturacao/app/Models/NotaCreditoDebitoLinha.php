@@ -4,6 +4,7 @@ namespace Modules\Faturacao\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Faturacao\Support\Dinheiro;
 
 class NotaCreditoDebitoLinha extends Model
 {
@@ -40,12 +41,11 @@ class NotaCreditoDebitoLinha extends Model
 
     public function calcularValores(): static
     {
-        $semIva = round((float) $this->quantidade * (float) $this->preco_unitario, 2);
-        $iva = round($semIva * ((float) $this->taxa_iva / 100), 2);
+        $v = Dinheiro::calcularLinha($this->quantidade, $this->preco_unitario, $this->taxa_iva);
 
-        $this->valor_sem_iva = $semIva;
-        $this->valor_iva = $iva;
-        $this->valor_total = $semIva + $iva;
+        $this->valor_sem_iva = $v['sem_iva'];
+        $this->valor_iva = $v['iva'];
+        $this->valor_total = $v['total'];
 
         return $this;
     }

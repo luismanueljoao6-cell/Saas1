@@ -18,6 +18,7 @@ use Modules\Atelier\Models\Pedido;
 use Modules\Atelier\Models\PedidoMaterial;
 use Modules\Atelier\Services\PedidoFaturacaoService;
 use Modules\Atelier\Services\PedidoStatusService;
+use Modules\Atelier\Services\PortalLinkService;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
 use Throwable;
@@ -27,9 +28,8 @@ class PedidoController extends Controller
     public function __construct(
         protected PedidoStatusService $statusService,
         protected PedidoFaturacaoService $faturacaoService,
-        protected \Modules\Atelier\Services\PortalLinkService $portalLinkService,
-    ) {
-    }
+        protected PortalLinkService $portalLinkService,
+    ) {}
 
     public function index(): View
     {

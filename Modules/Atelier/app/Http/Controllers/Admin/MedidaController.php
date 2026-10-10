@@ -20,9 +20,7 @@ use Modules\Faturacao\Models\Cliente;
  */
 class MedidaController extends Controller
 {
-    public function __construct(protected MedidaService $medidaService)
-    {
-    }
+    public function __construct(protected MedidaService $medidaService) {}
 
     public function historico(int $cliente): View
     {

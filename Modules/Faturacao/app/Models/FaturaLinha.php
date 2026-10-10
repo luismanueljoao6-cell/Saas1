@@ -4,12 +4,12 @@ namespace Modules\Faturacao\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Faturacao\Support\Dinheiro;
 
 /**
  * Sem BelongsToTenant/empresa_id de propósito: uma linha só existe através
- * da Fatura a que pertence, e o isolamento por tenant já está garantido ao
- * nível da própria Fatura. Evita uma coluna redundante em cada tabela de
- * linhas do sistema.
+ * da Fatura a que pertence. A imutabilidade das linhas de faturas emitidas
+ * é garantida por triggers de base de dados (migration de endurecimento).
  */
 class FaturaLinha extends Model
 {
@@ -48,19 +48,14 @@ class FaturaLinha extends Model
         return $this->belongsTo(Produto::class);
     }
 
-    /**
-     * Calcula e preenche valor_sem_iva/valor_iva/valor_total a partir de
-     * quantidade, preco_unitario e taxa_iva. Chamado pelo FaturaService —
-     * nunca confies em valores de totais vindos diretamente do pedido HTTP.
-     */
+    /** Nunca confies em totais vindos do pedido HTTP. */
     public function calcularValores(): static
     {
-        $semIva = round((float) $this->quantidade * (float) $this->preco_unitario, 2);
-        $iva = round($semIva * ((float) $this->taxa_iva / 100), 2);
+        $v = Dinheiro::calcularLinha($this->quantidade, $this->preco_unitario, $this->taxa_iva);
 
-        $this->valor_sem_iva = $semIva;
-        $this->valor_iva = $iva;
-        $this->valor_total = $semIva + $iva;
+        $this->valor_sem_iva = $v['sem_iva'];
+        $this->valor_iva = $v['iva'];
+        $this->valor_total = $v['total'];
 
         return $this;
     }

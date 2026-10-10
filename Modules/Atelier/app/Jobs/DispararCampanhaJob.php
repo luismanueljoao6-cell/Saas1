@@ -36,9 +36,7 @@ class DispararCampanhaJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public function __construct(protected int $campanhaId)
-    {
-    }
+    public function __construct(protected int $campanhaId) {}
 
     public function handle(TenantManager $tenantManager, CrmService $crmService, NotificadorClienteService $notificador): void
     {

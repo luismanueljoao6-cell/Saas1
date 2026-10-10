@@ -11,9 +11,7 @@ use Modules\Atelier\Services\SlugEmpresaService;
 
 class PerfilController extends Controller
 {
-    public function __construct(protected SlugEmpresaService $slugService)
-    {
-    }
+    public function __construct(protected SlugEmpresaService $slugService) {}
 
     public function editar(): View
     {

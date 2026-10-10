@@ -2,7 +2,7 @@
 
 namespace Modules\Faturacao\Services;
 
-use Illuminate\Database\QueryException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Serie;
@@ -25,9 +25,7 @@ use Modules\Faturacao\Models\Serie;
  */
 class NumeracaoService
 {
-    public function __construct(protected TenantManager $tenantManager)
-    {
-    }
+    public function __construct(protected TenantManager $tenantManager) {}
 
     /**
      * @return array{serie: Serie, numero_sequencial: int, numero_documento: string}
@@ -91,7 +89,7 @@ class NumeracaoService
                 'prefixo' => $prefixo,
                 'ultimo_numero' => 0,
             ]);
-        } catch (QueryException $e) {
+        } catch (UniqueConstraintViolationException) {
             return Serie::query()
                 ->where('empresa_id', $empresaId)
                 ->where('tipo_documento', $tipoDocumento)
