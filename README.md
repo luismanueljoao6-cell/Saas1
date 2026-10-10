@@ -288,3 +288,14 @@ atraso do agendador não dá acesso gratuito; o job apenas atualiza estados e ge
 URL a configurar no painel: `https://SEU-DOMINIO/api/webhooks/proxypay?token=<PROXYPAY_WEBHOOK_TOKEN>`.
 Os pagamentos com valor inferior ao devido são rejeitados e ficam em `failed_jobs` para revisão manual
 (`php artisan queue:failed`).
+
+<!-- integridade-fiscal -->
+## Integridade fiscal da emissão
+
+- **Requisitos:** PHP 8.4 ou superior (o `composer.lock` fixa Symfony 8).
+- **Caminho único de emissão:** Faturas (`FaturaService`), Notas de Crédito/Débito (`NotaCreditoDebitoService`) e Recibos (`ReciboService`) numeram sem lacunas, encadeiam o hash e assinam dentro de uma transação. Atelier e EstudioMusica usam o `ReciboService`; não há emissores duplicados.
+- **Hash do documento anterior:** lido por `NumeracaoService::hashDoDocumentoAnterior()` com *locking read*. Em MySQL (REPEATABLE READ) um `SELECT` normal usaria o snapshot da transação e podia ignorar uma emissão concorrente, gravando `hash_anterior` vazio. Se o documento anterior não existir, a emissão aborta.
+- **Subscrição:** emitir faturas e recibos exige subscrição ativa (`GuardaEmissao`, aplicada nos serviços). As notas de crédito/débito não são bloqueadas, para permitir corrigir faturas em período de tolerância.
+- **Recibos:** o total recebido contra uma fatura nunca excede o valor da fatura.
+- **Auditoria:** `php artisan faturacao:verificar-cadeia [--empresa=ID] [--chave-publica=caminho]` valida numeração, ligação de hashes e assinatura RSA. Termina com erro se encontrar problemas. Documentos assinados com uma versão antiga da chave precisam da chave pública dessa versão.
+- **CI:** o workflow corre os testes em SQLite e em MySQL 8.4 (triggers e locks só se exercitam em MySQL).

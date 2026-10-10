@@ -5,6 +5,7 @@ namespace Modules\Faturacao\Services;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Modules\Core\Services\TenantManager;
+use Modules\Faturacao\Exceptions\CadeiaFiscalInterrompidaException;
 use Modules\Faturacao\Models\Serie;
 
 /**
@@ -98,5 +99,38 @@ class NumeracaoService
                 ->lockForUpdate()
                 ->firstOrFail();
         }
+    }
+
+    /**
+     * Hash do documento anterior da série, lido com LOCKING READ.
+     *
+     * Em MySQL (REPEATABLE READ) um SELECT normal usa o snapshot criado no
+     * primeiro SELECT da transação — que acontece ANTES de esperarmos pelo
+     * lock da série. Se a emissão anterior fez commit entretanto, o snapshot
+     * não a vê e o hash sairia NULL (os triggers tornam isso irreversível).
+     * O lockForUpdate() lê sempre a versão mais recente. Chamar DENTRO da
+     * transação de emissão, depois de proximoNumero().
+     *
+     * @param  class-string  $modelo
+     *
+     * @throws CadeiaFiscalInterrompidaException
+     */
+    public function hashDoDocumentoAnterior(string $modelo, int $serieId, int $numeroSequencial): ?string
+    {
+        if ($numeroSequencial <= 1) {
+            return null;
+        }
+
+        $hash = $this->tenantManager->semTenant(fn () => $modelo::query()
+            ->where('serie_id', $serieId)
+            ->where('numero_sequencial', $numeroSequencial - 1)
+            ->lockForUpdate()
+            ->value('hash'));
+
+        if ($hash === null || $hash === '') {
+            throw CadeiaFiscalInterrompidaException::documentoAnteriorEmFalta($modelo, $serieId, $numeroSequencial - 1);
+        }
+
+        return $hash;
     }
 }
