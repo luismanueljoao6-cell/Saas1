@@ -95,6 +95,13 @@ class PagamentoService
 
                     $this->tenantService->ativar($empresa, $terminaEm);
 
+                    // O pacote pago define os serviços da empresa. Os que ficam
+                    // de fora são desativados, nunca apagados. Planos sem
+                    // 'servicos' (ex.: antigos) não alteram nada.
+                    if (! empty($subscricao->plano->servicos)) {
+                        $empresa->definirServicos($subscricao->plano->servicos);
+                    }
+
                     Log::info('Pagamento confirmado e subscrição ativada', [
                         'pagamento_id' => $pagamento->id,
                         'empresa_id' => $empresa->id,

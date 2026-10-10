@@ -79,6 +79,22 @@ Fluxo do utilizador: **página de apresentação (`/`) → registo (`/registo`) 
 **Novo módulo vertical:** um caso novo no enum `Servico` e `servico:<nome>` nas rotas autenticadas do
 módulo. Nada mais no Core muda.
 
+### Preços e pacotes
+
+A subscrição é por **pacote** (tabela `planos`): Faturação, Faturação + Atelier, Faturação + Estúdio e
+Completo. Cada pacote lista os serviços que inclui (`planos.servicos`) e, ao confirmar o pagamento, os
+serviços da empresa passam a ser os do pacote — os que ficam de fora são desativados, nunca apagados.
+
+Os preços iniciais (`PlanosSeeder`, Kz/mês, IVA incluído) vêm de uma pesquisa de mercado de outubro de 2026
+e são **hipóteses de lançamento**. Para alterar um preço:
+
+```bash
+php artisan planos:preco faturacao 6500
+```
+
+O novo preço aplica-se às próximas cobranças; pagamentos já gerados mantêm o valor, e repetir o seeder
+nunca repõe preços alterados. Os planos de exemplo antigos são desativados, não apagados.
+
 Testes: `php artisan test --filter=ServicosAderidosTest`.
 
 ## Instalação num GitHub Codespace (validada — foi assim que este projeto arrancou)
@@ -251,7 +267,6 @@ php artisan test --filter=ServicosAderidosTest     # Serviços aderidos (Core)
   por agora; separá-los cumpriria a intenção original à letra.
 - **Validação do SAF-T (AO) contra o XSD oficial da AGT** — ver aviso de
   conformidade acima.
-- **Preço por serviço** — hoje a subscrição é única para todos os serviços aderidos.
 
 ## Processos em segundo plano (obrigatórios em produção)
 

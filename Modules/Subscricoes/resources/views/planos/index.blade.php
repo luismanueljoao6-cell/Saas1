@@ -39,7 +39,7 @@
             </div>
         @endif
 
-        <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             @forelse ($planos as $plano)
                 <div class="flex flex-col rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                     <h2 class="text-lg font-semibold text-slate-900">{{ $plano->nome }}</h2>
@@ -49,6 +49,19 @@
                         {{ number_format((float) $plano->preco, 0, ',', ' ') }} {{ $plano->moeda }}
                         <span class="text-sm font-normal text-slate-500">/ {{ $plano->periodo_dias }} dias</span>
                     </p>
+
+                    @if (! empty($plano->servicos))
+                        <ul class="mt-4 space-y-1 text-sm text-slate-600">
+                            @foreach ($plano->servicos as $codigo)
+                                @if ($servicoPlano = \Modules\Core\Support\Servico::tryFrom($codigo))
+                                    <li>✓ {{ $servicoPlano->rotulo() }}</li>
+                                @endif
+                            @endforeach
+                        </ul>
+                        <p class="mt-3 text-xs text-slate-500">
+                            Ao confirmar o pagamento, os serviços da empresa passam a ser os deste pacote.
+                        </p>
+                    @endif
 
                     <form method="POST" action="{{ route('subscricoes.iniciar') }}" class="mt-6">
                         @csrf

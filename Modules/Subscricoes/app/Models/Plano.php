@@ -22,6 +22,7 @@ class Plano extends Model
         'moeda',
         'periodo_dias',
         'limites',
+        'servicos',
         'ativo',
         'ordem',
     ];
@@ -46,6 +47,7 @@ class Plano extends Model
         return [
             'preco' => 'decimal:2',
             'limites' => 'array',
+            'servicos' => 'array',
             'ativo' => 'boolean',
         ];
     }
