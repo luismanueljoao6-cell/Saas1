@@ -27,3 +27,7 @@ Homestead.yaml
 Thumbs.db
 storage/app/faturacao/
 *.bak
+
+# Chaves e certificados (nunca versionar)
+*.pem
+*.key
