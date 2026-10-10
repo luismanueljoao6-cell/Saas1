@@ -299,3 +299,12 @@ Os pagamentos com valor inferior ao devido são rejeitados e ficam em `failed_jo
 - **Recibos:** o total recebido contra uma fatura nunca excede o valor da fatura.
 - **Auditoria:** `php artisan faturacao:verificar-cadeia [--empresa=ID] [--chave-publica=caminho]` valida numeração, ligação de hashes e assinatura RSA. Termina com erro se encontrar problemas. Documentos assinados com uma versão antiga da chave precisam da chave pública dessa versão.
 - **CI:** o workflow corre os testes em SQLite e em MySQL 8.4 (triggers e locks só se exercitam em MySQL).
+
+<!-- servicos-papeis -->
+## Serviços, papéis e provisionamento
+
+- **Provisionamento por empresa:** cada módulo regista no `TenantProvisionerRegistry` o que precisa de existir por empresa (papéis, permissões). A chave é o valor do serviço (`estudio`). O registry só corre para serviços ativos e os provisionadores são idempotentes.
+- **Quando corre:** no registo da empresa, ao ativar serviços em `/servicos` (tudo-ou-nada, na mesma transação) e sob demanda com `php artisan core:provisionar-servicos [--empresa=ID]` (repara empresas existentes).
+- **Papéis do Estúdio:** `Recepcao` e `Engenheiro` são criados por empresa (com `empresa_id`, por causa do *teams* do Spatie). O Administrador atribui-os em *Equipa do Estúdio* (`/estudiomusica/equipa`). O `EstudioMusicaPermissoesSeeder` é só um atalho para o mesmo código.
+- **Ordem dos middlewares:** `IdentificarTenant` corre antes do route model binding (`prependToPriorityList` em `bootstrap/app.php`), por isso models com `BelongsToTenant` podem usar binding implícito. Há um teste de regressão em `Modules/Core/tests`.
+- **Rotas:** sem closures, para `php artisan route:cache` funcionar em produção.

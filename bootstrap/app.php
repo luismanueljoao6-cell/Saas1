@@ -4,6 +4,9 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
+use Modules\Core\Console\ProvisionarServicosCommand;
+use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Faturacao\Console\VerificarCadeiaFiscalCommand;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
@@ -16,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withCommands([
+        ProvisionarServicosCommand::class,
         VerificarCadeiaFiscalCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
@@ -35,6 +39,13 @@ return Application::configure(basePath: dirname(__DIR__))
                 at: $proxies === '*' ? '*' : array_map('trim', explode(',', (string) $proxies))
             );
         }
+        // O tenant tem de ficar definido ANTES do route model binding implícito:
+        // sem isto, `Cliente $cliente` (BelongsToTenant) seria resolvido sem tenant
+        // e daria sempre 404.
+        $middleware->prependToPriorityList(
+            before: SubstituteBindings::class,
+            prepend: IdentificarTenant::class,
+        );
 
         $middleware->alias([
             'role' => RoleMiddleware::class,

@@ -33,9 +33,9 @@ Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
 | Sem o middleware 'subscricao.ativa' de propósito — é para onde esse
 | middleware redireciona, evitar criar aqui um ciclo de redirecionamentos.
 */
-Route::get('/subscricao/expirada', function () {
-    return view('core::subscricao.expirada');
-})->middleware(['auth', 'tenant'])->name('core.subscricao.expirada');
+Route::view('/subscricao/expirada', 'core::subscricao.expirada')
+    ->middleware(['auth', 'tenant'])
+    ->name('core.subscricao.expirada');
 
 /*
 |--------------------------------------------------------------------------
@@ -45,9 +45,7 @@ Route::get('/subscricao/expirada', function () {
 | nas suas próprias rotas autenticadas.
 */
 Route::middleware(['auth', 'tenant', 'subscricao.ativa'])->group(function () {
-    Route::get('/painel', function () {
-        return view('core::painel');
-    })->name('core.painel');
+    Route::view('/painel', 'core::painel')->name('core.painel');
 
     Route::get('/empresas/{empresa}/definicoes', [EmpresaController::class, 'editar'])
         ->name('core.empresa.editar');

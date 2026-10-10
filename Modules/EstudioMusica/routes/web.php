@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\EstudioMusica\Http\Controllers\EquipaEstudioController;
 use Modules\EstudioMusica\Http\Controllers\FaixaMusicalController;
 use Modules\EstudioMusica\Http\Controllers\LandingController;
 use Modules\EstudioMusica\Http\Controllers\PerfilArtistaController;
@@ -55,6 +56,12 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:estudio'])
     ->prefix('estudiomusica')
     ->name('estudiomusica.')
     ->group(function () {
+        // Equipa: só o Administrador atribui os papéis Receção/Engenheiro.
+        Route::middleware('papel:Administrador')->prefix('equipa')->name('equipa.')->group(function () {
+            Route::get('/', [EquipaEstudioController::class, 'index'])->name('index');
+            Route::post('/atribuir', [EquipaEstudioController::class, 'atribuir'])->name('atribuir');
+            Route::post('/remover', [EquipaEstudioController::class, 'remover'])->name('remover');
+        });
 
         // Leitura: aberta a qualquer membro autenticado da empresa — os
         // 3 papéis de staff precisam todos de ver isto.

@@ -53,6 +53,12 @@ class RegistoEmpresaService
 
                 $empresa->aderirServicos($servicos ?? Servico::valores());
 
+                // Papéis/permissões dos serviços escolhidos (ex.: Estúdio), no mesmo tudo-ou-nada.
+                app(TenantProvisionerRegistry::class)->provision(
+                    $empresa->id,
+                    $empresa->servicosAderidos()->map(fn (Servico $servico) => $servico->value)->all(),
+                );
+
                 Log::info('Nova empresa registada', [
                     'empresa_id' => $empresa->id,
                     'nif' => $empresa->nif,
