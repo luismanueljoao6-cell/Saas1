@@ -14,15 +14,14 @@ use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Services\AssinaturaFiscalService;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NumeracaoService;
+use Modules\Faturacao\Services\ReciboService;
+use Modules\Faturacao\Support\Dinheiro;
 
 /**
  * Ponte entre o EstudioMusica e o motor de faturação do Faturacao (secção
- * E). Nunca duplica a lógica fiscal — reaproveita FaturaService para
- * Faturas. Para Recibo, o Faturacao ainda não expõe um "ReciboService"
- * equivalente (só o model + a migration existem), por isso
- * registrarRecibo() reproduz aqui, com os MESMOS blocos (NumeracaoService +
- * AssinaturaFiscalService), exatamente o que FaturaService::emitir() faz
- * para Fatura — ver esse método antes de mexer neste.
+ * E). Nunca duplica a lógica fiscal: Faturas passam pelo FaturaService e
+ * Recibos pelo ReciboService (caminho único de emissão, com lock na fatura,
+ * teto do saldo e numeração/hash sem lacunas).
  */
 class FaturacaoEstudioService
 {
@@ -31,6 +30,7 @@ class FaturacaoEstudioService
         protected NumeracaoService $numeracaoService,
         protected AssinaturaFiscalService $assinaturaFiscalService,
         protected TenantManager $tenantManager,
+        protected ?ReciboService $reciboService = null,
     ) {}
 
     /**
@@ -155,50 +155,52 @@ class FaturacaoEstudioService
     }
 
     /**
-     * Regista o recebimento de um pagamento contra uma fatura já emitida.
-     * Mesma mecânica de emissão de FaturaService::emitir() (numeração sem
-     * lacunas + cadeia de hash), reproduzida aqui para o Recibo — ver a
-     * nota na classe.
+     * Regista o recebimento de um pagamento contra uma fatura já emitida
+     * DESTE projeto. Sem valor, recebe o que ainda falta na fatura. A emissão
+     * (lock, teto do saldo, numeração e hash) é do ReciboService.
+     *
+     * @throws InvalidArgumentException|\DomainException
      */
     public function registrarRecibo(ProjetoMusical $projeto, Fatura $fatura, string $meioPagamento, ?float $valor = null): Recibo
     {
         return DB::transaction(function () use ($projeto, $fatura, $meioPagamento, $valor) {
-            $recibo = Recibo::create([
-                'empresa_id' => $fatura->empresa_id,
-                'cliente_id' => $fatura->cliente_id,
-                'fatura_id' => $fatura->id,
-                'serie_id' => $this->numeracaoService->obterOuCriarSerie($fatura->empresa_id, 'RC')->id,
-                'estado' => 'rascunho',
-                'valor' => $valor ?? $fatura->valor_total,
-                'moeda' => 'AOA',
-                'meio_pagamento' => $meioPagamento,
-            ]);
+            $pertenceAoProjeto = (int) $fatura->empresa_id === (int) $projeto->empresa_id
+                && $projeto->faturas()->where('faturas.id', $fatura->id)->exists();
 
-            $resultado = $this->numeracaoService->proximoNumero($fatura->empresa_id, 'RC');
+            if (! $pertenceAoProjeto) {
+                throw new InvalidArgumentException('A fatura não pertence a este projeto.');
+            }
 
-            $hashAnterior = $this->tenantManager->semTenant(
-                fn () => Recibo::query()
-                    ->where('serie_id', $resultado['serie']->id)
-                    ->where('numero_sequencial', $resultado['numero_sequencial'] - 1)
-                    ->value('hash')
+            if ($valor === null) {
+                // Por omissão recebe o que falta (e não o total da fatura, que
+                // seria recusado se já houver recebimentos parciais).
+                $jaRecebido = Recibo::withoutGlobalScopes()
+                    ->where('empresa_id', $fatura->empresa_id)
+                    ->where('fatura_id', $fatura->id)
+                    ->where('estado', 'emitido')
+                    ->get(['valor'])
+                    ->sum(fn ($recibo) => Dinheiro::centimos($recibo->valor));
+
+                $valor = Dinheiro::formatar(Dinheiro::centimos($fatura->valor_total) - $jaRecebido);
+            }
+
+            $recibo = $this->recibos()->emitir(
+                (int) $fatura->empresa_id,
+                (int) $fatura->cliente_id,
+                $valor,
+                $meioPagamento,
+                (int) $fatura->id,
             );
-
-            $recibo->serie_id = $resultado['serie']->id;
-
-            $this->assinaturaFiscalService->assinarEEmitir(
-                $recibo,
-                $resultado['numero_sequencial'],
-                $resultado['numero_documento'],
-                now(),
-                $hashAnterior,
-            );
-
-            $recibo->save();
 
             $projeto->recibos()->attach($recibo->id);
 
-            return $recibo->fresh();
+            return $recibo;
         });
+    }
+
+    protected function recibos(): ReciboService
+    {
+        return $this->reciboService ?? app(ReciboService::class);
     }
 
     /**

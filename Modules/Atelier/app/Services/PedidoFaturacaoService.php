@@ -53,6 +53,10 @@ class PedidoFaturacaoService
                 throw PedidoException::valorInvalido();
             }
 
+            if (Dinheiro::centimos($valor) > Dinheiro::centimos($pedido->valorTotalComIva())) {
+                throw new PedidoException('O sinal não pode exceder o valor total do pedido.');
+            }
+
             $recibo = $this->recibos()->emitir(
                 (int) $pedido->empresa_id,
                 (int) $pedido->cliente_id,
