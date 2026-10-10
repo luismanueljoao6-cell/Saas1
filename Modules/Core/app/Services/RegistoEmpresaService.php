@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Notifications\BoasVindasNotification;
+use Modules\Core\Support\Servico;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Throwable;
@@ -24,14 +25,15 @@ class RegistoEmpresaService
     /**
      * @param  array{nome_comercial: string, nif: string, email?: string|null, telefone?: string|null}  $dadosEmpresa
      * @param  array{name: string, email: string, password: string}  $dadosAdmin
+     * @param  array<int, string>|null  $servicos  Serviços a que a empresa adere (null = todos; Atelier/Estúdio trazem a Faturação).
      *
      * @throws Throwable Relança qualquer falha após registar o erro, para
      *                   que o controller decida como responder ao utilizador.
      */
-    public function registar(array $dadosEmpresa, array $dadosAdmin): User
+    public function registar(array $dadosEmpresa, array $dadosAdmin, ?array $servicos = null): User
     {
         try {
-            [$utilizador, $empresa] = DB::transaction(function () use ($dadosEmpresa, $dadosAdmin) {
+            [$utilizador, $empresa] = DB::transaction(function () use ($dadosEmpresa, $dadosAdmin, $servicos) {
                 $diasTrial = (int) config('core.trial_dias', 14);
 
                 $empresa = Empresa::create([
@@ -48,6 +50,8 @@ class RegistoEmpresaService
                 ]);
 
                 $this->atribuirPapelAdministrador($utilizador, $empresa->id);
+
+                $empresa->aderirServicos($servicos ?? Servico::valores());
 
                 Log::info('Nova empresa registada', [
                     'empresa_id' => $empresa->id,

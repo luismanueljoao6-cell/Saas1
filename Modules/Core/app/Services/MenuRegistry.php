@@ -50,6 +50,7 @@ class MenuRegistry
             // rotas desatualizada), simplesmente não aparece — nunca
             // rebenta a página com um erro de rota inexistente.
             ->filter(fn (array $item) => Route::has($item['rota']))
+            ->filter(fn (array $item) => $this->servicoDisponivel($item['rota']))
             ->filter(fn (array $item) => $item['visivel'] === null || ($item['visivel'])())
             ->map(fn (array $item) => [
                 'rota' => $item['rota'],
@@ -60,5 +61,36 @@ class MenuRegistry
             ->sortBy('ordem')
             ->values()
             ->all();
+    }
+
+    /**
+     * Um item só aparece se a empresa aderiu ao serviço exigido pela própria
+     * rota (middleware 'servico:xxx'). Assim o menu e o bloqueio real do
+     * acesso têm uma única fonte de verdade — a definição da rota — e
+     * nenhum módulo precisa de repetir a regra.
+     */
+    protected function servicoDisponivel(string $rota): bool
+    {
+        $utilizador = auth()->user();
+
+        if (! $utilizador || $utilizador->is_super_admin || ! $utilizador->empresa) {
+            return true;
+        }
+
+        $definicao = Route::getRoutes()->getByName($rota);
+
+        if (! $definicao) {
+            return true;
+        }
+
+        foreach ($definicao->gatherMiddleware() as $middleware) {
+            if (is_string($middleware)
+                && str_starts_with($middleware, 'servico:')
+                && ! $utilizador->empresa->temServico(substr($middleware, strlen('servico:')))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

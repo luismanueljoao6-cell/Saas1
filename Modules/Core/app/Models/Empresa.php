@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
+use Modules\Core\Support\Servico;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
@@ -53,6 +55,49 @@ class Empresa extends Model
             'periodo_tolerancia_ate' => 'datetime',
             'configuracoes' => 'array',
         ];
+    }
+
+    public function servicos(): HasMany
+    {
+        return $this->hasMany(EmpresaServico::class);
+    }
+
+    /**
+     * Serviços a que a empresa aderiu e que continuam ativos.
+     *
+     * @return Collection<int, Servico>
+     */
+    public function servicosAderidos(): Collection
+    {
+        return $this->servicos
+            ->where('ativo', true)
+            ->map(fn (EmpresaServico $adesao) => Servico::tryFrom($adesao->servico))
+            ->filter()
+            ->values();
+    }
+
+    public function temServico(Servico|string $servico): bool
+    {
+        $servico = $servico instanceof Servico ? $servico : Servico::tryFrom($servico);
+
+        return $servico !== null && $this->servicosAderidos()->contains($servico);
+    }
+
+    /**
+     * Regista a adesão a um ou vários serviços (idempotente). Os serviços
+     * de que estes dependem (ex.: Faturação, para Atelier e Estúdio) entram
+     * automaticamente — ver Servico::comDependencias().
+     *
+     * @param  array<int, Servico|string>  $servicos
+     */
+    public function aderirServicos(array $servicos): void
+    {
+        foreach (Servico::comDependencias($servicos) as $servico) {
+            $this->servicos()->updateOrCreate(['servico' => $servico->value], ['ativo' => true]);
+        }
+
+        // Evita servir uma lista antiga se a relação já tinha sido carregada.
+        $this->unsetRelation('servicos');
     }
 
     public function utilizadores(): HasMany

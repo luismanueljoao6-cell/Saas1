@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Http\Middleware\ExigirPapel;
+use Modules\Core\Http\Middleware\ExigirServico;
 use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Core\Http\Middleware\VerificarSubscricaoAtiva;
 use Modules\Core\Repositories\Contracts\EmpresaRepositoryInterface;
@@ -80,6 +81,7 @@ class CoreServiceProvider extends ServiceProvider
         $router->aliasMiddleware('tenant', IdentificarTenant::class);
         $router->aliasMiddleware('subscricao.ativa', VerificarSubscricaoAtiva::class);
         $router->aliasMiddleware('papel', ExigirPapel::class);
+        $router->aliasMiddleware('servico', ExigirServico::class);
     }
 
     protected function registerMenuItems(): void

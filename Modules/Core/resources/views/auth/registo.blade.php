@@ -70,6 +70,30 @@
                 </div>
             </fieldset>
 
+            <fieldset class="space-y-3 border-t border-slate-100 pt-4"
+                      x-data="{ sel: @js(array_values((array) old('servicos', []))) }"
+                      x-effect="if ((sel.includes('atelier') || sel.includes('estudio')) && !sel.includes('faturacao')) sel.push('faturacao')">
+                <legend class="text-sm font-semibold text-slate-700">Que serviços queres usar?</legend>
+                <p class="text-xs text-slate-500">Escolhe um ou vários.</p>
+
+                @foreach (\Modules\Core\Support\Servico::cases() as $servico)
+                    <label class="flex items-start gap-3 rounded-lg border border-slate-200 p-3 text-sm hover:border-indigo-300">
+                        <input type="checkbox" name="servicos[]" value="{{ $servico->value }}" x-model="sel"
+                               @if ($servico === \Modules\Core\Support\Servico::Faturacao)
+                                   :disabled="sel.includes('atelier') || sel.includes('estudio')"
+                               @endif
+                               class="mt-0.5 rounded border-slate-300">
+                        <span>
+                            <span class="block font-medium text-slate-800">{{ $servico->rotulo() }}</span>
+                            <span class="block text-slate-500">{{ $servico->descricao() }}</span>
+                            @if ($servico->nota())
+                                <span class="mt-1 block text-xs text-indigo-600">{{ $servico->nota() }}</span>
+                            @endif
+                        </span>
+                    </label>
+                @endforeach
+            </fieldset>
+
             <label class="flex items-start gap-2 text-sm text-slate-600">
                 <input type="checkbox" name="aceita_termos" value="1" required class="mt-0.5 rounded border-slate-300">
                 Aceito os termos de utilização e a política de privacidade.

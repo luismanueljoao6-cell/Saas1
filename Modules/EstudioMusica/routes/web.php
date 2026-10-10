@@ -51,7 +51,7 @@ Route::prefix('portal/{token}')
 | Ver database/seeders/EstudioMusicaPermissoesSeeder para quem tem cada
 | permissão.
 */
-Route::middleware(['auth', 'tenant', 'subscricao.ativa'])
+Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:estudio'])
     ->prefix('estudiomusica')
     ->name('estudiomusica.')
     ->group(function () {

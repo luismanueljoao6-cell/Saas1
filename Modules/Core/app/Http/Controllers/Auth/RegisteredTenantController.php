@@ -26,6 +26,7 @@ class RegisteredTenantController extends Controller
             $utilizador = $this->registoEmpresaService->registar(
                 $request->dadosEmpresa(),
                 $request->dadosAdministrador(),
+                $request->servicosEscolhidos(),
             );
         } catch (Throwable $e) {
             Log::error('Erro no registo de empresa a partir do formulário público', [

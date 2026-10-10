@@ -11,7 +11,7 @@ use Modules\Faturacao\Http\Controllers\SafTExportController;
 | (emitir, SAF-T) exigem o papel Administrador ('papel' corre DEPOIS de
 | 'tenant'). Durante o grace period, a emissão é bloqueada no controller.
 */
-Route::middleware(['auth', 'tenant', 'subscricao.ativa'])
+Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao'])
     ->prefix('faturacao')
     ->name('faturacao.')
     ->group(function () {

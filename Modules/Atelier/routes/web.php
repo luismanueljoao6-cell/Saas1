@@ -19,7 +19,7 @@ use Modules\Atelier\Http\Controllers\Publico\PortalController;
 | Mesmo grupo de middleware que qualquer rota de negócio do projeto — ver
 | Modules/Faturacao/routes/web.php para o precedente exato.
 */
-Route::middleware(['auth', 'tenant', 'subscricao.ativa'])
+Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:atelier'])
     ->prefix('atelier')
     ->name('atelier.')
     ->group(function () {

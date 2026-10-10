@@ -3,7 +3,9 @@
 namespace Modules\Core\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Modules\Core\Support\Servico;
 
 class RegistarEmpresaRequest extends FormRequest
 {
@@ -29,6 +31,11 @@ class RegistarEmpresaRequest extends FormRequest
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'confirmed', Password::defaults()],
             'aceita_termos' => ['required', 'accepted'],
+
+            // Serviços a que a empresa quer aderir (pelo menos um). Atelier
+            // e Estúdio trazem a Faturação por dependência — ver Servico.
+            'servicos' => ['required', 'array', 'min:1'],
+            'servicos.*' => ['string', Rule::enum(Servico::class)],
         ];
     }
 
@@ -38,6 +45,9 @@ class RegistarEmpresaRequest extends FormRequest
             'nif.unique' => 'Já existe uma empresa registada com este NIF.',
             'email.unique' => 'Já existe uma conta registada com este e-mail.',
             'aceita_termos.accepted' => 'Tens de aceitar os termos de utilização para continuar.',
+            'servicos.required' => 'Escolhe pelo menos um serviço.',
+            'servicos.min' => 'Escolhe pelo menos um serviço.',
+            'servicos.*.enum' => 'O serviço escolhido não é válido.',
         ];
     }
 
@@ -53,6 +63,14 @@ class RegistarEmpresaRequest extends FormRequest
             'email' => $this->input('email_empresa'),
             'telefone' => $this->input('telefone_empresa'),
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function servicosEscolhidos(): array
+    {
+        return array_values(array_unique($this->validated('servicos', [])));
     }
 
     public function dadosAdministrador(): array
