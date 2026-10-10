@@ -59,6 +59,7 @@ class NotificacoesELandingTest extends TestCase
     public function test_formulario_de_orcamento_de_atelier_nao_publicado_devolve_404(): void
     {
         $empresa = Empresa::create(['nome_comercial' => 'Atelier Privado', 'nif' => '400000102']);
+        $empresa->aderirServicos(['atelier']);
         $empresa->forceFill(['slug' => 'atelier-privado'])->save();
         Perfil::create(['empresa_id' => $empresa->id, 'publicado' => false]);
 
@@ -73,6 +74,7 @@ class NotificacoesELandingTest extends TestCase
     public function test_formulario_de_orcamento_de_atelier_publicado_regista_o_pedido(): void
     {
         $empresa = Empresa::create(['nome_comercial' => 'Atelier Publico', 'nif' => '400000103']);
+        $empresa->aderirServicos(['atelier']);
         $empresa->forceFill(['slug' => 'atelier-publico'])->save();
         Perfil::create(['empresa_id' => $empresa->id, 'publicado' => true]);
 

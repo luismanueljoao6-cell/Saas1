@@ -85,6 +85,7 @@ Route::middleware(['signed'])
 |--------------------------------------------------------------------------
 */
 Route::prefix('loja')
+    ->middleware('servico.empresa:atelier')
     ->name('atelier.landing.')
     ->group(function () {
         Route::get('{empresa:slug}', [LandingController::class, 'mostrar'])->name('mostrar');

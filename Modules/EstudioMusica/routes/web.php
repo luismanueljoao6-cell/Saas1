@@ -19,7 +19,7 @@ use Modules\EstudioMusica\Http\Controllers\VersaoAudioController;
 | da hierarquia de tenancy, ver o model), por isso o binding implícito
 | aqui é seguro mesmo sem nenhum middleware de tenant já ter corrido.
 */
-Route::prefix('estudio/{empresa}')->name('estudiomusica.landing.')->group(function () {
+Route::prefix('estudio/{empresa}')->middleware('servico.empresa:estudio')->name('estudiomusica.landing.')->group(function () {
     Route::get('/', [LandingController::class, 'mostrar'])->name('mostrar');
     Route::post('/orcamento', [LandingController::class, 'solicitarOrcamento'])->middleware('throttle:10,1')->name('orcamento');
 });

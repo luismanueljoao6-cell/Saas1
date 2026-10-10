@@ -70,7 +70,9 @@ Fluxo do utilizador: **página de apresentação (`/`) → registo (`/registo`) 
 - Os administradores gerem os serviços em `/servicos` (item "Serviços" do menu). Remover um serviço
   **desativa-o, nunca apaga dados**: voltar a aderir restaura o acesso. A Faturação nunca se remove,
   porque todos os outros serviços dependem dela (`Empresa::definirServicos()`).
-- As páginas públicas e os portais de cliente não passam por este middleware.
+- As landing pages públicas (`/loja/{slug}`, `/estudio/{empresa}`) passam pelo middleware
+  `servico.empresa:<nome>`, que lê a empresa da própria URL e responde 404 se ela não aderiu ao serviço.
+  Os portais de cliente (link assinado / token) ainda não são afetados.
 - Empresas criadas antes desta funcionalidade receberam todos os serviços na migration.
 - Todos os serviços partilham o mesmo período experimental e a mesma subscrição.
 
