@@ -17,6 +17,13 @@ class ServicosAderidosTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->withoutVite();
+    }
+
     /** @return array{0: Empresa, 1: User} */
     protected function empresaComUtilizador(string $nif, array $servicos, bool $superAdmin = false): array
     {
