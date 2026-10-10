@@ -5,6 +5,15 @@ namespace Modules\Core\Services;
 use Closure;
 use Throwable;
 
+/**
+ * Cada módulo regista aqui o que precisa de existir POR EMPRESA (papéis,
+ * permissões, dados iniciais) sem o Core o conhecer.
+ *
+ * Convenção: a chave é o valor do serviço (Servico::Estudio->value = 'estudio'),
+ * para o registry só correr o provisionador de serviços ATIVOS. Os
+ * provisionadores têm de ser idempotentes (correm no registo, ao ativar o
+ * serviço e no comando core:provisionar-servicos).
+ */
 class TenantProvisionerRegistry
 {
     /**
@@ -12,25 +21,23 @@ class TenantProvisionerRegistry
      */
     protected array $provisioners = [];
 
-    /**
-     * Regista um provisionador fornecido por um módulo.
-     *
-     * O módulo permanece desacoplado do Core:
-     * apenas fornece uma operação que recebe o ID da empresa.
-     */
     public function register(string $module, Closure $provisioner): void
     {
         $this->provisioners[$module] = $provisioner;
     }
 
     /**
-     * Executa os provisionadores de todos os módulos ativos.
+     * @param  array<int, string>|null  $servicosAtivos  null = corre todos (compatível com o comportamento antigo)
      *
      * @throws Throwable
      */
-    public function provision(int $empresaId): void
+    public function provision(int $empresaId, ?array $servicosAtivos = null): void
     {
         foreach ($this->provisioners as $module => $provisioner) {
+            if ($servicosAtivos !== null && ! in_array($module, $servicosAtivos, true)) {
+                continue;
+            }
+
             try {
                 $provisioner($empresaId);
             } catch (Throwable $e) {
@@ -43,8 +50,6 @@ class TenantProvisionerRegistry
     }
 
     /**
-     * Retorna os módulos que possuem provisionador registado.
-     *
      * @return array<int, string>
      */
     public function modules(): array

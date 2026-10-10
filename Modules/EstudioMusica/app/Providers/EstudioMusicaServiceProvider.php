@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Services\MenuRegistry;
+use Modules\Core\Services\TenantProvisionerRegistry;
 use Modules\EstudioMusica\Console\Commands\EnviarCampanhaGenericaCommand;
 use Modules\EstudioMusica\Http\Middleware\VerificarTokenPortalCliente;
 use Modules\EstudioMusica\Jobs\EnviarCampanhaAniversarioJob;
@@ -16,6 +17,7 @@ use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterfac
 use Modules\EstudioMusica\Notifications\Channels\LogChannel;
 use Modules\EstudioMusica\Notifications\Channels\TwilioSmsChannel;
 use Modules\EstudioMusica\Notifications\Channels\WhatsAppCloudApiChannel;
+use Modules\EstudioMusica\Support\PapeisEstudio;
 use RuntimeException;
 
 class EstudioMusicaServiceProvider extends ServiceProvider
@@ -65,6 +67,7 @@ class EstudioMusicaServiceProvider extends ServiceProvider
         $this->app->register(RouteServiceProvider::class);
 
         $this->registerMenuItems();
+        $this->registarProvisionador();
 
         $this->publishes([
             __DIR__.'/../../config/config.php' => config_path('estudiomusica.php'),
@@ -77,6 +80,18 @@ class EstudioMusicaServiceProvider extends ServiceProvider
         $this->agendarTarefas();
     }
 
+    /**
+     * Chave 'estudio' = Servico::Estudio->value: o registry só corre este
+     * provisionador para empresas com o serviço ativo.
+     */
+    protected function registarProvisionador(): void
+    {
+        $this->app->make(TenantProvisionerRegistry::class)->register(
+            'estudio',
+            fn (int $empresaId) => PapeisEstudio::provisionar($empresaId),
+        );
+    }
+
     protected function registerMenuItems(): void
     {
         $menu = $this->app->make(MenuRegistry::class);
@@ -84,6 +99,13 @@ class EstudioMusicaServiceProvider extends ServiceProvider
         $menu->adicionar('estudiomusica.projetos.index', 'Projetos Musicais', 60);
         $menu->adicionar('estudiomusica.sessoes.index', 'Sessões de Estúdio', 61);
         $menu->adicionar('estudiomusica.salas.index', 'Salas', 62);
+        $menu->adicionar(
+            'estudiomusica.equipa.index',
+            'Equipa do Estúdio',
+            63,
+            null,
+            fn () => auth()->user()?->hasRole('Administrador') ?? false,
+        );
     }
 
     /**
