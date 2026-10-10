@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Core\Http\Controllers\Auth\AuthenticatedSessionController;
 use Modules\Core\Http\Controllers\Auth\RegisteredTenantController;
 use Modules\Core\Http\Controllers\EmpresaController;
+use Modules\Core\Http\Controllers\ServicoController;
 use Modules\Core\Http\Controllers\UtilizadorController;
 
 /*
@@ -52,6 +53,11 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa'])->group(function () {
         ->name('core.empresa.editar');
     Route::put('/empresas/{empresa}', [EmpresaController::class, 'atualizar'])
         ->name('core.empresa.atualizar');
+
+    Route::middleware('papel:Administrador')->group(function () {
+        Route::get('/servicos', [ServicoController::class, 'index'])->name('core.servicos.index');
+        Route::put('/servicos', [ServicoController::class, 'atualizar'])->name('core.servicos.atualizar');
+    });
 
     Route::get('/utilizadores', [UtilizadorController::class, 'index'])->name('core.utilizadores.index');
     Route::post('/utilizadores', [UtilizadorController::class, 'store'])->name('core.utilizadores.store');

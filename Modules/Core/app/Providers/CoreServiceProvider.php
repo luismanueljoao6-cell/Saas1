@@ -91,6 +91,14 @@ class CoreServiceProvider extends ServiceProvider
         $menu->adicionar('core.painel', 'Painel', 10);
 
         $menu->adicionar(
+            'core.servicos.index',
+            'Serviços',
+            85,
+            null,
+            fn () => auth()->user()?->hasRole('Administrador') ?? false,
+        );
+
+        $menu->adicionar(
             'core.utilizadores.index',
             'Utilizadores',
             60,

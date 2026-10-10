@@ -67,6 +67,9 @@ Fluxo do utilizador: **página de apresentação (`/`) → registo (`/registo`) 
   JSON: 403). Super-admins não são afetados e um nome de serviço desconhecido nunca dá acesso.
 - O menu (`MenuRegistry`) esconde sozinho os itens cujas rotas exigem um serviço não aderido, e o painel
   só mostra os cartões dos serviços aderidos.
+- Os administradores gerem os serviços em `/servicos` (item "Serviços" do menu). Remover um serviço
+  **desativa-o, nunca apaga dados**: voltar a aderir restaura o acesso. A Faturação nunca se remove,
+  porque todos os outros serviços dependem dela (`Empresa::definirServicos()`).
 - As páginas públicas e os portais de cliente não passam por este middleware.
 - Empresas criadas antes desta funcionalidade receberam todos os serviços na migration.
 - Todos os serviços partilham o mesmo período experimental e a mesma subscrição.
@@ -246,8 +249,6 @@ php artisan test --filter=ServicosAderidosTest     # Serviços aderidos (Core)
   por agora; separá-los cumpriria a intenção original à letra.
 - **Validação do SAF-T (AO) contra o XSD oficial da AGT** — ver aviso de
   conformidade acima.
-- **Gerir serviços depois do registo** — página para a empresa acrescentar ou remover serviços
-  (hoje só se escolhem no registo).
 - **Preço por serviço** — hoje a subscrição é única para todos os serviços aderidos.
 
 ## Processos em segundo plano (obrigatórios em produção)

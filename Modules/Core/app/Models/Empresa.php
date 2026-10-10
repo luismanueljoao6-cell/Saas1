@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Support\Servico;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
@@ -97,6 +98,37 @@ class Empresa extends Model
         }
 
         // Evita servir uma lista antiga se a relação já tinha sido carregada.
+        $this->unsetRelation('servicos');
+    }
+
+    /**
+     * Define EXATAMENTE os serviços ativos da empresa. Os que ficam de fora
+     * são desativados, nunca apagados (os dados mantêm-se e voltar a aderir
+     * restaura o acesso). A Faturação entra sempre, porque todos os
+     * serviços dependem dela.
+     *
+     * @param  array<int, Servico|string>  $servicos
+     *
+     * @throws \InvalidArgumentException se a lista final ficar vazia
+     */
+    public function definirServicos(array $servicos): void
+    {
+        $desejados = array_map(fn (Servico $servico) => $servico->value, Servico::comDependencias($servicos));
+
+        if ($desejados === []) {
+            throw new \InvalidArgumentException('Uma empresa tem de ter pelo menos um serviço.');
+        }
+
+        DB::transaction(function () use ($desejados) {
+            foreach (Servico::cases() as $servico) {
+                if (in_array($servico->value, $desejados, true)) {
+                    $this->servicos()->updateOrCreate(['servico' => $servico->value], ['ativo' => true]);
+                } else {
+                    $this->servicos()->where('servico', $servico->value)->update(['ativo' => false]);
+                }
+            }
+        });
+
         $this->unsetRelation('servicos');
     }
 
