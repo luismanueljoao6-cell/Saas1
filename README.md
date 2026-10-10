@@ -1,4 +1,5 @@
-# Plataforma de Gestão Empresarial e Faturação (Angola)
+# Plataforma de Gestão Empresaria
+l e Faturação (Angola)
 
 Aplicação SaaS multi-tenant de gestão empresarial e faturação, construída
 em Laravel 13 com arquitetura modular (`nwidart/laravel-modules`). Este
@@ -51,6 +52,29 @@ por engano) — ver `Modules/Core/app/Scopes/TenantScope.php` e
 ao qual cada módulo acrescenta os seus próprios itens no `boot()` do seu
 `ServiceProvider` — o Core nunca precisa de saber que os outros módulos
 existem.
+
+## Serviços e fluxo de adesão
+
+Fluxo do utilizador: **página de apresentação (`/`) → registo (`/registo`) ou login (`/login`) → painel**.
+
+- No registo a empresa escolhe um ou vários **serviços**: `faturacao`, `atelier`, `estudio`
+  (enum `Modules\Core\Support\Servico`). Atelier e Estúdio incluem sempre a Faturação, porque
+  emitem recibos e faturas internamente.
+- A adesão fica na tabela `empresa_servicos` (uma linha por empresa e serviço). O resto do código usa
+  `Empresa::temServico()`, `Empresa::servicosAderidos()` e `Empresa::aderirServicos()`.
+- O acesso é bloqueado pelo middleware `servico:<nome>` (`ExigirServico`), aplicado ao grupo de rotas
+  autenticadas de cada módulo de negócio. Um serviço não aderido redireciona para o painel (pedidos
+  JSON: 403). Super-admins não são afetados e um nome de serviço desconhecido nunca dá acesso.
+- O menu (`MenuRegistry`) esconde sozinho os itens cujas rotas exigem um serviço não aderido, e o painel
+  só mostra os cartões dos serviços aderidos.
+- As páginas públicas e os portais de cliente não passam por este middleware.
+- Empresas criadas antes desta funcionalidade receberam todos os serviços na migration.
+- Todos os serviços partilham o mesmo período experimental e a mesma subscrição.
+
+**Novo módulo vertical:** um caso novo no enum `Servico` e `servico:<nome>` nas rotas autenticadas do
+módulo. Nada mais no Core muda.
+
+Testes: `php artisan test --filter=ServicosAderidosTest`.
 
 ## Instalação num GitHub Codespace (validada — foi assim que este projeto arrancou)
 
@@ -164,17 +188,25 @@ acontecem num servidor normal:
   Codespace. Define `ASSET_URL` para o domínio público
   (`https://<nome-do-codespace>-8000.app.github.dev`, visível em
   `echo "https://${CODESPACE_NAME}-8000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"`).
-- **`trustProxies`**: sem isto, os `redirect()->route(...)` também saltam
-  para `localhost`. Em `bootstrap/app.php`, dentro de `->withMiddleware()`:
-  `$middleware->trustProxies(at: '*');`
-- **`public/hot`**: se correste `npm run dev` alguma vez, este ficheiro
-  fica para trás e força o Blade a apontar sempre para o servidor de
-  desenvolvimento do Vite, mesmo depois de correres `npm run build`. Se o
-  CSS parar de carregar sem explicação, `rm -f public/hot` é o primeiro
-  sítio a olhar.
+- **`trustProxies`**: sem confiar no proxy, os `redirect()->route(...)` também
+  saltam para `localhost`. O `bootstrap/app.php` já trata disto: no Codespaces
+  (`CODESPACES=true`) confia em tudo automaticamente; em qualquer outro ambiente
+  tens de definir `TRUSTED_PROXIES` (IPs do teu proxy/load balancer, separados
+  por vírgula) — nunca `*` em produção.
 
 ## Variáveis de ambiente
 
+Além das do Laravel, o `.env.example` traz as da plataforma:
+
+| Variável | Para quê |
+|---|---|
+| `APP_TIMEZONE` | Fuso horário (`Africa/Luanda`) |
+| `QUEUE_CONNECTION`, `DB_QUEUE_RETRY_AFTER` | Fila em base de dados; o `retry_after` tem de ser **maior** que o timeout do `GerarSafTJob` (600 s) |
+| `FATURACAO_CHAVE_PRIVADA_PATH`, `FATURACAO_CHAVE_VERSAO` | Chave RSA privada que assina as faturas (fora do repositório) e a sua versão |
+| `FATURACAO_TAXA_IVA_GERAL`, `FATURACAO_TAXAS_IVA_PERMITIDAS` | Taxas de IVA aceites na emissão |
+| `FATURACAO_SAFT_NUMERO_CERTIFICADO` | Em produção, o SAF-T fica bloqueado enquanto for `0` |
+| `TRUSTED_PROXIES` | IPs do proxy/load balancer; vazio = não confiar em ninguém |
+| `SUBSCRICOES_GATEWAY`, `PROXYPAY_BASE_URL`, `PROXYPAY_API_KEY`, `PROXYPAY_ENTITY_ID`, `PROXYPAY_WEBHOOK_TOKEN` | Gateway de pagamentos ProxyPay |
 
 ## Correr a aplicação
 
@@ -194,6 +226,7 @@ proxy do Codespaces; `npm run build` gera os ficheiros finais que o
 php artisan test --filter=IsolamentoTenantTest    # Core
 php artisan test --filter=FluxoPagamentoTest       # Subscrições
 php artisan test --filter=CadeiaFiscalTest         # Faturação
+php artisan test --filter=ServicosAderidosTest     # Serviços aderidos (Core)
 ```
 
 ## Próximos passos
@@ -213,6 +246,9 @@ php artisan test --filter=CadeiaFiscalTest         # Faturação
   por agora; separá-los cumpriria a intenção original à letra.
 - **Validação do SAF-T (AO) contra o XSD oficial da AGT** — ver aviso de
   conformidade acima.
+- **Gerir serviços depois do registo** — página para a empresa acrescentar ou remover serviços
+  (hoje só se escolhem no registo).
+- **Preço por serviço** — hoje a subscrição é única para todos os serviços aderidos.
 
 ## Processos em segundo plano (obrigatórios em produção)
 
