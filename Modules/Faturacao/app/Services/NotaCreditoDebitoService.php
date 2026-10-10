@@ -150,10 +150,11 @@ class NotaCreditoDebitoService
 
                 $resultado = $this->numeracaoService->proximoNumero($nota->empresa_id, $nota->tipoDocumentoFiscal());
 
-                $hashAnterior = NotaCreditoDebito::withoutGlobalScopes()
-                    ->where('serie_id', $resultado['serie']->id)
-                    ->where('numero_sequencial', $resultado['numero_sequencial'] - 1)
-                    ->value('hash');
+                $hashAnterior = $this->numeracaoService->hashDoDocumentoAnterior(
+                    NotaCreditoDebito::class,
+                    $resultado['serie']->id,
+                    $resultado['numero_sequencial'],
+                );
 
                 $nota->serie_id = $resultado['serie']->id;
 

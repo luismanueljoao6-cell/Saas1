@@ -9,6 +9,7 @@ use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
 use Modules\Faturacao\Support\Dinheiro;
+use Modules\Faturacao\Support\GuardaEmissao;
 use Throwable;
 
 class FaturaService
@@ -72,6 +73,8 @@ class FaturaService
                     return $fatura->fresh('linhas');
                 }
 
+                GuardaEmissao::garantir((int) $fatura->empresa_id);
+
                 if ($fatura->linhas()->doesntExist()) {
                     throw new \DomainException('Não é possível emitir uma fatura sem linhas.');
                 }
@@ -81,10 +84,11 @@ class FaturaService
 
                 $resultado = $this->numeracaoService->proximoNumero($fatura->empresa_id, 'FT');
 
-                $hashAnterior = Fatura::withoutGlobalScopes()
-                    ->where('serie_id', $resultado['serie']->id)
-                    ->where('numero_sequencial', $resultado['numero_sequencial'] - 1)
-                    ->value('hash');
+                $hashAnterior = $this->numeracaoService->hashDoDocumentoAnterior(
+                    Fatura::class,
+                    $resultado['serie']->id,
+                    $resultado['numero_sequencial'],
+                );
 
                 $fatura->serie_id = $resultado['serie']->id;
 

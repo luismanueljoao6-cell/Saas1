@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Modules\Faturacao\Console\VerificarCadeiaFiscalCommand;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
@@ -14,6 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    ->withCommands([
+        VerificarCadeiaFiscalCommand::class,
+    ])
     ->withMiddleware(function (Middleware $middleware): void {
         // Proxies de confiança: NUNCA '*' por omissão. Em produção define
         // TRUSTED_PROXIES com os IPs do teu proxy/load balancer (separados
