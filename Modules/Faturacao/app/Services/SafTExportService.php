@@ -24,7 +24,7 @@ class SafTExportService
 {
     public function gerar(Empresa $empresa, Carbon $inicio, Carbon $fim): string
     {
-        if (app()->isProduction() && (string) config('faturacao.saft_numero_certificado', '0') === '0') {
+        if ($this->exportacaoBloqueada()) {
             throw new \RuntimeException('Exportação SAF-T bloqueada em produção: software sem número de certificação AGT configurado.');
         }
 
@@ -39,6 +39,29 @@ class SafTExportService
         $raiz->appendChild($this->documentosFonte($doc, $empresa, $inicio, $fim));
 
         return $doc->saveXML();
+    }
+
+    /** Em produção, o SAF-T fica bloqueado enquanto não houver número de certificação AGT. */
+    public function exportacaoBloqueada(): bool
+    {
+        return app()->isProduction()
+            && (string) config('faturacao.saft_numero_certificado', '0') === '0';
+    }
+
+    /** Devolve a mensagem de erro do período, ou null se for válido. */
+    public function validarPeriodo(Carbon $inicio, Carbon $fim): ?string
+    {
+        if ($fim->lt($inicio)) {
+            return 'A data de fim não pode ser anterior à data de início.';
+        }
+
+        // O cabeçalho (FiscalYear) assenta no ano de início: um período a
+        // cavalo de dois anos fiscais daria um ficheiro inconsistente.
+        if ($inicio->year !== $fim->year) {
+            return 'O período tem de estar contido no mesmo ano fiscal.';
+        }
+
+        return null;
     }
 
     /** Texto seguro: escapa automaticamente e remove caracteres inválidos em XML. */

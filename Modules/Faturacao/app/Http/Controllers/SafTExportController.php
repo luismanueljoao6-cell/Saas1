@@ -9,6 +9,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Modules\Faturacao\Jobs\GerarSafTJob;
+use Modules\Faturacao\Services\SafTExportService;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SafTExportController extends Controller
@@ -48,10 +49,21 @@ class SafTExportController extends Controller
             'data_fim' => ['required', 'date_format:Y-m-d', 'after_or_equal:data_inicio', 'before_or_equal:today'],
         ]);
 
-        $dias = Carbon::parse($dados['data_inicio'])->diffInDays(Carbon::parse($dados['data_fim']));
+        $saft = app(SafTExportService::class);
 
-        if (abs($dias) > 366) {
-            return back()->withErrors(['data_fim' => 'O período máximo é de 366 dias.'])->withInput();
+        if ($saft->exportacaoBloqueada()) {
+            return back()->withErrors([
+                'data_fim' => 'Exportação SAF-T indisponível em produção: o software ainda não tem número de certificação AGT configurado.',
+            ])->withInput();
+        }
+
+        $erroPeriodo = $saft->validarPeriodo(
+            Carbon::parse($dados['data_inicio']),
+            Carbon::parse($dados['data_fim']),
+        );
+
+        if ($erroPeriodo !== null) {
+            return back()->withErrors(['data_fim' => $erroPeriodo])->withInput();
         }
 
         GerarSafTJob::dispatch($empresa, $dados['data_inicio'], $dados['data_fim']);
