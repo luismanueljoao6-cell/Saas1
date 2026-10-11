@@ -1,0 +1,957 @@
+From 67eaa3a4568afee21653e6962f9da6d81b451fb3 Mon Sep 17 00:00:00 2001
+From: auditoria <a@b.c>
+Date: Sun, 11 Oct 2026 10:56:12 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20configura=C3=A7=C3=A3o=20base=20(chave?=
+ =?UTF-8?q?=20fiscal,=20fuso=20Luanda,=20proxies,=20idioma=20pt,=20IVA=20i?=
+ =?UTF-8?q?sento,=20PHP=20^8.4,=20gitlink=20=C3=B3rf=C3=A3o)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- config: chave privada e taxas de IVA tratam variáveis vazias do .env
+- app: timezone lido de APP_TIMEZONE (por omissão Africa/Luanda)
+- proxies: TRUSTED_PROXIES vazio já ativa a confiança no Codespaces
+- lang/pt: validações, auth, passwords e paginação em português
+- IVA 0% desativado por omissão (falta motivo de isenção no SAF-T)
+- módulos: php ^8.4; README alinhado
+- remove gitlink órfão 'Saas1'
+- testes de regressão em tests/Feature/ConfiguracaoBaseTest.php
+---
+ .env.example                                  |  11 +-
+ Modules/Atelier/composer.json                 |   2 +-
+ .../Core/app/Support/ProxiesConfiaveis.php    |  31 +++
+ Modules/Core/composer.json                    |   2 +-
+ Modules/EstudioMusica/composer.json           |   2 +-
+ Modules/Faturacao/composer.json               |   2 +-
+ Modules/Faturacao/config/config.php           |   9 +-
+ Modules/Subscricoes/composer.json             |   2 +-
+ README.md                                     |   2 +-
+ Saas1                                         |   1 -
+ bootstrap/app.php                             |  16 +-
+ config/app.php                                |   2 +-
+ lang/en/auth.php                              |  20 ++
+ lang/en/pagination.php                        |  19 ++
+ lang/en/passwords.php                         |  22 ++
+ lang/en/validation.php                        | 202 ++++++++++++++++++
+ lang/pt/auth.php                              |   7 +
+ lang/pt/pagination.php                        |   6 +
+ lang/pt/passwords.php                         |   9 +
+ lang/pt/validation.php                        | 192 +++++++++++++++++
+ tests/Feature/ConfiguracaoBaseTest.php        | 134 ++++++++++++
+ 21 files changed, 668 insertions(+), 25 deletions(-)
+ create mode 100644 Modules/Core/app/Support/ProxiesConfiaveis.php
+ delete mode 160000 Saas1
+ create mode 100644 lang/en/auth.php
+ create mode 100644 lang/en/pagination.php
+ create mode 100644 lang/en/passwords.php
+ create mode 100644 lang/en/validation.php
+ create mode 100644 lang/pt/auth.php
+ create mode 100644 lang/pt/pagination.php
+ create mode 100644 lang/pt/passwords.php
+ create mode 100644 lang/pt/validation.php
+ create mode 100644 tests/Feature/ConfiguracaoBaseTest.php
+
+diff --git a/.env.example b/.env.example
+index 09e6038..77aa234 100644
+--- a/.env.example
++++ b/.env.example
+@@ -4,9 +4,9 @@ APP_KEY=
+ APP_DEBUG=true
+ APP_URL=http://localhost:8000
+ 
+-APP_LOCALE=en
++APP_LOCALE=pt
+ APP_FALLBACK_LOCALE=en
+-APP_FAKER_LOCALE=en_US
++APP_FAKER_LOCALE=pt_PT
+ 
+ APP_MAINTENANCE_DRIVER=file
+ # APP_MAINTENANCE_STORE=database
+@@ -70,18 +70,19 @@ APP_TIMEZONE=Africa/Luanda
+ DB_QUEUE_RETRY_AFTER=660
+ 
+ # --- Faturação ---
+-FATURACAO_CHAVE_PRIVADA_PATH=
++# Vazio = storage/app/faturacao/chave-privada.pem (gera-a conforme o README)
++# FATURACAO_CHAVE_PRIVADA_PATH=
+ FATURACAO_CHAVE_VERSAO=1
+ FATURACAO_TAXA_IVA_GERAL=14
+ # Taxas aceites na emissão (confirma na tabela atual da AGT)
+-FATURACAO_TAXAS_IVA_PERMITIDAS=0,14
++FATURACAO_TAXAS_IVA_PERMITIDAS=14
+ # Em produção, o SAF-T é bloqueado enquanto isto for 0
+ FATURACAO_SAFT_NUMERO_CERTIFICADO=0
+ 
+ # --- Segurança / proxies ---
+ # IPs do teu proxy/load balancer, separados por vírgula. Vazio = não confiar em ninguém.
+ # (No GitHub Codespaces confia-se automaticamente.)
+-TRUSTED_PROXIES=
++# TRUSTED_PROXIES=
+ 
+ # --- ProxyPay (sandbox: https://api.sandbox.proxypay.co.ao) ---
+ SUBSCRICOES_GATEWAY=proxypay
+diff --git a/Modules/Atelier/composer.json b/Modules/Atelier/composer.json
+index 4337e03..6934af4 100644
+--- a/Modules/Atelier/composer.json
++++ b/Modules/Atelier/composer.json
+@@ -4,7 +4,7 @@
+     "type": "laravel-module",
+     "license": "proprietary",
+     "require": {
+-        "php": "^8.3"
++        "php": "^8.4"
+     },
+     "autoload": {
+         "psr-4": {
+diff --git a/Modules/Core/app/Support/ProxiesConfiaveis.php b/Modules/Core/app/Support/ProxiesConfiaveis.php
+new file mode 100644
+index 0000000..de73807
+--- /dev/null
++++ b/Modules/Core/app/Support/ProxiesConfiaveis.php
+@@ -0,0 +1,31 @@
++<?php
++
++namespace Modules\Core\Support;
++
++/**
++ * Decide em que proxies confiar. Isolado de bootstrap/app.php para poder ser
++ * testado: o erro original era tratar TRUSTED_PROXIES vazio ('') como "não
++ * definido" (null), o que impedia a confiança automática no GitHub Codespaces.
++ */
++final class ProxiesConfiaveis
++{
++    /**
++     * @return array<int, string>|string|null null = não confiar em nenhum proxy
++     */
++    public static function resolver(mixed $valor, bool $emCodespaces): array|string|null
++    {
++        $valor = trim((string) $valor);
++
++        if ($valor === '') {
++            return $emCodespaces ? '*' : null;
++        }
++
++        if ($valor === '*') {
++            return '*';
++        }
++
++        $lista = array_values(array_filter(array_map('trim', explode(',', $valor)), 'strlen'));
++
++        return $lista === [] ? null : $lista;
++    }
++}
+diff --git a/Modules/Core/composer.json b/Modules/Core/composer.json
+index 28c97d6..49b9566 100644
+--- a/Modules/Core/composer.json
++++ b/Modules/Core/composer.json
+@@ -4,7 +4,7 @@
+     "type": "laravel-module",
+     "license": "proprietary",
+     "require": {
+-        "php": "^8.3",
++        "php": "^8.4",
+         "spatie/laravel-permission": "^8.0",
+         "spatie/laravel-activitylog": "^5.0"
+     },
+diff --git a/Modules/EstudioMusica/composer.json b/Modules/EstudioMusica/composer.json
+index 9584303..61c4ab0 100644
+--- a/Modules/EstudioMusica/composer.json
++++ b/Modules/EstudioMusica/composer.json
+@@ -4,7 +4,7 @@
+     "type": "laravel-module",
+     "license": "proprietary",
+     "require": {
+-        "php": "^8.3"
++        "php": "^8.4"
+     },
+     "autoload": {
+         "psr-4": {
+diff --git a/Modules/Faturacao/composer.json b/Modules/Faturacao/composer.json
+index 6f754ea..625c9c6 100644
+--- a/Modules/Faturacao/composer.json
++++ b/Modules/Faturacao/composer.json
+@@ -4,7 +4,7 @@
+     "type": "laravel-module",
+     "license": "proprietary",
+     "require": {
+-        "php": "^8.3",
++        "php": "^8.4",
+         "ext-openssl": "*"
+     },
+     "autoload": {
+diff --git a/Modules/Faturacao/config/config.php b/Modules/Faturacao/config/config.php
+index 84ab728..27cb125 100644
+--- a/Modules/Faturacao/config/config.php
++++ b/Modules/Faturacao/config/config.php
+@@ -21,7 +21,9 @@
+     | e acrescenta storage/app/faturacao/ ao .gitignore.
+     |
+     */
+-    'chave_privada_path' => env('FATURACAO_CHAVE_PRIVADA_PATH', storage_path('app/faturacao/chave-privada.pem')),
++    // `?:` e não o 2.º argumento de env(): uma variável presente mas vazia
++    // (FATURACAO_CHAVE_PRIVADA_PATH=) devolve '' e não usaria o valor por omissão.
++    'chave_privada_path' => env('FATURACAO_CHAVE_PRIVADA_PATH') ?: storage_path('app/faturacao/chave-privada.pem'),
+ 
+     /*
+     | Versão da chave em uso — a AGT exige que cada documento registe qual
+@@ -79,8 +81,9 @@
+     /*
+     | Taxas de IVA aceites na emissão (percentagens, separadas por vírgula no .env).
+     | Confirma contra a tabela atual da AGT antes de produção. Taxa 0 (isenção)
+-    | exigirá motivo de isenção — ainda por implementar (ver README).
++    | está DESATIVADA por omissão: exige motivo de isenção (códigos M no SAF-T), ainda
++    | por implementar — só a ativar depois disso (ver README).
+     */
+-    'taxas_iva_permitidas' => array_map('floatval', array_filter(explode(',', (string) env('FATURACAO_TAXAS_IVA_PERMITIDAS', '0,14')), 'strlen')),
++    'taxas_iva_permitidas' => array_map('floatval', array_filter(explode(',', (string) env('FATURACAO_TAXAS_IVA_PERMITIDAS') ?: '14'), 'strlen')),
+ 
+ ];
+diff --git a/Modules/Subscricoes/composer.json b/Modules/Subscricoes/composer.json
+index da6b78b..ad7d15a 100644
+--- a/Modules/Subscricoes/composer.json
++++ b/Modules/Subscricoes/composer.json
+@@ -4,7 +4,7 @@
+     "type": "laravel-module",
+     "license": "proprietary",
+     "require": {
+-        "php": "^8.3"
++        "php": "^8.4"
+     },
+     "autoload": {
+         "psr-4": {
+diff --git a/README.md b/README.md
+index 5c6df12..0637971 100644
+--- a/README.md
++++ b/README.md
+@@ -32,7 +32,7 @@ ## ⚠️ Conformidade AGT — ler antes de qualquer uso real
+ 
+ ## Stack
+ 
+-- **Backend**: Laravel 13, PHP 8.3+ (ambiente de desenvolvimento em 8.4)
++- **Backend**: Laravel 13, PHP 8.4+ (o `composer.lock` fixa Symfony 8, que usa sintaxe 8.4)
+ - **Base de dados**: MySQL (SQLite em memória nos testes automatizados)
+ - **Frontend**: Tailwind CSS 4, Alpine.js (via CDN), Vite
+ - **Módulos**: `nwidart/laravel-modules`
+diff --git a/Saas1 b/Saas1
+deleted file mode 160000
+index fdf95e6..0000000
+--- a/Saas1
++++ /dev/null
+@@ -1 +0,0 @@
+-Subproject commit fdf95e6f42644defa1d679f609f297c4b671494f
+diff --git a/bootstrap/app.php b/bootstrap/app.php
+index 5bd2c26..9fa5ea0 100644
+--- a/bootstrap/app.php
++++ b/bootstrap/app.php
+@@ -7,6 +7,7 @@
+ use Illuminate\Routing\Middleware\SubstituteBindings;
+ use Modules\Core\Console\ProvisionarServicosCommand;
+ use Modules\Core\Http\Middleware\IdentificarTenant;
++use Modules\Core\Support\ProxiesConfiaveis;
+ use Modules\Faturacao\Console\VerificarCadeiaFiscalCommand;
+ use Spatie\Permission\Middleware\PermissionMiddleware;
+ use Spatie\Permission\Middleware\RoleMiddleware;
+@@ -28,16 +29,13 @@
+         // por vírgula). No GitHub Codespaces (CODESPACES=true) confia-se em
+         // tudo automaticamente. Com `config:cache`, define TRUSTED_PROXIES
+         // como variável de ambiente real (env() fora de config/ não lê .env).
+-        $proxies = env('TRUSTED_PROXIES');
+-
+-        if ($proxies === null && filter_var(env('CODESPACES'), FILTER_VALIDATE_BOOLEAN)) {
+-            $proxies = '*';
+-        }
++        $proxies = ProxiesConfiaveis::resolver(
++            env('TRUSTED_PROXIES'),
++            filter_var(env('CODESPACES'), FILTER_VALIDATE_BOOLEAN),
++        );
+ 
+-        if ($proxies) {
+-            $middleware->trustProxies(
+-                at: $proxies === '*' ? '*' : array_map('trim', explode(',', (string) $proxies))
+-            );
++        if ($proxies !== null) {
++            $middleware->trustProxies(at: $proxies);
+         }
+         // O tenant tem de ficar definido ANTES do route model binding implícito:
+         // sem isto, `Cliente $cliente` (BelongsToTenant) seria resolvido sem tenant
+diff --git a/config/app.php b/config/app.php
+index dfa47ba..1521d71 100644
+--- a/config/app.php
++++ b/config/app.php
+@@ -65,7 +65,7 @@
+     |
+     */
+ 
+-    'timezone' => 'UTC',
++    'timezone' => env('APP_TIMEZONE', 'Africa/Luanda'),
+ 
+     /*
+     |--------------------------------------------------------------------------
+diff --git a/lang/en/auth.php b/lang/en/auth.php
+new file mode 100644
+index 0000000..6598e2c
+--- /dev/null
++++ b/lang/en/auth.php
+@@ -0,0 +1,20 @@
++<?php
++
++return [
++
++    /*
++    |--------------------------------------------------------------------------
++    | Authentication Language Lines
++    |--------------------------------------------------------------------------
++    |
++    | The following language lines are used during authentication for various
++    | messages that we need to display to the user. You are free to modify
++    | these language lines according to your application's requirements.
++    |
++    */
++
++    'failed' => 'These credentials do not match our records.',
++    'password' => 'The provided password is incorrect.',
++    'throttle' => 'Too many login attempts. Please try again in :seconds seconds.',
++
++];
+diff --git a/lang/en/pagination.php b/lang/en/pagination.php
+new file mode 100644
+index 0000000..d481411
+--- /dev/null
++++ b/lang/en/pagination.php
+@@ -0,0 +1,19 @@
++<?php
++
++return [
++
++    /*
++    |--------------------------------------------------------------------------
++    | Pagination Language Lines
++    |--------------------------------------------------------------------------
++    |
++    | The following language lines are used by the paginator library to build
++    | the simple pagination links. You are free to change them to anything
++    | you want to customize your views to better match your application.
++    |
++    */
++
++    'previous' => '&laquo; Previous',
++    'next' => 'Next &raquo;',
++
++];
+diff --git a/lang/en/passwords.php b/lang/en/passwords.php
+new file mode 100644
+index 0000000..fad3a7d
+--- /dev/null
++++ b/lang/en/passwords.php
+@@ -0,0 +1,22 @@
++<?php
++
++return [
++
++    /*
++    |--------------------------------------------------------------------------
++    | Password Reset Language Lines
++    |--------------------------------------------------------------------------
++    |
++    | The following language lines are the default lines which match reasons
++    | that are given by the password broker for a password update attempt
++    | outcome such as failure due to an invalid password / reset token.
++    |
++    */
++
++    'reset' => 'Your password has been reset.',
++    'sent' => 'We have emailed your password reset link.',
++    'throttled' => 'Please wait before retrying.',
++    'token' => 'This password reset token is invalid.',
++    'user' => "We can't find a user with that email address.",
++
++];
+diff --git a/lang/en/validation.php b/lang/en/validation.php
+new file mode 100644
+index 0000000..7908904
+--- /dev/null
++++ b/lang/en/validation.php
+@@ -0,0 +1,202 @@
++<?php
++
++return [
++
++    /*
++    |--------------------------------------------------------------------------
++    | Validation Language Lines
++    |--------------------------------------------------------------------------
++    |
++    | The following language lines contain the default error messages used by
++    | the validator class. Some of these rules have multiple versions such
++    | as the size rules. Feel free to tweak each of these messages here.
++    |
++    */
++
++    'accepted' => 'The :attribute field must be accepted.',
++    'accepted_if' => 'The :attribute field must be accepted when :other is :value.',
++    'active_url' => 'The :attribute field must be a valid URL.',
++    'after' => 'The :attribute field must be a date after :date.',
++    'after_or_equal' => 'The :attribute field must be a date after or equal to :date.',
++    'alpha' => 'The :attribute field must only contain letters.',
++    'alpha_dash' => 'The :attribute field must only contain letters, numbers, dashes, and underscores.',
++    'alpha_num' => 'The :attribute field must only contain letters and numbers.',
++    'any_of' => 'The :attribute field is invalid.',
++    'array' => 'The :attribute field must be an array.',
++    'array_keys' => 'The :attribute field must only contain the following keys: :values.',
++    'ascii' => 'The :attribute field must only contain single-byte alphanumeric characters and symbols.',
++    'base64' => 'The :attribute field must be a valid Base64 string.',
++    'before' => 'The :attribute field must be a date before :date.',
++    'before_or_equal' => 'The :attribute field must be a date before or equal to :date.',
++    'between' => [
++        'array' => 'The :attribute field must have between :min and :max items.',
++        'file' => 'The :attribute field must be between :min and :max kilobytes.',
++        'numeric' => 'The :attribute field must be between :min and :max.',
++        'string' => 'The :attribute field must be between :min and :max characters.',
++    ],
++    'boolean' => 'The :attribute field must be true or false.',
++    'can' => 'The :attribute field contains an unauthorized value.',
++    'confirmed' => 'The :attribute field confirmation does not match.',
++    'contains' => 'The :attribute field is missing a required value.',
++    'current_password' => 'The password is incorrect.',
++    'date' => 'The :attribute field must be a valid date.',
++    'date_equals' => 'The :attribute field must be a date equal to :date.',
++    'date_format' => 'The :attribute field must match the format :format.',
++    'decimal' => 'The :attribute field must have :decimal decimal places.',
++    'declined' => 'The :attribute field must be declined.',
++    'declined_if' => 'The :attribute field must be declined when :other is :value.',
++    'different' => 'The :attribute field and :other must be different.',
++    'digits' => 'The :attribute field must be :digits digits.',
++    'digits_between' => 'The :attribute field must be between :min and :max digits.',
++    'dimensions' => 'The :attribute field has invalid image dimensions.',
++    'distinct' => 'The :attribute field has a duplicate value.',
++    'doesnt_contain' => 'The :attribute field must not contain any of the following: :values.',
++    'doesnt_end_with' => 'The :attribute field must not end with one of the following: :values.',
++    'doesnt_start_with' => 'The :attribute field must not start with one of the following: :values.',
++    'email' => 'The :attribute field must be a valid email address.',
++    'encoding' => 'The :attribute field must be encoded in :encoding.',
++    'ends_with' => 'The :attribute field must end with one of the following: :values.',
++    'enum' => 'The selected :attribute is invalid.',
++    'exists' => 'The selected :attribute is invalid.',
++    'extensions' => 'The :attribute field must have one of the following extensions: :values.',
++    'file' => 'The :attribute field must be a file.',
++    'filled' => 'The :attribute field must have a value.',
++    'gt' => [
++        'array' => 'The :attribute field must have more than :value items.',
++        'file' => 'The :attribute field must be greater than :value kilobytes.',
++        'numeric' => 'The :attribute field must be greater than :value.',
++        'string' => 'The :attribute field must be greater than :value characters.',
++    ],
++    'gte' => [
++        'array' => 'The :attribute field must have :value items or more.',
++        'file' => 'The :attribute field must be greater than or equal to :value kilobytes.',
++        'numeric' => 'The :attribute field must be greater than or equal to :value.',
++        'string' => 'The :attribute field must be greater than or equal to :value characters.',
++    ],
++    'hex_color' => 'The :attribute field must be a valid hexadecimal color.',
++    'image' => 'The :attribute field must be an image.',
++    'in' => 'The selected :attribute is invalid.',
++    'in_array' => 'The :attribute field must exist in :other.',
++    'in_array_keys' => 'The :attribute field must contain at least one of the following keys: :values.',
++    'integer' => 'The :attribute field must be an integer.',
++    'ip' => 'The :attribute field must be a valid IP address.',
++    'ipv4' => 'The :attribute field must be a valid IPv4 address.',
++    'ipv6' => 'The :attribute field must be a valid IPv6 address.',
++    'json' => 'The :attribute field must be a valid JSON string.',
++    'list' => 'The :attribute field must be a list.',
++    'lowercase' => 'The :attribute field must be lowercase.',
++    'lt' => [
++        'array' => 'The :attribute field must have less than :value items.',
++        'file' => 'The :attribute field must be less than :value kilobytes.',
++        'numeric' => 'The :attribute field must be less than :value.',
++        'string' => 'The :attribute field must be less than :value characters.',
++    ],
++    'lte' => [
++        'array' => 'The :attribute field must not have more than :value items.',
++        'file' => 'The :attribute field must be less than or equal to :value kilobytes.',
++        'numeric' => 'The :attribute field must be less than or equal to :value.',
++        'string' => 'The :attribute field must be less than or equal to :value characters.',
++    ],
++    'mac_address' => 'The :attribute field must be a valid MAC address.',
++    'max' => [
++        'array' => 'The :attribute field must not have more than :max items.',
++        'file' => 'The :attribute field must not be greater than :max kilobytes.',
++        'numeric' => 'The :attribute field must not be greater than :max.',
++        'string' => 'The :attribute field must not be greater than :max characters.',
++    ],
++    'max_digits' => 'The :attribute field must not have more than :max digits.',
++    'mimes' => 'The :attribute field must be a file of type: :values.',
++    'mimetypes' => 'The :attribute field must be a file of type: :values.',
++    'min' => [
++        'array' => 'The :attribute field must have at least :min items.',
++        'file' => 'The :attribute field must be at least :min kilobytes.',
++        'numeric' => 'The :attribute field must be at least :min.',
++        'string' => 'The :attribute field must be at least :min characters.',
++    ],
++    'min_digits' => 'The :attribute field must have at least :min digits.',
++    'missing' => 'The :attribute field must be missing.',
++    'missing_if' => 'The :attribute field must be missing when :other is :value.',
++    'missing_unless' => 'The :attribute field must be missing unless :other is :value.',
++    'missing_with' => 'The :attribute field must be missing when :values is present.',
++    'missing_with_all' => 'The :attribute field must be missing when :values are present.',
++    'multiple_of' => 'The :attribute field must be a multiple of :value.',
++    'not_in' => 'The selected :attribute is invalid.',
++    'not_regex' => 'The :attribute field format is invalid.',
++    'numeric' => 'The :attribute field must be a number.',
++    'password' => [
++        'letters' => 'The :attribute field must contain at least one letter.',
++        'mixed' => 'The :attribute field must contain at least one uppercase and one lowercase letter.',
++        'numbers' => 'The :attribute field must contain at least one number.',
++        'symbols' => 'The :attribute field must contain at least one symbol.',
++        'uncompromised' => 'The given :attribute has appeared in a data leak. Please choose a different :attribute.',
++    ],
++    'present' => 'The :attribute field must be present.',
++    'present_if' => 'The :attribute field must be present when :other is :value.',
++    'present_unless' => 'The :attribute field must be present unless :other is :value.',
++    'present_with' => 'The :attribute field must be present when :values is present.',
++    'present_with_all' => 'The :attribute field must be present when :values are present.',
++    'prohibited' => 'The :attribute field is prohibited.',
++    'prohibited_if' => 'The :attribute field is prohibited when :other is :value.',
++    'prohibited_if_accepted' => 'The :attribute field is prohibited when :other is accepted.',
++    'prohibited_if_declined' => 'The :attribute field is prohibited when :other is declined.',
++    'prohibited_unless' => 'The :attribute field is prohibited unless :other is in :values.',
++    'prohibits' => 'The :attribute field prohibits :other from being present.',
++    'regex' => 'The :attribute field format is invalid.',
++    'required' => 'The :attribute field is required.',
++    'required_array_keys' => 'The :attribute field must contain entries for: :values.',
++    'required_if' => 'The :attribute field is required when :other is :value.',
++    'required_if_accepted' => 'The :attribute field is required when :other is accepted.',
++    'required_if_declined' => 'The :attribute field is required when :other is declined.',
++    'required_unless' => 'The :attribute field is required unless :other is in :values.',
++    'required_with' => 'The :attribute field is required when :values is present.',
++    'required_with_all' => 'The :attribute field is required when :values are present.',
++    'required_without' => 'The :attribute field is required when :values is not present.',
++    'required_without_all' => 'The :attribute field is required when none of :values are present.',
++    'same' => 'The :attribute field must match :other.',
++    'size' => [
++        'array' => 'The :attribute field must contain :size items.',
++        'file' => 'The :attribute field must be :size kilobytes.',
++        'numeric' => 'The :attribute field must be :size.',
++        'string' => 'The :attribute field must be :size characters.',
++    ],
++    'starts_with' => 'The :attribute field must start with one of the following: :values.',
++    'string' => 'The :attribute field must be a string.',
++    'timezone' => 'The :attribute field must be a valid timezone.',
++    'unique' => 'The :attribute has already been taken.',
++    'uploaded' => 'The :attribute failed to upload.',
++    'uppercase' => 'The :attribute field must be uppercase.',
++    'url' => 'The :attribute field must be a valid URL.',
++    'ulid' => 'The :attribute field must be a valid ULID.',
++    'uuid' => 'The :attribute field must be a valid UUID.',
++
++    /*
++    |--------------------------------------------------------------------------
++    | Custom Validation Language Lines
++    |--------------------------------------------------------------------------
++    |
++    | Here you may specify custom validation messages for attributes using the
++    | convention "attribute.rule" to name the lines. This makes it quick to
++    | specify a specific custom language line for a given attribute rule.
++    |
++    */
++
++    'custom' => [
++        'attribute-name' => [
++            'rule-name' => 'custom-message',
++        ],
++    ],
++
++    /*
++    |--------------------------------------------------------------------------
++    | Custom Validation Attributes
++    |--------------------------------------------------------------------------
++    |
++    | The following language lines are used to swap our attribute placeholder
++    | with something more reader friendly such as "E-Mail Address" instead
++    | of "email". This simply helps us make our message more expressive.
++    |
++    */
++
++    'attributes' => [],
++
++];
+diff --git a/lang/pt/auth.php b/lang/pt/auth.php
+new file mode 100644
+index 0000000..c0534f9
+--- /dev/null
++++ b/lang/pt/auth.php
+@@ -0,0 +1,7 @@
++<?php
++
++return [
++    'failed' => 'As credenciais indicadas não coincidem com os nossos registos.',
++    'password' => 'A palavra-passe indicada está incorreta.',
++    'throttle' => 'Demasiadas tentativas de início de sessão. Tenta novamente dentro de :seconds segundos.',
++];
+diff --git a/lang/pt/pagination.php b/lang/pt/pagination.php
+new file mode 100644
+index 0000000..cf23473
+--- /dev/null
++++ b/lang/pt/pagination.php
+@@ -0,0 +1,6 @@
++<?php
++
++return [
++    'previous' => '&laquo; Anterior',
++    'next' => 'Seguinte &raquo;',
++];
+diff --git a/lang/pt/passwords.php b/lang/pt/passwords.php
+new file mode 100644
+index 0000000..a56643f
+--- /dev/null
++++ b/lang/pt/passwords.php
+@@ -0,0 +1,9 @@
++<?php
++
++return [
++    'reset' => 'A tua palavra-passe foi redefinida.',
++    'sent' => 'Enviámos-te um e-mail com a ligação para redefinir a palavra-passe.',
++    'throttled' => 'Aguarda antes de tentar novamente.',
++    'token' => 'Este código de redefinição de palavra-passe é inválido.',
++    'user' => 'Não encontrámos nenhum utilizador com esse e-mail.',
++];
+diff --git a/lang/pt/validation.php b/lang/pt/validation.php
+new file mode 100644
+index 0000000..3b93969
+--- /dev/null
++++ b/lang/pt/validation.php
+@@ -0,0 +1,192 @@
++<?php
++
++return [
++    'accepted' => 'O campo :attribute tem de ser aceite.',
++    'accepted_if' => 'O campo :attribute tem de ser aceite quando :other é :value.',
++    'active_url' => 'O campo :attribute tem de ser um URL válido.',
++    'after' => 'O campo :attribute tem de ser uma data posterior a :date.',
++    'after_or_equal' => 'O campo :attribute tem de ser uma data igual ou posterior a :date.',
++    'alpha' => 'O campo :attribute só pode conter letras.',
++    'alpha_dash' => 'O campo :attribute só pode conter letras, números, hífenes e underscores.',
++    'alpha_num' => 'O campo :attribute só pode conter letras e números.',
++    'any_of' => 'O campo :attribute é inválido.',
++    'array' => 'O campo :attribute tem de ser uma lista.',
++    'array_keys' => 'O campo :attribute só pode conter as chaves: :values.',
++    'ascii' => 'O campo :attribute só pode conter caracteres alfanuméricos e símbolos de um byte.',
++    'base64' => 'O campo :attribute tem de ser uma cadeia Base64 válida.',
++    'before' => 'O campo :attribute tem de ser uma data anterior a :date.',
++    'before_or_equal' => 'O campo :attribute tem de ser uma data igual ou anterior a :date.',
++    'between' => [
++        'array' => 'O campo :attribute tem de ter entre :min e :max itens.',
++        'file' => 'O campo :attribute tem de ter entre :min e :max kilobytes.',
++        'numeric' => 'O campo :attribute tem de estar entre :min e :max.',
++        'string' => 'O campo :attribute tem de ter entre :min e :max caracteres.',
++    ],
++    'boolean' => 'O campo :attribute tem de ser verdadeiro ou falso.',
++    'can' => 'O campo :attribute contém um valor não autorizado.',
++    'confirmed' => 'A confirmação do campo :attribute não coincide.',
++    'contains' => 'O campo :attribute não tem um valor obrigatório.',
++    'current_password' => 'A palavra-passe está incorreta.',
++    'date' => 'O campo :attribute tem de ser uma data válida.',
++    'date_equals' => 'O campo :attribute tem de ser uma data igual a :date.',
++    'date_format' => 'O campo :attribute tem de respeitar o formato :format.',
++    'decimal' => 'O campo :attribute tem de ter :decimal casas decimais.',
++    'declined' => 'O campo :attribute tem de ser recusado.',
++    'declined_if' => 'O campo :attribute tem de ser recusado quando :other é :value.',
++    'different' => 'Os campos :attribute e :other têm de ser diferentes.',
++    'digits' => 'O campo :attribute tem de ter :digits dígitos.',
++    'digits_between' => 'O campo :attribute tem de ter entre :min e :max dígitos.',
++    'dimensions' => 'O campo :attribute tem dimensões de imagem inválidas.',
++    'distinct' => 'O campo :attribute tem um valor duplicado.',
++    'doesnt_contain' => 'O campo :attribute não pode conter: :values.',
++    'doesnt_end_with' => 'O campo :attribute não pode terminar com: :values.',
++    'doesnt_start_with' => 'O campo :attribute não pode começar com: :values.',
++    'email' => 'O campo :attribute tem de ser um endereço de e-mail válido.',
++    'encoding' => 'O campo :attribute tem de estar codificado em :encoding.',
++    'ends_with' => 'O campo :attribute tem de terminar com um de: :values.',
++    'enum' => 'O valor selecionado em :attribute é inválido.',
++    'exists' => 'O valor selecionado em :attribute é inválido.',
++    'extensions' => 'O campo :attribute tem de ter uma das extensões: :values.',
++    'file' => 'O campo :attribute tem de ser um ficheiro.',
++    'filled' => 'O campo :attribute tem de ter um valor.',
++    'gt' => [
++        'array' => 'O campo :attribute tem de ter mais de :value itens.',
++        'file' => 'O campo :attribute tem de ser maior que :value kilobytes.',
++        'numeric' => 'O campo :attribute tem de ser maior que :value.',
++        'string' => 'O campo :attribute tem de ter mais de :value caracteres.',
++    ],
++    'gte' => [
++        'array' => 'O campo :attribute tem de ter :value itens ou mais.',
++        'file' => 'O campo :attribute tem de ser maior ou igual a :value kilobytes.',
++        'numeric' => 'O campo :attribute tem de ser maior ou igual a :value.',
++        'string' => 'O campo :attribute tem de ter :value caracteres ou mais.',
++    ],
++    'hex_color' => 'O campo :attribute tem de ser uma cor hexadecimal válida.',
++    'image' => 'O campo :attribute tem de ser uma imagem.',
++    'in' => 'O valor selecionado em :attribute é inválido.',
++    'in_array' => 'O campo :attribute tem de existir em :other.',
++    'in_array_keys' => 'O campo :attribute tem de conter pelo menos uma das chaves: :values.',
++    'integer' => 'O campo :attribute tem de ser um número inteiro.',
++    'ip' => 'O campo :attribute tem de ser um endereço IP válido.',
++    'ipv4' => 'O campo :attribute tem de ser um endereço IPv4 válido.',
++    'ipv6' => 'O campo :attribute tem de ser um endereço IPv6 válido.',
++    'json' => 'O campo :attribute tem de ser um JSON válido.',
++    'list' => 'O campo :attribute tem de ser uma lista.',
++    'lowercase' => 'O campo :attribute tem de estar em minúsculas.',
++    'lt' => [
++        'array' => 'O campo :attribute tem de ter menos de :value itens.',
++        'file' => 'O campo :attribute tem de ser menor que :value kilobytes.',
++        'numeric' => 'O campo :attribute tem de ser menor que :value.',
++        'string' => 'O campo :attribute tem de ter menos de :value caracteres.',
++    ],
++    'lte' => [
++        'array' => 'O campo :attribute não pode ter mais de :value itens.',
++        'file' => 'O campo :attribute tem de ser menor ou igual a :value kilobytes.',
++        'numeric' => 'O campo :attribute tem de ser menor ou igual a :value.',
++        'string' => 'O campo :attribute tem de ter :value caracteres ou menos.',
++    ],
++    'mac_address' => 'O campo :attribute tem de ser um endereço MAC válido.',
++    'max' => [
++        'array' => 'O campo :attribute não pode ter mais de :max itens.',
++        'file' => 'O campo :attribute não pode ser maior que :max kilobytes.',
++        'numeric' => 'O campo :attribute não pode ser maior que :max.',
++        'string' => 'O campo :attribute não pode ter mais de :max caracteres.',
++    ],
++    'max_digits' => 'O campo :attribute não pode ter mais de :max dígitos.',
++    'mimes' => 'O campo :attribute tem de ser um ficheiro do tipo: :values.',
++    'mimetypes' => 'O campo :attribute tem de ser um ficheiro do tipo: :values.',
++    'min' => [
++        'array' => 'O campo :attribute tem de ter pelo menos :min itens.',
++        'file' => 'O campo :attribute tem de ter pelo menos :min kilobytes.',
++        'numeric' => 'O campo :attribute tem de ser pelo menos :min.',
++        'string' => 'O campo :attribute tem de ter pelo menos :min caracteres.',
++    ],
++    'min_digits' => 'O campo :attribute tem de ter pelo menos :min dígitos.',
++    'missing' => 'O campo :attribute tem de estar ausente.',
++    'missing_if' => 'O campo :attribute tem de estar ausente quando :other é :value.',
++    'missing_unless' => 'O campo :attribute tem de estar ausente, exceto quando :other é :value.',
++    'missing_with' => 'O campo :attribute tem de estar ausente quando :values está presente.',
++    'missing_with_all' => 'O campo :attribute tem de estar ausente quando :values estão presentes.',
++    'multiple_of' => 'O campo :attribute tem de ser múltiplo de :value.',
++    'not_in' => 'O valor selecionado em :attribute é inválido.',
++    'not_regex' => 'O formato do campo :attribute é inválido.',
++    'numeric' => 'O campo :attribute tem de ser um número.',
++    'password' => [
++        'letters' => 'O campo :attribute tem de conter pelo menos uma letra.',
++        'mixed' => 'O campo :attribute tem de conter pelo menos uma maiúscula e uma minúscula.',
++        'numbers' => 'O campo :attribute tem de conter pelo menos um número.',
++        'symbols' => 'O campo :attribute tem de conter pelo menos um símbolo.',
++        'uncompromised' => 'O :attribute indicado apareceu numa fuga de dados. Escolhe outro.',
++    ],
++    'present' => 'O campo :attribute tem de estar presente.',
++    'present_if' => 'O campo :attribute tem de estar presente quando :other é :value.',
++    'present_unless' => 'O campo :attribute tem de estar presente, exceto quando :other é :value.',
++    'present_with' => 'O campo :attribute tem de estar presente quando :values está presente.',
++    'present_with_all' => 'O campo :attribute tem de estar presente quando :values estão presentes.',
++    'prohibited' => 'O campo :attribute não é permitido.',
++    'prohibited_if' => 'O campo :attribute não é permitido quando :other é :value.',
++    'prohibited_if_accepted' => 'O campo :attribute não é permitido quando :other é aceite.',
++    'prohibited_if_declined' => 'O campo :attribute não é permitido quando :other é recusado.',
++    'prohibited_unless' => 'O campo :attribute não é permitido, exceto quando :other está em :values.',
++    'prohibits' => 'O campo :attribute impede que :other esteja presente.',
++    'regex' => 'O formato do campo :attribute é inválido.',
++    'required' => 'O campo :attribute é obrigatório.',
++    'required_array_keys' => 'O campo :attribute tem de conter entradas para: :values.',
++    'required_if' => 'O campo :attribute é obrigatório quando :other é :value.',
++    'required_if_accepted' => 'O campo :attribute é obrigatório quando :other é aceite.',
++    'required_if_declined' => 'O campo :attribute é obrigatório quando :other é recusado.',
++    'required_unless' => 'O campo :attribute é obrigatório, exceto quando :other está em :values.',
++    'required_with' => 'O campo :attribute é obrigatório quando :values está presente.',
++    'required_with_all' => 'O campo :attribute é obrigatório quando :values estão presentes.',
++    'required_without' => 'O campo :attribute é obrigatório quando :values não está presente.',
++    'required_without_all' => 'O campo :attribute é obrigatório quando nenhum de :values está presente.',
++    'same' => 'O campo :attribute tem de coincidir com :other.',
++    'size' => [
++        'array' => 'O campo :attribute tem de conter :size itens.',
++        'file' => 'O campo :attribute tem de ter :size kilobytes.',
++        'numeric' => 'O campo :attribute tem de ser :size.',
++        'string' => 'O campo :attribute tem de ter :size caracteres.',
++    ],
++    'starts_with' => 'O campo :attribute tem de começar com um de: :values.',
++    'string' => 'O campo :attribute tem de ser texto.',
++    'timezone' => 'O campo :attribute tem de ser um fuso horário válido.',
++    'unique' => 'O valor de :attribute já está a ser utilizado.',
++    'uploaded' => 'Falha ao carregar o ficheiro de :attribute.',
++    'uppercase' => 'O campo :attribute tem de estar em maiúsculas.',
++    'url' => 'O campo :attribute tem de ser um URL válido.',
++    'ulid' => 'O campo :attribute tem de ser um ULID válido.',
++    'uuid' => 'O campo :attribute tem de ser um UUID válido.',
++
++    'custom' => [],
++
++    'attributes' => [
++        'nome_comercial' => 'nome comercial',
++        'nome_legal' => 'nome legal',
++        'nif' => 'NIF',
++        'email' => 'e-mail',
++        'email_empresa' => 'e-mail da empresa',
++        'telefone' => 'telefone',
++        'telefone_empresa' => 'telefone da empresa',
++        'morada' => 'morada',
++        'name' => 'nome',
++        'nome' => 'nome',
++        'password' => 'palavra-passe',
++        'aceita_termos' => 'termos de utilização',
++        'servicos' => 'serviços',
++        'cliente_id' => 'cliente',
++        'linhas' => 'linhas',
++        'linhas.*.descricao' => 'descrição da linha',
++        'linhas.*.quantidade' => 'quantidade',
++        'linhas.*.preco_unitario' => 'preço unitário',
++        'linhas.*.taxa_iva' => 'taxa de IVA',
++        'observacoes' => 'observações',
++        'data_inicio' => 'data de início',
++        'data_fim' => 'data de fim',
++        'descricao' => 'descrição',
++        'valor_orcamento' => 'valor do orçamento',
++        'mensagem' => 'mensagem',
++        'contacto' => 'contacto',
++        'ficheiro' => 'ficheiro',
++        'rotulo' => 'rótulo',
++    ],
++];
+diff --git a/tests/Feature/ConfiguracaoBaseTest.php b/tests/Feature/ConfiguracaoBaseTest.php
+new file mode 100644
+index 0000000..1dcd506
+--- /dev/null
++++ b/tests/Feature/ConfiguracaoBaseTest.php
+@@ -0,0 +1,134 @@
++<?php
++
++namespace Tests\Feature;
++
++use Illuminate\Support\Carbon;
++use Modules\Core\Support\ProxiesConfiaveis;
++use Tests\TestCase;
++
++/**
++ * Regressões da auditoria de configuração: variáveis de ambiente VAZIAS
++ * (como as do .env.example) não podem anular os valores por omissão.
++ */
++class ConfiguracaoBaseTest extends TestCase
++{
++    /** Avalia um ficheiro de config com variáveis de ambiente forçadas. */
++    protected function configCom(string $ficheiro, array $variaveis): array
++    {
++        $guardado = [];
++
++        foreach ($variaveis as $chave => $valor) {
++            $guardado[$chave] = [$_ENV[$chave] ?? null, $_SERVER[$chave] ?? null];
++
++            if ($valor === null) {
++                unset($_ENV[$chave], $_SERVER[$chave]);
++            } else {
++                $_ENV[$chave] = $_SERVER[$chave] = $valor;
++            }
++        }
++
++        try {
++            return require base_path($ficheiro);
++        } finally {
++            foreach ($guardado as $chave => [$env, $server]) {
++                $env === null ? $_ENV[$chave] = null : $_ENV[$chave] = $env;
++                $server === null ? $_SERVER[$chave] = null : $_SERVER[$chave] = $server;
++
++                if ($env === null) {
++                    unset($_ENV[$chave]);
++                }
++                if ($server === null) {
++                    unset($_SERVER[$chave]);
++                }
++            }
++        }
++    }
++
++    public function test_chave_privada_vazia_no_env_usa_o_caminho_por_omissao(): void
++    {
++        $config = $this->configCom('Modules/Faturacao/config/config.php', ['FATURACAO_CHAVE_PRIVADA_PATH' => '']);
++
++        $this->assertSame(storage_path('app/faturacao/chave-privada.pem'), $config['chave_privada_path']);
++    }
++
++    public function test_iva_isento_nao_e_permitido_por_omissao(): void
++    {
++        $vazio = $this->configCom('Modules/Faturacao/config/config.php', ['FATURACAO_TAXAS_IVA_PERMITIDAS' => '']);
++        $ausente = $this->configCom('Modules/Faturacao/config/config.php', ['FATURACAO_TAXAS_IVA_PERMITIDAS' => null]);
++
++        $this->assertSame([14.0], $vazio['taxas_iva_permitidas']);
++        $this->assertSame([14.0], $ausente['taxas_iva_permitidas']);
++    }
++
++    public function test_env_example_nao_define_variaveis_criticas_em_branco(): void
++    {
++        $exemplo = file_get_contents(base_path('.env.example'));
++
++        $this->assertDoesNotMatchRegularExpression('/^FATURACAO_CHAVE_PRIVADA_PATH=\s*$/m', $exemplo);
++        $this->assertDoesNotMatchRegularExpression('/^TRUSTED_PROXIES=\s*$/m', $exemplo);
++        $this->assertMatchesRegularExpression('/^FATURACAO_TAXAS_IVA_PERMITIDAS=14\s*$/m', $exemplo);
++    }
++
++    public function test_fuso_horario_vem_do_env_e_por_omissao_e_luanda(): void
++    {
++        $sem = $this->configCom('config/app.php', ['APP_TIMEZONE' => null]);
++        $com = $this->configCom('config/app.php', ['APP_TIMEZONE' => 'Africa/Lagos']);
++
++        $this->assertSame('Africa/Luanda', $sem['timezone']);
++        $this->assertSame('Africa/Lagos', $com['timezone']);
++    }
++
++    public function test_a_hora_de_luanda_decide_o_ano_da_serie(): void
++    {
++        // 23:30 UTC de 31/12 já é 00:30 de 01/01 em Luanda (UTC+1).
++        Carbon::setTestNow(Carbon::parse('2026-12-31 23:30:00', 'UTC'));
++
++        try {
++            $this->assertSame('Africa/Luanda', config('app.timezone'));
++            $this->assertSame(2027, now()->year);
++        } finally {
++            Carbon::setTestNow();
++        }
++    }
++
++    public function test_validacao_em_portugues(): void
++    {
++        $this->app->setLocale('pt');
++
++        $mensagem = validator(['nif' => ''], ['nif' => 'required'])->errors()->first('nif');
++
++        $this->assertSame('O campo NIF é obrigatório.', $mensagem);
++    }
++
++    public function test_proxies_confiaveis(): void
++    {
++        // Vazio fora do Codespaces: ninguém.
++        $this->assertNull(ProxiesConfiaveis::resolver('', false));
++        $this->assertNull(ProxiesConfiaveis::resolver(null, false));
++        // O bug original: '' não era tratado como "não definido" no Codespaces.
++        $this->assertSame('*', ProxiesConfiaveis::resolver('', true));
++        $this->assertSame('*', ProxiesConfiaveis::resolver(null, true));
++        // Valor explícito ganha sempre ao Codespaces.
++        $this->assertSame(['10.0.0.1', '10.0.0.2'], ProxiesConfiaveis::resolver('10.0.0.1, 10.0.0.2', true));
++        $this->assertSame('*', ProxiesConfiaveis::resolver('*', false));
++        $this->assertNull(ProxiesConfiaveis::resolver(' , ', false));
++    }
++
++    public function test_modulos_exigem_a_mesma_versao_minima_de_php_que_o_projeto(): void
++    {
++        $raiz = json_decode(file_get_contents(base_path('composer.json')), true)['require']['php'];
++
++        foreach (glob(base_path('Modules/*/composer.json')) as $ficheiro) {
++            $modulo = json_decode(file_get_contents($ficheiro), true);
++
++            $this->assertSame($raiz, $modulo['require']['php'], $ficheiro);
++        }
++    }
++
++    public function test_repositorio_nao_contem_gitlinks_orfaos(): void
++    {
++        $saida = shell_exec('git -C '.escapeshellarg(base_path()).' ls-files -s 2>/dev/null') ?? '';
++
++        $this->assertStringNotContainsString('160000 ', $saida, 'Existe um submódulo/gitlink sem .gitmodules.');
++    }
++}
+-- 
+2.43.0
+
