@@ -39,6 +39,12 @@ class ProcessarPagamentoConfirmadoJob implements ShouldQueue
         try {
             $pagamento = $pagamentoService->localizarPorReferencia($this->referenciaExterna);
 
+            // Via webhook o valor pago é obrigatório: sem ele não há como
+            // verificar o pagamento (só a confirmação manual dispensa o valor).
+            if ($this->valorRecebido === null || $this->valorRecebido === '') {
+                throw new DomainException("Notificação do gateway sem valor pago (pagamento {$pagamento->id}): confirmar manualmente.");
+            }
+
             $pagamentoService->confirmar($pagamento, $this->payloadBruto, null, $this->valorRecebido);
         } catch (DomainException $e) {
             // Regra de negócio violada (ex.: valor pago inferior ao devido):

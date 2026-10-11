@@ -6,6 +6,7 @@ use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Modules\Core\Models\Empresa;
+use Modules\Subscricoes\Jobs\ProcessarPagamentoConfirmadoJob;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Models\Subscricao;
@@ -104,5 +105,31 @@ class SegurancaPagamentoTest extends TestCase
 
         $this->assertSame('expirado', $pagamento->estado);
         $this->assertSame('cancelada', Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->first()->estado);
+    }
+
+    public function test_webhook_sem_valor_pago_nao_confirma(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000004');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+
+        (new ProcessarPagamentoConfirmadoJob('gateway-teste', (string) $pagamento->referencia_externa, [], null))
+            ->handle(app(PagamentoService::class));
+
+        $this->assertSame('pendente', Pagamento::withoutGlobalScopes()->find($pagamento->id)->estado);
+        $this->assertSame('trial', $empresa->fresh()->estado_subscricao);
+    }
+
+    public function test_webhook_com_valor_exato_confirma(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000005');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+
+        (new ProcessarPagamentoConfirmadoJob('gateway-teste', (string) $pagamento->referencia_externa, [], '9900.00'))
+            ->handle(app(PagamentoService::class));
+
+        $this->assertSame('confirmado', Pagamento::withoutGlobalScopes()->find($pagamento->id)->estado);
+        $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
     }
 }
