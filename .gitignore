@@ -31,3 +31,5 @@ storage/app/faturacao/
 # Chaves e certificados (nunca versionar)
 *.pem
 *.key
+.env
+storage/keys/
