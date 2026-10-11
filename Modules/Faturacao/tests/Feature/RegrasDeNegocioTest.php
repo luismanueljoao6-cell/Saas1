@@ -8,6 +8,7 @@ use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
+use Modules\Faturacao\Services\ReciboService;
 use Modules\Faturacao\Support\Dinheiro;
 use Tests\TestCase;
 
@@ -121,7 +122,7 @@ class RegrasDeNegocioTest extends TestCase
         $nc->emitir($nc->criarParaAnularFatura($f, 'Erro'));
 
         $this->expectException(\DomainException::class);
-        app(\Modules\Faturacao\Services\ReciboService::class)->emitir($e->id, $c->id, '10.00', 'dinheiro', $f->id);
+        app(ReciboService::class)->emitir($e->id, $c->id, '10.00', 'dinheiro', $f->id);
     }
 
     public function test_recibo_respeita_nota_de_credito_parcial(): void
@@ -130,7 +131,7 @@ class RegrasDeNegocioTest extends TestCase
         $f = $this->faturaEmitida($e, $c, 1000);
         $nc = app(NotaCreditoDebitoService::class);
         $nc->emitir($nc->criarRascunho($e->id, $c->id, 'credito', 'Parcial', $this->linha(500), $f->id));
-        $recibos = app(\Modules\Faturacao\Services\ReciboService::class);
+        $recibos = app(ReciboService::class);
 
         $recibo = $recibos->emitir($e->id, $c->id, '570.00', 'dinheiro', $f->id);
         $this->assertSame('emitido', $recibo->estado);

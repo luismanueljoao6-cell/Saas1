@@ -36,7 +36,8 @@ class IdentificarTenant
         if (! $utilizador->ativo) {
             Log::info('Sessão terminada: utilizador desativado.', ['utilizador_id' => $utilizador->id]);
 
-            if ($request->expectsJson()) {
+            // Pedidos de API (guard sanctum) não têm sessão nem logout().
+            if ($request->expectsJson() || $request->is('api/*')) {
                 abort(403, 'Esta conta está desativada.');
             }
 

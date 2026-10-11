@@ -127,7 +127,7 @@ class ConfiguracaoBaseTest extends TestCase
 
     public function test_repositorio_nao_contem_gitlinks_orfaos(): void
     {
-        $saida = shell_exec('git -C '.escapeshellarg(base_path()).' ls-files -s 2>/dev/null') ?? '';
+        $saida = shell_exec('git -C '.escapeshellarg(base_path()).' ls-files -s') ?? '';
 
         $this->assertStringNotContainsString('160000 ', $saida, 'Existe um submódulo/gitlink sem .gitmodules.');
     }

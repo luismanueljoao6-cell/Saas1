@@ -81,9 +81,9 @@ class UtilizadorController extends Controller
         // route model binding NÃO filtra por empresa — esta verificação
         // explícita é a única barreira contra desativar alguém de outra
         // empresa, e nunca deve ser removida.
-        abort_unless($admin->empresa_id === $utilizador->empresa_id, 403);
+        abort_unless((int) $admin->empresa_id === (int) $utilizador->empresa_id, 403);
 
-        if ($admin->id === $utilizador->id) {
+        if ((int) $admin->id === (int) $utilizador->id) {
             return back()->with('erro', 'Não podes desativar a tua própria conta.');
         }
 

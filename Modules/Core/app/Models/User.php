@@ -2,11 +2,13 @@
 
 namespace Modules\Core\Models;
 
+use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 use Spatie\Permission\Traits\HasRoles;
@@ -31,6 +33,7 @@ use Spatie\Permission\Traits\HasRoles;
  */
 class User extends Authenticatable implements MustVerifyEmail
 {
+    use HasApiTokens;
     use HasFactory;
     use HasRoles;
     use LogsActivity;
@@ -47,12 +50,16 @@ class User extends Authenticatable implements MustVerifyEmail
         'is_super_admin' => false,
     ];
 
+    /**
+     * `is_super_admin` NÃO é atribuível em massa de propósito: um futuro
+     * `create($request->all())` não pode escalar privilégios. Define-o
+     * explicitamente (forceFill) ou via UserFactory::superAdmin().
+     */
     protected $fillable = [
         'name',
         'email',
         'password',
         'empresa_id',
-        'is_super_admin',
         'ativo',
     ];
 
@@ -72,6 +79,11 @@ class User extends Authenticatable implements MustVerifyEmail
             'ativo' => 'boolean',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    protected static function newFactory(): UserFactory
+    {
+        return UserFactory::new();
     }
 
     public function empresa(): BelongsTo

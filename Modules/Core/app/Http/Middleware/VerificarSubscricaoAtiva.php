@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Modules\Core\Exceptions\SubscricaoInativaException;
+use Modules\Core\Exceptions\TenantNaoEncontradoException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -23,7 +24,12 @@ class VerificarSubscricaoAtiva
     {
         $utilizador = Auth::user();
 
-        if (! $utilizador || $utilizador->is_super_admin) {
+        // Fail-closed, como o IdentificarTenant.
+        if (! $utilizador) {
+            throw new TenantNaoEncontradoException;
+        }
+
+        if ($utilizador->is_super_admin) {
             return $next($request);
         }
 

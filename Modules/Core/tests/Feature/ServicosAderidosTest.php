@@ -35,8 +35,11 @@ class ServicosAderidosTest extends TestCase
             'name' => 'Utilizador '.$nif,
             'email' => 'u'.$nif.'@teste.test',
             'password' => bcrypt('segredo123'),
-            'is_super_admin' => $superAdmin,
         ]);
+
+        if ($superAdmin) {
+            $utilizador->forceFill(['is_super_admin' => true])->save();
+        }
 
         return [$empresa, $utilizador];
     }
