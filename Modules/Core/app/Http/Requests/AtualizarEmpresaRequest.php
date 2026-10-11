@@ -29,7 +29,7 @@ class AtualizarEmpresaRequest extends FormRequest
         return [
             'nome_comercial' => ['required', 'string', 'max:255'],
             'nome_legal' => ['nullable', 'string', 'max:255'],
-            'nif' => ['required', 'string', 'min:9', 'max:20', Rule::unique('empresas', 'nif')->ignore($empresaId)],
+            'nif' => ['required', 'string', 'min:9', 'max:20', 'regex:/^[0-9A-Za-z]+$/', Rule::unique('empresas', 'nif')->ignore($empresaId)],
             'regime_fiscal' => ['nullable', 'string', 'max:100'],
             'morada' => ['nullable', 'string', 'max:255'],
             'municipio' => ['nullable', 'string', 'max:100'],
