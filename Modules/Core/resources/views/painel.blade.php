@@ -4,22 +4,26 @@
 
 @section('conteudo')
     @php($empresa = auth()->user()->empresa)
-    @php($servicos = $empresa->servicosAderidos())
+    @php($servicos = $empresa ? $empresa->servicosAderidos() : collect())
 
     <div class="w-full max-w-2xl rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 class="text-xl font-semibold text-slate-900">
             Olá, {{ auth()->user()->name }} 👋
         </h1>
         <p class="mt-1 text-sm text-slate-500">
-            {{ $empresa->nome_comercial }} —
-            @if ($empresa->estado_subscricao === 'trial')
-                em período experimental.
+            @if (! $empresa)
+                Conta de administração da plataforma (sem empresa associada).
             @else
-                subscrição {{ $empresa->estado_subscricao }}.
+                {{ $empresa->nome_comercial }} —
+                @if ($empresa->estado_subscricao === 'trial')
+                    em período experimental.
+                @else
+                    subscrição {{ $empresa->estado_subscricao }}.
+                @endif
             @endif
         </p>
 
-        @if ($servicos->isEmpty())
+        @if ($empresa && $servicos->isEmpty())
             <div class="mt-6 rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
                 Esta empresa ainda não tem serviços ativos.
             </div>
@@ -37,9 +41,11 @@
             </div>
         @endif
 
-        <a href="{{ route('core.empresa.editar', auth()->user()->empresa_id) }}"
-           class="mt-6 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500">
-            Configurar dados da empresa &rarr;
-        </a>
+        @if ($empresa)
+            <a href="{{ route('core.empresa.editar', $empresa->id) }}"
+               class="mt-6 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500">
+                Configurar dados da empresa &rarr;
+            </a>
+        @endif
     </div>
 @endsection

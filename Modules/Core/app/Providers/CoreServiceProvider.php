@@ -113,6 +113,7 @@ class CoreServiceProvider extends ServiceProvider
             'Empresa',
             90,
             fn () => [auth()->user()?->empresa_id],
+            fn () => auth()->user()?->empresa_id !== null,
         );
     }
 
