@@ -32,7 +32,7 @@ em `Modules/Faturacao/README.md`.
 
 ## Stack
 
-- **Backend**: Laravel 13, PHP 8.3+ (ambiente de desenvolvimento em 8.4)
+- **Backend**: Laravel 13, PHP 8.4+ (o `composer.lock` fixa Symfony 8, que usa sintaxe 8.4)
 - **Base de dados**: MySQL (SQLite em memória nos testes automatizados)
 - **Frontend**: Tailwind CSS 4, Alpine.js (via CDN), Vite
 - **Módulos**: `nwidart/laravel-modules`

@@ -21,7 +21,9 @@ return [
     | e acrescenta storage/app/faturacao/ ao .gitignore.
     |
     */
-    'chave_privada_path' => env('FATURACAO_CHAVE_PRIVADA_PATH', storage_path('app/faturacao/chave-privada.pem')),
+    // `?:` e não o 2.º argumento de env(): uma variável presente mas vazia
+    // (FATURACAO_CHAVE_PRIVADA_PATH=) devolve '' e não usaria o valor por omissão.
+    'chave_privada_path' => env('FATURACAO_CHAVE_PRIVADA_PATH') ?: storage_path('app/faturacao/chave-privada.pem'),
 
     /*
     | Versão da chave em uso — a AGT exige que cada documento registe qual
@@ -79,8 +81,9 @@ return [
     /*
     | Taxas de IVA aceites na emissão (percentagens, separadas por vírgula no .env).
     | Confirma contra a tabela atual da AGT antes de produção. Taxa 0 (isenção)
-    | exigirá motivo de isenção — ainda por implementar (ver README).
+    | está DESATIVADA por omissão: exige motivo de isenção (códigos M no SAF-T), ainda
+    | por implementar — só a ativar depois disso (ver README).
     */
-    'taxas_iva_permitidas' => array_map('floatval', array_filter(explode(',', (string) env('FATURACAO_TAXAS_IVA_PERMITIDAS', '0,14')), 'strlen')),
+    'taxas_iva_permitidas' => array_map('floatval', array_filter(explode(',', (string) env('FATURACAO_TAXAS_IVA_PERMITIDAS') ?: '14'), 'strlen')),
 
 ];

@@ -4,7 +4,7 @@
     "type": "laravel-module",
     "license": "proprietary",
     "require": {
-        "php": "^8.3",
+        "php": "^8.4",
         "spatie/laravel-permission": "^8.0",
         "spatie/laravel-activitylog": "^5.0"
     },

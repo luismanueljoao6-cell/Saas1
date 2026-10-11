@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Modules\Core\Console\ProvisionarServicosCommand;
 use Modules\Core\Http\Middleware\IdentificarTenant;
+use Modules\Core\Support\ProxiesConfiaveis;
 use Modules\Faturacao\Console\VerificarCadeiaFiscalCommand;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
@@ -28,16 +29,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // por vírgula). No GitHub Codespaces (CODESPACES=true) confia-se em
         // tudo automaticamente. Com `config:cache`, define TRUSTED_PROXIES
         // como variável de ambiente real (env() fora de config/ não lê .env).
-        $proxies = env('TRUSTED_PROXIES');
+        $proxies = ProxiesConfiaveis::resolver(
+            env('TRUSTED_PROXIES'),
+            filter_var(env('CODESPACES'), FILTER_VALIDATE_BOOLEAN),
+        );
 
-        if ($proxies === null && filter_var(env('CODESPACES'), FILTER_VALIDATE_BOOLEAN)) {
-            $proxies = '*';
-        }
-
-        if ($proxies) {
-            $middleware->trustProxies(
-                at: $proxies === '*' ? '*' : array_map('trim', explode(',', (string) $proxies))
-            );
+        if ($proxies !== null) {
+            $middleware->trustProxies(at: $proxies);
         }
         // O tenant tem de ficar definido ANTES do route model binding implícito:
         // sem isto, `Cliente $cliente` (BelongsToTenant) seria resolvido sem tenant
