@@ -28,6 +28,20 @@ class NotaCreditoDebitoService
      */
     public function criarParaAnularFatura(Fatura $fatura, string $motivo): NotaCreditoDebito
     {
+        // Lock na fatura: dois pedidos de anulação em simultâneo ficam
+        // serializados e o segundo já vê o rascunho do primeiro.
+        return DB::transaction(function () use ($fatura, $motivo) {
+            $origem = Fatura::withoutGlobalScopes()
+                ->where('empresa_id', $fatura->empresa_id)
+                ->lockForUpdate()
+                ->findOrFail($fatura->id);
+
+            return $this->prepararAnulacaoTotal($origem, $motivo);
+        });
+    }
+
+    protected function prepararAnulacaoTotal(Fatura $fatura, string $motivo): NotaCreditoDebito
+    {
         if (! $fatura->estaEmitido()) {
             throw new \InvalidArgumentException('Só é possível emitir uma nota de crédito sobre uma fatura já emitida.');
         }

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
+use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
 use Modules\Faturacao\Support\GuardaEmissao;
@@ -134,8 +135,16 @@ class ReciboService
             ->get(['valor'])
             ->sum(fn ($recibo) => Dinheiro::centimos($recibo->valor));
 
-        if ($jaRecebido + $centimos > Dinheiro::centimos($fatura->valor_total)) {
-            throw new \DomainException('O total recebido excede o valor da fatura.');
+        $creditado = NotaCreditoDebito::withoutGlobalScopes()
+            ->where('empresa_id', $empresaId)
+            ->where('fatura_id', $faturaId)
+            ->where('tipo', 'credito')
+            ->where('estado', 'emitida')
+            ->get(['valor_total'])
+            ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_total));
+
+        if ($jaRecebido + $centimos > Dinheiro::centimos($fatura->valor_total) - $creditado) {
+            throw new \DomainException('O total recebido excede o valor em dívida da fatura (já deduzidas as notas de crédito).');
         }
     }
 }

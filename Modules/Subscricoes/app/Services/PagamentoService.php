@@ -6,6 +6,7 @@ use DomainException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantService;
@@ -63,7 +64,10 @@ class PagamentoService
                     $this->validarValorRecebido($pagamento, $valorRecebido);
 
                     $subscricao = $pagamento->subscricao()->with('plano')->firstOrFail();
-                    $empresa = $subscricao->empresa;
+                    // Lock na empresa: dois pagamentos da mesma empresa confirmados em
+                    // paralelo leriam o mesmo subscricao_expira_em e um sobrescreveria o
+                    // outro (perda de dias pagos).
+                    $empresa = Empresa::query()->lockForUpdate()->findOrFail($subscricao->empresa_id);
                     $agora = now();
 
                     $base = $agora;

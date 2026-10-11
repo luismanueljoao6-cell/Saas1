@@ -102,4 +102,40 @@ class RegrasDeNegocioTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         app(NotaCreditoDebitoService::class)->criarRascunho($e->id, $c->id, 'foo', 'x', $this->linha());
     }
+
+    public function test_centimos_half_up_sem_float(): void
+    {
+        $this->assertSame(101, Dinheiro::centimos('1.005'));
+        $this->assertSame(29, Dinheiro::centimos('0.285'));
+        $this->assertSame(101, Dinheiro::centimos(1.005));
+        $this->assertSame(12345, Dinheiro::centimos('123.45'));
+        $this->assertSame(-250, Dinheiro::centimos('-2.50'));
+        $this->assertSame(0, Dinheiro::centimos(null));
+    }
+
+    public function test_recibo_rejeitado_em_fatura_totalmente_anulada(): void
+    {
+        [$e, $c] = $this->cenario('600000007');
+        $f = $this->faturaEmitida($e, $c);
+        $nc = app(NotaCreditoDebitoService::class);
+        $nc->emitir($nc->criarParaAnularFatura($f, 'Erro'));
+
+        $this->expectException(\DomainException::class);
+        app(\Modules\Faturacao\Services\ReciboService::class)->emitir($e->id, $c->id, '10.00', 'dinheiro', $f->id);
+    }
+
+    public function test_recibo_respeita_nota_de_credito_parcial(): void
+    {
+        [$e, $c] = $this->cenario('600000008');
+        $f = $this->faturaEmitida($e, $c, 1000);
+        $nc = app(NotaCreditoDebitoService::class);
+        $nc->emitir($nc->criarRascunho($e->id, $c->id, 'credito', 'Parcial', $this->linha(500), $f->id));
+        $recibos = app(\Modules\Faturacao\Services\ReciboService::class);
+
+        $recibo = $recibos->emitir($e->id, $c->id, '570.00', 'dinheiro', $f->id);
+        $this->assertSame('emitido', $recibo->estado);
+
+        $this->expectException(\DomainException::class);
+        $recibos->emitir($e->id, $c->id, '0.01', 'dinheiro', $f->id);
+    }
 }
