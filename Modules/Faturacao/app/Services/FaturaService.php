@@ -131,6 +131,9 @@ class FaturaService
         $fatura->linhas()->delete();
 
         foreach (array_values($linhas) as $indice => $dadosLinha) {
+            $produto = ! empty($dadosLinha['produto_id'])
+                ? Produto::withoutGlobalScopes()->where('empresa_id', $fatura->empresa_id)->find($dadosLinha['produto_id'])
+                : null;
             $linha = new FaturaLinha([
                 'fatura_id' => $fatura->id,
                 'produto_id' => $dadosLinha['produto_id'] ?? null,
@@ -138,6 +141,7 @@ class FaturaService
                 'quantidade' => $dadosLinha['quantidade'],
                 'preco_unitario' => $dadosLinha['preco_unitario'],
                 'taxa_iva' => $dadosLinha['taxa_iva'],
+                'tipo_saft' => $produto?->tipo_saft ?: ($dadosLinha['tipo_saft'] ?? null),
                 'codigo_isencao_iva' => $dadosLinha['codigo_isencao_iva'] ?? null,
                 'motivo_isencao_iva' => $dadosLinha['motivo_isencao_iva'] ?? null,
                 'ordem' => $indice,
@@ -158,12 +162,21 @@ class FaturaService
             if ((float) ($linha['quantidade'] ?? 0) <= 0 || (float) ($linha['preco_unitario'] ?? -1) < 0) {
                 throw new \InvalidArgumentException('Quantidade e preço da linha '.($indice + 1).' são inválidos.');
             }
+            $tipo = strtoupper(trim((string) ($linha['tipo_saft'] ?? '')));
             if (! empty($linha['produto_id'])) {
                 $produto = Produto::withoutGlobalScopes()->where('empresa_id', $empresaId)->where('ativo', true)->find($linha['produto_id']);
                 if (! $produto) throw new \DomainException('O produto da linha '.($indice + 1).' não existe, não está ativo ou pertence a outra empresa.');
+                if (! in_array($produto->tipo_saft, ['P', 'S', 'O', 'E', 'I'], true)) {
+                    throw new \DomainException('Classifique fiscalmente o produto '.$produto->nome.' antes de o faturar.');
+                }
+                if ($tipo !== '' && $tipo !== $produto->tipo_saft) {
+                    throw new \DomainException('O tipo SAF-T da linha '.($indice + 1).' não corresponde ao produto selecionado.');
+                }
                 if ($produto->taxa_iva !== null && (float) $produto->taxa_iva !== $taxa) {
                     throw new \DomainException('A taxa de IVA da linha '.($indice + 1).' não corresponde à taxa configurada no produto.');
                 }
+            } elseif (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+                throw new \InvalidArgumentException('Selecione o tipo fiscal SAF-T da linha '.($indice + 1).'.');
             }
             if ($taxa == 0.0) {
                 $codigo = trim((string) ($linha['codigo_isencao_iva'] ?? ''));
