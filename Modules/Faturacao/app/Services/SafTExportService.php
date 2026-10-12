@@ -96,7 +96,6 @@ class SafTExportService
             'NIF do produtor' => config('faturacao.saft_nif_produtor'),
             'identificação do produto no formato Nome da aplicação/Produtor' => config('faturacao.saft_product_id'),
             'conta contabilística de clientes' => config('faturacao.saft_conta_clientes'),
-            'cidade padrão dos clientes' => config('faturacao.saft_cidade_padrao'),
         ];
         foreach ($obrigatorios as $campo => $valor) {
             if (! is_string($valor) || trim($valor) === '') $problemas[] = 'Configure '.$campo.' no ambiente.';
@@ -106,10 +105,13 @@ class SafTExportService
         if (trim((string) ($empresa->morada ?? '')) === '') $problemas[] = 'A empresa não tem morada fiscal.';
         if (trim((string) ($empresa->municipio ?? '')) === '') $problemas[] = 'A empresa não tem município fiscal.';
 
-        $clientes = Cliente::withoutGlobalScopes()->where('empresa_id', $empresa->id)->get(['id', 'morada']);
+        $clientes = Cliente::withoutGlobalScopes()->where('empresa_id', $empresa->id)->get(['id', 'morada', 'municipio']);
         foreach ($clientes as $cliente) {
             if (trim((string) $cliente->morada) === '') {
                 $problemas[] = 'O cliente CLI-'.$cliente->id.' não tem morada.';
+            }
+            if (trim((string) $cliente->municipio) === '') {
+                $problemas[] = 'O cliente CLI-'.$cliente->id.' não tem município.';
             }
         }
 
@@ -272,7 +274,10 @@ class SafTExportService
             $c->appendChild($this->no($doc, 'CompanyName', $cliente->nome ?: 'Consumidor final'));
             $morada = $doc->createElementNS(self::NAMESPACE_SAFT, 'BillingAddress');
             $morada->appendChild($this->no($doc, 'AddressDetail', $cliente->morada));
-            $morada->appendChild($this->no($doc, 'City', config('faturacao.saft_cidade_padrao', '')));
+            $morada->appendChild($this->no($doc, 'City', $cliente->municipio));
+            if (trim((string) $cliente->provincia) !== '') {
+                $morada->appendChild($this->no($doc, 'Province', $cliente->provincia));
+            }
             $morada->appendChild($this->no($doc, 'Country', 'AO'));
             $c->appendChild($morada);
             $c->appendChild($this->no($doc, 'SelfBillingIndicator', 0));
