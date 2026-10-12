@@ -455,8 +455,11 @@ class SafTExportService
                 ->where('empresa_id', $empresa->id)->find($recibo->cliente_id);
             $serie = \Modules\Faturacao\Models\Serie::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)->find($recibo->serie_id);
-            if (! $fatura || ! $cliente || ! $serie || ! $fatura->estaEmitido()) {
-                throw new \RuntimeException('O recibo '.$recibo->numero_documento.' tem referências fiscais inválidas.');
+            if (! $fatura || ! $cliente || ! $serie || ! $fatura->estaEmitido()
+                || (int) $fatura->cliente_id !== (int) $recibo->cliente_id
+                || $serie->tipo_documento !== 'RC'
+                || trim((string) $recibo->hash) === '') {
+                throw new \RuntimeException('O recibo '.$recibo->numero_documento.' tem referências fiscais inválidas ou não tem assinatura.');
             }
 
             $pagamento = $doc->createElementNS(self::NAMESPACE_SAFT, 'Payment');
@@ -464,7 +467,7 @@ class SafTExportService
             $pagamento->appendChild($this->no($doc, 'TransactionDate', $recibo->data_emissao->format('Y-m-d')));
             $pagamento->appendChild($this->no($doc, 'PaymentType', 'RC'));
             $pagamento->appendChild($this->no($doc, 'Description', 'Recibo '.$recibo->numero_documento));
-            $pagamento->appendChild($this->no($doc, 'SystemID', config('faturacao.saft_product_id', 'Saas1')));
+            $pagamento->appendChild($this->no($doc, 'SystemID', config('app.name', 'Saas1')));
             $estado = $doc->createElementNS(self::NAMESPACE_SAFT, 'DocumentStatus');
             $estado->appendChild($this->no($doc, 'PaymentStatus', 'N'));
             $estado->appendChild($this->no($doc, 'PaymentStatusDate', $recibo->data_hora_sistema->format('Y-m-d\\TH:i:s')));
