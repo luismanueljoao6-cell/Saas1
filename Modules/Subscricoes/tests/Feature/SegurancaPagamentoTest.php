@@ -170,7 +170,6 @@ class SegurancaPagamentoTest extends TestCase
             );
         }
     }
-}
 
     public function test_webhook_proxypay_valida_hmac_sha256_do_corpo_original(): void
     {
@@ -202,3 +201,4 @@ class SegurancaPagamentoTest extends TestCase
         ], $corpo);
         $this->assertFalse($gateway->validarPedidoWebhook($tokenNaUrl));
     }
+}
