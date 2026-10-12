@@ -2,6 +2,7 @@
 
 namespace Modules\EstudioMusica\Services;
 
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Modules\Faturacao\Models\Cliente;
 
@@ -62,7 +63,7 @@ class PerfilArtistaService
         $token = Str::random(48);
 
         $cliente->forceFill([
-            'token_portal' => $token,
+            'token_portal' => hash('sha256', $token),
             'token_portal_expira_em' => now()->addDays((int) config('estudiomusica.portal_token_validade_dias')),
         ])->save();
 
