@@ -140,6 +140,24 @@ class SegurancaPagamentoTest extends TestCase
         $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
     }
 
+    public function test_nao_permite_iniciar_subscricao_com_plano_inativo(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000011');
+        $plano->update(['ativo' => false]);
+
+        $this->expectException(DomainException::class);
+
+        try {
+            app(SubscricaoService::class)->iniciar($empresa, $plano);
+        } finally {
+            $this->assertSame(
+                0,
+                Pagamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->count()
+            );
+        }
+    }
+
     public function test_confirmacao_repetida_nao_estende_duas_vezes_o_periodo_pago(): void
     {
         $this->usarGateway();
