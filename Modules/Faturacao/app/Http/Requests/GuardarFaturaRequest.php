@@ -34,6 +34,8 @@ class GuardarFaturaRequest extends FormRequest
                     }
                 },
             ],
+            'linhas.*.codigo_isencao_iva' => ['required_if:linhas.*.taxa_iva,0', 'nullable', 'regex:/^M[0-9]{2}$/'],
+            'linhas.*.motivo_isencao_iva' => ['required_if:linhas.*.taxa_iva,0', 'nullable', 'string', 'min:6', 'max:60'],
         ];
     }
 }
