@@ -141,7 +141,7 @@ class FaturaService
                 'quantidade' => $dadosLinha['quantidade'],
                 'preco_unitario' => $dadosLinha['preco_unitario'],
                 'taxa_iva' => $dadosLinha['taxa_iva'],
-                'tipo_saft' => $produto?->tipo_saft ?: ($dadosLinha['tipo_saft'] ?? null),
+                'tipo_saft' => $produto?->tipo_saft ?: ($dadosLinha['tipo_saft'] ?? null) ?: config('faturacao.saft_tipo_produto_padrao') ?: null,
                 'codigo_isencao_iva' => $dadosLinha['codigo_isencao_iva'] ?? null,
                 'motivo_isencao_iva' => $dadosLinha['motivo_isencao_iva'] ?? null,
                 'ordem' => $indice,
@@ -168,17 +168,14 @@ class FaturaService
                 if (! $produto) {
                     throw new \DomainException('O produto da linha '.($indice + 1).' não existe, não está ativo ou pertence a outra empresa.');
                 }
-                if (! in_array($produto->tipo_saft, ['P', 'S', 'O', 'E', 'I'], true)) {
-                    throw new \DomainException('Classifique fiscalmente o produto '.$produto->nome.' antes de o faturar.');
-                }
-                if ($tipo !== '' && $tipo !== $produto->tipo_saft) {
+                if ($tipo !== '' && $produto->tipo_saft !== null && $tipo !== $produto->tipo_saft) {
                     throw new \DomainException('O tipo SAF-T da linha '.($indice + 1).' não corresponde ao produto selecionado.');
                 }
                 if ($produto->taxa_iva !== null && (float) $produto->taxa_iva !== $taxa) {
                     throw new \DomainException('A taxa de IVA da linha '.($indice + 1).' não corresponde à taxa configurada no produto.');
                 }
-            } elseif (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
-                throw new \InvalidArgumentException('Selecione o tipo fiscal SAF-T da linha '.($indice + 1).'.');
+            } elseif ($tipo !== '' && ! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+                throw new \InvalidArgumentException('O tipo fiscal SAF-T da linha '.($indice + 1).' é inválido.');
             }
             if ($taxa == 0.0) {
                 $codigo = trim((string) ($linha['codigo_isencao_iva'] ?? ''));
