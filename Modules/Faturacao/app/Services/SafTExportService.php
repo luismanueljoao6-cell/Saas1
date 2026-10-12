@@ -105,13 +105,21 @@ class SafTExportService
         if (trim((string) ($empresa->morada ?? '')) === '') $problemas[] = 'A empresa não tem morada fiscal.';
         if (trim((string) ($empresa->municipio ?? '')) === '') $problemas[] = 'A empresa não tem município fiscal.';
 
-        $clientes = Cliente::withoutGlobalScopes()->where('empresa_id', $empresa->id)->get(['id', 'morada', 'municipio']);
+        $clientes = Cliente::withoutGlobalScopes()->where('empresa_id', $empresa->id)->get(['id', 'nome', 'nif', 'morada', 'municipio']);
         foreach ($clientes as $cliente) {
             if (trim((string) $cliente->morada) === '') {
                 $problemas[] = 'O cliente CLI-'.$cliente->id.' não tem morada.';
             }
             if (trim((string) $cliente->municipio) === '') {
                 $problemas[] = 'O cliente CLI-'.$cliente->id.' não tem município.';
+            }
+            $nomeCliente = mb_strtolower(trim((string) $cliente->nome));
+            $consumidorFinal = $nomeCliente === 'consumidor final' && trim((string) $cliente->nif) === '';
+            if (trim((string) $cliente->nif) === '' && ! $consumidorFinal) {
+                $problemas[] = 'O cliente CLI-'.$cliente->id.' não tem NIF; só o cliente genérico designado Consumidor final pode usar o NIF legal 999999999.';
+            }
+            if (trim((string) $cliente->nome) === '' && ! $consumidorFinal) {
+                $problemas[] = 'O cliente CLI-'.$cliente->id.' não tem nome.';
             }
         }
 
@@ -270,8 +278,13 @@ class SafTExportService
             $c = $doc->createElementNS(self::NAMESPACE_SAFT, 'Customer');
             $c->appendChild($this->no($doc, 'CustomerID', 'CLI-'.$cliente->id));
             $c->appendChild($this->no($doc, 'AccountID', $contaClientes));
-            $c->appendChild($this->no($doc, 'CustomerTaxID', $cliente->nif ?: '999999999'));
-            $c->appendChild($this->no($doc, 'CompanyName', $cliente->nome ?: 'Consumidor final'));
+            $nomeCliente = mb_strtolower(trim((string) $cliente->nome));
+            $consumidorFinal = $nomeCliente === 'consumidor final' && trim((string) $cliente->nif) === '';
+            if (trim((string) $cliente->nif) === '' && ! $consumidorFinal) {
+                throw new \RuntimeException('O cliente CLI-'.$cliente->id.' não tem NIF; apenas o cliente genérico Consumidor final pode usar 999999999.');
+            }
+            $c->appendChild($this->no($doc, 'CustomerTaxID', $consumidorFinal ? '999999999' : $cliente->nif));
+            $c->appendChild($this->no($doc, 'CompanyName', trim((string) $cliente->nome) !== '' ? $cliente->nome : 'Consumidor final'));
             $morada = $doc->createElementNS(self::NAMESPACE_SAFT, 'BillingAddress');
             $morada->appendChild($this->no($doc, 'AddressDetail', $cliente->morada));
             $morada->appendChild($this->no($doc, 'City', $cliente->municipio));
