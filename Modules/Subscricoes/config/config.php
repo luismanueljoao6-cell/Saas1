@@ -22,9 +22,8 @@ return [
         'proxypay' => [
             'base_url' => env('PROXYPAY_BASE_URL', 'https://api.proxypay.co.ao'),
             'api_key' => env('PROXYPAY_API_KEY'),
-            // Confirma o nome exato deste cabeçalho na tua conta ProxyPay —
-            // varia consoante o mecanismo de assinatura de webhook em vigor.
-            'webhook_token' => env('PROXYPAY_WEBHOOK_TOKEN'),
+            // Os webhooks v2 usam X-Signature = HMAC-SHA-256 do corpo
+            // original, assinado com a mesma API key da integração.
             // Número de entidade Multicaixa atribuído à tua conta ProxyPay
             // (aparece no talão de pagamento ao lado da referência).
             'entity_id' => env('PROXYPAY_ENTITY_ID'),
