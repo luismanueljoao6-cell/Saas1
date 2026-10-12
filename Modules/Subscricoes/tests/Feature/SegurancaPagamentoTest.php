@@ -483,6 +483,7 @@ class SegurancaPagamentoTest extends TestCase
             Subscricao::withoutGlobalScopes()->findOrFail($subscricaoAntiga->id)->estado
         );
     }
+
     public function test_subscricao_vencida_deixa_de_conceder_limites_do_plano_mesmo_antes_do_job(): void
     {
         $this->usarGateway();
@@ -511,5 +512,4 @@ class SegurancaPagamentoTest extends TestCase
             'Uma subscrição vencida não deve manter os limites pagos só porque o job de expiração ainda não correu.'
         );
     }
-
 }
