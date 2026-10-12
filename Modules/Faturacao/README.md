@@ -137,17 +137,8 @@ grace period, consegues consultar faturas antigas mas não criar novas
 
 - **Certificação AGT do software** — é um processo administrativo, não
   técnico; ver aviso no topo.
-- **Recibos e notas de crédito/débito não têm UI própria** — os models e
-  services existem e estão testados (`NotaCreditoDebitoService`), falta o
-  controller/views equivalentes aos de Fatura.
-- **Validação do SAF-T contra o XSD de referência** — em curso. O
-  `SafTExportService::gerar()` continua a produzir XML provisório para manter
-  compatibilidade com os fluxos existentes; não deve ser tratado como conforme.
-  Foi acrescentado `gerarValidado()`, que só devolve o XML quando passa o XSD
-  e interrompe a exportação com os erros de validação caso contrário. Como a
-  estrutura atual ainda não cumpre o esquema, este modo deverá falhar até as
-  correções estruturais estarem concluídas. O esquema versionado está em
-  `resources/saft/SAFTAO1.01_01.xsd`.
+- **Recibos e notas de crédito/débito ainda não têm UI própria.** Os modelos e serviços existem. O exportador SAF-T inclui recibos na secção `Payments`, mas bloqueia recibos sem fatura de origem.
+- **SAF-T ainda não está certificado nem confirmado como aceite pela AGT.** O exportador foi corrigido estruturalmente para emitir `BillingAddress`, `TaxTable`, `DocumentStatus`, `SpecialRegimes`, linhas com `Tax`, `DocumentTotals` e pagamentos. O job de fila usa `gerarValidado()`, que bloqueia a gravação se faltarem dados fiscais ou se o XML falhar o XSD versionado. `gerar()` permanece apenas para compatibilidade e diagnóstico. O XSD em `resources/saft/SAFTAO1.01_01.xsd` é uma referência em estado Development e precisa de confirmação contra a versão aplicável da AGT. A suite de testes ainda tem de ser executada antes de integrar na `main`.
 - **Faturas de outros módulos** (ex.: a subscrição SaaS da própria
   plataforma) não passam por aqui — este módulo fatura AS EMPRESAS
   clientes da plataforma aos SEUS PRÓPRIOS clientes, não a relação entre
@@ -175,9 +166,13 @@ grace period, consegues consultar faturas antigas mas não criar novas
    FATURACAO_SAFT_NUMERO_VALIDACAO=0
    FATURACAO_SAFT_PRODUCT_ID=
    FATURACAO_SAFT_PRODUCT_VERSION=1.0.0
+   FATURACAO_SAFT_CONTA_CLIENTES=
+   FATURACAO_SAFT_SOURCE_ID=Sistema
+   FATURACAO_SAFT_TIPO_PRODUTO_PADRAO=
+   FATURACAO_SAFT_CODIGOS_TAXA={"14.00":"NOR"}
    ```
 
-4. **Migrar**
+Os campos SAF-T adicionais são explícitos: classifica cada produto como P/S/O/E/I na página Produtos; completa a morada e o município de cada cliente; configura o NIF do produtor, o ProductID no formato Nome da aplicação/Nome do produtor e a conta contabilística real de clientes. `FATURACAO_SAFT_TIPO_PRODUTO_PADRAO` só se aplica a linhas manuais sem produto associado. O mapeamento de taxas tem de refletir o regime fiscal aplicável; o exemplo de 14% não substitui confirmação fiscal.\n\n4. **Migrar**
    ```bash
    php artisan migrate
    ```
