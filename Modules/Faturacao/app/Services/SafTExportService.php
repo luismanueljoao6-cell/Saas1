@@ -7,7 +7,6 @@ use DOMElement;
 use Illuminate\Support\Carbon;
 use InvalidArgumentException;
 use LibXMLError;
-use RuntimeException;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
@@ -18,6 +17,7 @@ use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Models\Serie;
 use Modules\Faturacao\Support\Dinheiro;
+use RuntimeException;
 
 /**
  * ESTRUTURA PROVISÓRIA do SAF-T (AO): ainda NÃO validada contra o XSD oficial
