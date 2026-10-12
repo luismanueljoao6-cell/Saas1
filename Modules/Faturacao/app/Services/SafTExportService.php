@@ -244,6 +244,30 @@ class SafTExportService
             $tabelas->appendChild($p);
         }
 
+        // Linhas manuais também precisam de existir na tabela Product do SAF-T.
+        $idsFaturas = Fatura::withoutGlobalScopes()->where('empresa_id', $empresa->id)->select('id');
+        $linhasManuais = FaturaLinha::whereIn('fatura_id', $idsFaturas)->whereNull('produto_id')->orderBy('id')->lazy(200);
+        foreach ($linhasManuais as $linhaManual) {
+            $codigo = 'SERVICO-LINHA-'.$linhaManual->id;
+            $p = $doc->createElementNS(self::NAMESPACE_SAFT, 'Product');
+            $p->appendChild($this->no($doc, 'ProductType', $this->tipoProdutoGenericoSafT()));
+            $p->appendChild($this->no($doc, 'ProductCode', $codigo));
+            $p->appendChild($this->no($doc, 'ProductDescription', $linhaManual->descricao));
+            $p->appendChild($this->no($doc, 'ProductNumberCode', $codigo));
+            $tabelas->appendChild($p);
+        }
+        $idsNotas = NotaCreditoDebito::withoutGlobalScopes()->where('empresa_id', $empresa->id)->select('id');
+        $linhasNotas = NotaCreditoDebitoLinha::whereIn('nota_credito_debito_id', $idsNotas)->orderBy('id')->lazy(200);
+        foreach ($linhasNotas as $linhaNota) {
+            $codigo = 'NOTA-LINHA-'.$linhaNota->id;
+            $p = $doc->createElementNS(self::NAMESPACE_SAFT, 'Product');
+            $p->appendChild($this->no($doc, 'ProductType', $this->tipoProdutoGenericoSafT()));
+            $p->appendChild($this->no($doc, 'ProductCode', $codigo));
+            $p->appendChild($this->no($doc, 'ProductDescription', $linhaNota->descricao));
+            $p->appendChild($this->no($doc, 'ProductNumberCode', $codigo));
+            $tabelas->appendChild($p);
+        }
+
         $taxasProdutos = Produto::withoutGlobalScopes()->where('empresa_id', $empresa->id)
             ->whereNotNull('taxa_iva')->pluck('taxa_iva');
         $idsFaturas = Fatura::withoutGlobalScopes()->where('empresa_id', $empresa->id)->select('id');
@@ -277,6 +301,15 @@ class SafTExportService
         return $tipo;
     }
 
+    protected function tipoProdutoGenericoSafT(): string
+    {
+        $tipo = strtoupper(trim((string) config('faturacao.saft_tipo_produto_padrao', '')));
+        if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+            throw new \\RuntimeException('Configure FATURACAO_SAFT_TIPO_PRODUTO_PADRAO antes de exportar linhas sem produto associado.');
+        }
+        return $tipo;
+    }
+
     protected function codigoTaxa(float $taxa): string
     {
         $codigos = config('faturacao.saft_codigos_taxa', []);
@@ -306,7 +339,7 @@ class SafTExportService
         $faturas = Fatura::withoutGlobalScopes()
             ->where('empresa_id', $empresa->id)->where('estado', 'emitida')
             ->whereBetween('data_emissao', [$de, $ate])
-            ->with('linhas')->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
+            ->with('linhas.produto')->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
 
         foreach ($faturas as $f) {
             $vendas->appendChild($this->documento($doc, 'FT', $f, 'CreditAmount'));
@@ -375,7 +408,9 @@ class SafTExportService
         foreach ($linhas as $indice => $linha) {
             $l = $doc->createElementNS(self::NAMESPACE_SAFT, 'Line');
             $produto = $linha->relationLoaded('produto') ? $linha->produto : null;
-            $codigo = $produto ? (string) ($produto->codigo ?: 'PROD-'.$produto->id) : 'SERVICO-'.$m->id.'-'.($indice + 1);
+            $codigo = $produto
+                ? (string) ($produto->codigo ?: 'PROD-'.$produto->id)
+                : ($m instanceof Fatura ? 'SERVICO-LINHA-'.$linha->id : 'NOTA-LINHA-'.$linha->id);
             $descricao = trim((string) $linha->descricao);
             $taxa = (float) $linha->taxa_iva;
             $l->appendChild($this->no($doc, 'LineNumber', $indice + 1));
