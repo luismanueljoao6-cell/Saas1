@@ -11,7 +11,7 @@ use Modules\Core\Services\TenantManager;
 /**
  * Trait a usar em QUALQUER model de negócio que pertença a uma empresa
  * (faturas, clientes, encomendas, sessões de estúdio, etc.), em qualquer
- * módulo do sistema. Garante duas coisas:
+ * módulo do sistema. Garante três coisas:
  *
  * 1. Todas as queries a este model são automaticamente filtradas pela
  *    empresa atual (via TenantScope).
@@ -24,6 +24,9 @@ use Modules\Core\Services\TenantManager;
  *    ou contexto de consola/seeder) é que o valor dado explicitamente é
  *    respeitado — é isso que serviços como o NumeracaoService fazem, de
  *    propósito, ao operar entre empresas.
+ *
+ * 3. Instâncias carregadas durante um bypass não podem ser atualizadas ou
+ *    eliminadas por um tenant diferente do proprietário.
  *
  * Uso:
  *
