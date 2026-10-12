@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use LogicException;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Traits\BelongsToTenant;
@@ -64,6 +65,42 @@ class IsolamentoTenantTest extends TestCase
         $tenantManager->set($empresaB->id);
         $this->assertCount(1, RegistoTesteTenant::all());
         $this->assertSame('Registo da empresa B', RegistoTesteTenant::first()->nome);
+    }
+
+    public function test_instancia_carregada_de_outro_tenant_nao_pode_ser_atualizada(): void
+    {
+        $empresaA = Empresa::create(['nome_comercial' => 'Empresa A', 'nif' => '100000011']);
+        $empresaB = Empresa::create(['nome_comercial' => 'Empresa B', 'nif' => '100000012']);
+        $tenantManager = app(TenantManager::class);
+
+        $tenantManager->set($empresaB->id);
+        $registoB = RegistoTesteTenant::create(['nome' => 'Registo B']);
+        $registoCarregado = $tenantManager->semTenant(
+            fn () => RegistoTesteTenant::findOrFail($registoB->id)
+        );
+
+        $tenantManager->set($empresaA->id);
+
+        $this->expectException(LogicException::class);
+        $registoCarregado->update(['nome' => 'Tentativa de alteração']);
+    }
+
+    public function test_instancia_carregada_de_outro_tenant_nao_pode_ser_eliminada(): void
+    {
+        $empresaA = Empresa::create(['nome_comercial' => 'Empresa A', 'nif' => '100000013']);
+        $empresaB = Empresa::create(['nome_comercial' => 'Empresa B', 'nif' => '100000014']);
+        $tenantManager = app(TenantManager::class);
+
+        $tenantManager->set($empresaB->id);
+        $registoB = RegistoTesteTenant::create(['nome' => 'Registo B']);
+        $registoCarregado = $tenantManager->semTenant(
+            fn () => RegistoTesteTenant::findOrFail($registoB->id)
+        );
+
+        $tenantManager->set($empresaA->id);
+
+        $this->expectException(LogicException::class);
+        $registoCarregado->delete();
     }
 
     public function test_sem_tenant_definido_a_query_fica_vazia_por_seguranca(): void
