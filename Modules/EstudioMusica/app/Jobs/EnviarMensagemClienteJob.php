@@ -3,6 +3,7 @@
 namespace Modules\EstudioMusica\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -27,7 +28,7 @@ use Throwable;
  * devolve false em vez de lançar, por isso a falha de um nunca impede os
  * outros dois.
  */
-class EnviarMensagemClienteJob implements ShouldQueue
+class EnviarMensagemClienteJob implements ShouldQueue, ShouldBeEncrypted
 {
     use Dispatchable;
     use InteractsWithQueue;
