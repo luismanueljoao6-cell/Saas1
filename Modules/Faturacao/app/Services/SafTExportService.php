@@ -4,6 +4,7 @@ namespace Modules\Faturacao\Services;
 
 use DOMDocument;
 use DOMElement;
+use LibXMLError;
 use Illuminate\Support\Carbon;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
@@ -13,6 +14,7 @@ use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
 use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Models\Recibo;
+use Modules\Faturacao\Models\Serie;
 use Modules\Faturacao\Support\Dinheiro;
 
 /**
@@ -184,7 +186,7 @@ class SafTExportService
 
             if (! $carregado) {
                 return array_values(array_map(
-                    static fn (\LibXMLError $erro): string => trim($erro->message).' (linha '.$erro->line.')',
+                    static fn (LibXMLError $erro): string => trim($erro->message).' (linha '.$erro->line.')',
                     libxml_get_errors(),
                 ));
             }
@@ -466,7 +468,7 @@ class SafTExportService
                 ->where('empresa_id', $empresa->id)->find($recibo->fatura_id);
             $cliente = Cliente::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)->find($recibo->cliente_id);
-            $serie = \Modules\Faturacao\Models\Serie::withoutGlobalScopes()
+            $serie = Serie::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)->find($recibo->serie_id);
             if (! $fatura || ! $cliente || ! $serie || ! $fatura->estaEmitido()
                 || (int) $fatura->cliente_id !== (int) $recibo->cliente_id
