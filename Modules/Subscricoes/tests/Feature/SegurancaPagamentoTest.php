@@ -11,9 +11,9 @@ use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Models\Subscricao;
 use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
+use Modules\Subscricoes\Services\Gateways\ProxyPayGateway;
 use Modules\Subscricoes\Services\PagamentoService;
 use Modules\Subscricoes\Services\SubscricaoService;
-use Modules\Subscricoes\Services\Gateways\ProxyPayGateway;
 use RuntimeException;
 use Tests\TestCase;
 
