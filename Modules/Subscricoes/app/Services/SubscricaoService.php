@@ -2,6 +2,7 @@
 
 namespace Modules\Subscricoes\Services;
 
+use DomainException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -48,13 +49,18 @@ class SubscricaoService
                         ->where('empresa_id', $empresaBloqueada->id)
                         ->where('estado', 'pendente')
                         ->where('expira_em', '>', now())
-                        ->whereHas('subscricao', fn ($query) => $query
-                            ->where('plano_id', $plano->id)
-                            ->where('estado', 'pendente'))
+                        ->whereHas('subscricao', fn ($query) => $query->where('estado', 'pendente'))
+                        ->with('subscricao')
                         ->latest('id')
                         ->first();
 
                     if ($existente) {
+                        if ((int) $existente->subscricao->plano_id !== (int) $plano->id) {
+                            throw new DomainException(
+                                'Já existe um pagamento pendente para outro plano. Conclua ou deixe expirar esse pagamento antes de mudar de plano.'
+                            );
+                        }
+
                         return [null, $existente, true];
                     }
 
