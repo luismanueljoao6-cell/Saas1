@@ -140,8 +140,14 @@ grace period, consegues consultar faturas antigas mas não criar novas
 - **Recibos e notas de crédito/débito não têm UI própria** — os models e
   services existem e estão testados (`NotaCreditoDebitoService`), falta o
   controller/views equivalentes aos de Fatura.
-- **Validação do SAF-T contra o XSD oficial** — o `SafTExportService`
-  gera uma estrutura plausível, não validada campo a campo.
+- **Validação do SAF-T contra o XSD de referência** — em curso. O
+  `SafTExportService::gerar()` continua a produzir XML provisório para manter
+  compatibilidade com os fluxos existentes; não deve ser tratado como conforme.
+  Foi acrescentado `gerarValidado()`, que só devolve o XML quando passa o XSD
+  e interrompe a exportação com os erros de validação caso contrário. Como a
+  estrutura atual ainda não cumpre o esquema, este modo deverá falhar até as
+  correções estruturais estarem concluídas. O esquema versionado está em
+  `resources/saft/SAFTAO1.01_01.xsd`.
 - **Faturas de outros módulos** (ex.: a subscrição SaaS da própria
   plataforma) não passam por aqui — este módulo fatura AS EMPRESAS
   clientes da plataforma aos SEUS PRÓPRIOS clientes, não a relação entre
@@ -165,6 +171,10 @@ grace period, consegues consultar faturas antigas mas não criar novas
    FATURACAO_CHAVE_VERSAO=1
    FATURACAO_TAXA_IVA_GERAL=14.0
    FATURACAO_SAFT_NUMERO_CERTIFICADO=0
+   FATURACAO_SAFT_NIF_PRODUTOR=
+   FATURACAO_SAFT_NUMERO_VALIDACAO=0
+   FATURACAO_SAFT_PRODUCT_ID=
+   FATURACAO_SAFT_PRODUCT_VERSION=1.0.0
    ```
 
 4. **Migrar**
