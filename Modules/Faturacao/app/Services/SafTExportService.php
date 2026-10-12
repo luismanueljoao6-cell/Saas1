@@ -393,6 +393,7 @@ class SafTExportService
             }
             $tabelas->appendChild($taxTable);
         }
+
         return $tabelas;
     }
 
@@ -402,6 +403,7 @@ class SafTExportService
         if (in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true) === false) {
             throw new RuntimeException('Classifique o produto '.$produto->id.' como P, S, O, E ou I antes de exportar SAF-T.');
         }
+
         return $tipo;
     }
 
@@ -411,6 +413,7 @@ class SafTExportService
         if (in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true) === false) {
             throw new RuntimeException('Classifique a linha manual como P, S, O, E ou I (ou configure um padrão fiscal validado).');
         }
+
         return $tipo;
     }
 
@@ -421,6 +424,7 @@ class SafTExportService
         if ($taxa == 0.0) {
             return 'ISE';
         }
+
         return is_string($codigo) && $codigo !== '' ? $codigo : number_format($taxa, 2, '.', '');
     }
 
