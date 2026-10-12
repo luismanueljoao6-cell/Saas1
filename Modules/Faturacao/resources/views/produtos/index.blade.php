@@ -22,6 +22,16 @@
                   class="mt-3 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
                 @csrf
                 <input name="nome" placeholder="Nome" required class="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2">
+                <label class="text-sm text-slate-600">Classificação SAF-T
+                    <select name="tipo_saft" required class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                        <option value="">Seleciona o tipo fiscal</option>
+                        <option value="P">P — Produto/bem</option>
+                        <option value="S">S — Serviço</option>
+                        <option value="O">O — Outros</option>
+                        <option value="E">E — Imposto especial de consumo</option>
+                        <option value="I">I — Imposto/taxa/encargo parafiscal</option>
+                    </select>
+                </label>
                 <input name="codigo" placeholder="Código (opcional)" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
                 <input name="unidade" placeholder="Unidade (un, hora, kg...)" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
                 <input name="preco_unitario" type="number" step="0.01" min="0" placeholder="Preço unitário" required class="rounded-md border border-slate-300 px-3 py-2 text-sm">
