@@ -103,7 +103,9 @@ class PagamentoService
                     // de fora são desativados, nunca apagados. Planos sem
                     // 'servicos' (ex.: antigos) não alteram nada.
                     if ($subscricao->servicos !== null) {
-                        $empresa->definirServicos($subscricao->servicos);
+                        if (! empty($subscricao->servicos)) {
+                            $empresa->definirServicos($subscricao->servicos);
+                        }
                     } elseif (! empty($subscricao->plano->servicos)) {
                         // Compatibilidade com subscrições antigas sem snapshot.
                         $empresa->definirServicos($subscricao->plano->servicos);
