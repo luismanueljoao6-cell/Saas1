@@ -39,7 +39,7 @@ class VerificarTokenPortalCliente
         // (fail-closed) qualquer query normal a Cliente.
         $cliente = $this->tenantManager->semTenant(
             fn () => Cliente::query()
-                ->where('token_portal', $token)
+                ->where('token_portal', hash('sha256', $token))
                 ->where('token_portal_expira_em', '>', now())
                 ->first()
         );

@@ -62,7 +62,7 @@ class PerfilArtistaService
         $token = Str::random(48);
 
         $cliente->forceFill([
-            'token_portal' => $token,
+            'token_portal' => hash('sha256', $token),
             'token_portal_expira_em' => now()->addDays((int) config('estudiomusica.portal_token_validade_dias')),
         ])->save();
 
