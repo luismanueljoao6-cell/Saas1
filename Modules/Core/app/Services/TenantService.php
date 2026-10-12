@@ -39,6 +39,26 @@ class TenantService
         }, 'marcar como pendente');
     }
 
+    /**
+     * Marca a empresa como pendente apenas se ainda não tiver acesso.
+     * A verificação é feita sob bloqueio para não sobrescrever uma ativação
+     * concorrente que tenha ocorrido enquanto o gateway gerava a referência.
+     */
+    public function marcarPendenteSeSemAcesso(Empresa $empresa): Empresa
+    {
+        return DB::transaction(function () use ($empresa) {
+            $empresaAtual = Empresa::query()
+                ->lockForUpdate()
+                ->findOrFail($empresa->id);
+
+            if ($empresaAtual->temAcesso()) {
+                return $empresaAtual;
+            }
+
+            return $this->marcarPendente($empresaAtual);
+        });
+    }
+
     public function suspender(Empresa $empresa): Empresa
     {
         return $this->transacionar($empresa, function (Empresa $empresa) {
