@@ -111,6 +111,7 @@ class SegurancaPagamentoTest extends TestCase
 
         $this->assertSame('expirado', $pagamento->estado);
         $this->assertSame('cancelada', Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->first()->estado);
+        $this->assertSame('trial', $empresa->fresh()->estado_subscricao);
     }
 
     public function test_webhook_sem_valor_pago_nao_confirma(): void
@@ -147,6 +148,7 @@ class SegurancaPagamentoTest extends TestCase
         $primeiro = app(SubscricaoService::class)->iniciar($empresa, $plano);
         $segundo = app(SubscricaoService::class)->iniciar($empresa, $plano);
 
+        $this->assertSame('pendente', $empresa->fresh()->estado_subscricao);
         $this->assertSame($primeiro->id, $segundo->id);
         $this->assertSame(
             1,
