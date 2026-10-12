@@ -92,6 +92,15 @@ return [
     'saft_product_id' => env('FATURACAO_SAFT_PRODUCT_ID', ''),
     'saft_product_version' => env('FATURACAO_SAFT_PRODUCT_VERSION', '1.0.0'),
 
+    // Campos exigidos pelo SAF-T que não existem no modelo atual da empresa.
+    // Configurar com dados reais antes de usar gerarValidado().
+    'saft_conta_clientes' => env('FATURACAO_SAFT_CONTA_CLIENTES', ''),
+    'saft_cidade_padrao' => env('FATURACAO_SAFT_CIDADE_PADRAO', ''),
+    'saft_tipo_produto_padrao' => env('FATURACAO_SAFT_TIPO_PRODUTO_PADRAO', ''),
+    'saft_source_id' => env('FATURACAO_SAFT_SOURCE_ID', 'Sistema'),
+    // Mapeamento explícito opcional: ex. {"14.00":"NOR","7.00":"RED"} após validação fiscal.
+    'saft_codigos_taxa' => json_decode((string) env('FATURACAO_SAFT_CODIGOS_TAXA', '{}'), true) ?: [],
+
     /*
     | Taxas de IVA aceites na emissão (percentagens, separadas por vírgula no .env).
     | Confirma contra a tabela atual da AGT antes de produção. Taxa 0 (isenção)
