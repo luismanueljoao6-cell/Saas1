@@ -52,6 +52,24 @@
                                    class="col-span-4 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
                             <input type="number" step="0.01" min="0" max="100" :name="`linhas[${indice}][taxa_iva]`" x-model.number="linha.taxa_iva" placeholder="IVA %"
                                    class="col-span-3 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                            <select :name="`linhas[${indice}][tipo_saft]`" x-model="linha.tipo_saft" required
+                                    class="col-span-12 sm:col-span-4 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                                <option value="S">S — Serviço</option>
+                                <option value="P">P — Produto/bem</option>
+                                <option value="O">O — Outros</option>
+                                <option value="E">E — Imposto especial de consumo</option>
+                                <option value="I">I — Imposto/taxa/encargo</option>
+                            </select>
+                            <template x-if="Number(linha.taxa_iva) === 0">
+                                <div class="col-span-12 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                    <input :name="`linhas[${indice}][codigo_isencao_iva]`" x-model="linha.codigo_isencao_iva"
+                                           placeholder="Código de isenção (M01…)" required pattern="M[0-9]{2}"
+                                           class="rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                                    <input :name="`linhas[${indice}][motivo_isencao_iva]`" x-model="linha.motivo_isencao_iva"
+                                           placeholder="Motivo legal da isenção" required minlength="6" maxlength="60"
+                                           class="sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                                </div>
+                            </template>
                             <button type="button" @click="removerLinha(indice)" class="col-span-1 text-red-500 hover:text-red-700" title="Remover">✕</button>
                         </div>
                     </template>
@@ -79,9 +97,9 @@
     <script>
         function novaFatura(taxaIvaGeral) {
             return {
-                linhas: [{ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral }],
+                linhas: [{ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral, tipo_saft: 'S', codigo_isencao_iva: '', motivo_isencao_iva: '' }],
                 adicionarLinha() {
-                    this.linhas.push({ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral });
+                    this.linhas.push({ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral, tipo_saft: 'S', codigo_isencao_iva: '', motivo_isencao_iva: '' });
                 },
                 removerLinha(indice) {
                     this.linhas.splice(indice, 1);
