@@ -13,6 +13,7 @@ use Modules\Subscricoes\Models\Subscricao;
 use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
 use Modules\Subscricoes\Services\PagamentoService;
 use Modules\Subscricoes\Services\SubscricaoService;
+use Modules\Subscricoes\Services\Gateways\ProxyPayGateway;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -170,3 +171,34 @@ class SegurancaPagamentoTest extends TestCase
         }
     }
 }
+
+    public function test_webhook_proxypay_valida_hmac_sha256_do_corpo_original(): void
+    {
+        config(['subscricoes.gateways.proxypay.api_key' => 'chave-de-teste']);
+        $gateway = new ProxyPayGateway();
+        $corpo = '{"reference_id":123456789,"amount":"9900.00"}';
+        $request = Request::create('/api/webhooks/proxypay', 'POST', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+        ], $corpo);
+        $request->headers->set('X-Signature', hash_hmac('sha256', $corpo, 'chave-de-teste'));
+
+        $this->assertTrue($gateway->validarPedidoWebhook($request));
+    }
+
+    public function test_webhook_proxypay_rejeita_assinatura_invalida_e_token_na_url(): void
+    {
+        config(['subscricoes.gateways.proxypay.api_key' => 'chave-de-teste']);
+        $gateway = new ProxyPayGateway();
+        $corpo = '{"reference_id":123456789,"amount":"9900.00"}';
+
+        $assinaturaInvalida = Request::create('/api/webhooks/proxypay', 'POST', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+        ], $corpo);
+        $assinaturaInvalida->headers->set('X-Signature', str_repeat('0', 64));
+        $this->assertFalse($gateway->validarPedidoWebhook($assinaturaInvalida));
+
+        $tokenNaUrl = Request::create('/api/webhooks/proxypay?token=chave-de-teste', 'POST', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+        ], $corpo);
+        $this->assertFalse($gateway->validarPedidoWebhook($tokenNaUrl));
+    }
