@@ -84,6 +84,8 @@ class SubscricaoService
                     );
                 }
 
+                $this->garantirEstadoPendenteSeNecessario($empresa);
+
                 Log::info('Referência de pagamento pendente reutilizada', [
                     'empresa_id' => $empresa->id,
                     'pagamento_id' => $pagamento->id,
@@ -96,16 +98,6 @@ class SubscricaoService
 
             try {
                 $pagamento = $this->pedirReferenciaAoGateway($pagamento);
-
-                // Só bloquear a empresa depois de o gateway ter criado a
-                // referência. Se a integração falhar, o estado anterior mantém-se.
-                $this->tenantManager->semTenant(function () use ($empresa) {
-                    $empresaAtual = Empresa::query()->findOrFail($empresa->id);
-
-                    if (! $empresaAtual->temAcesso()) {
-                        $this->tenantService->marcarPendente($empresaAtual);
-                    }
-                });
             } catch (Throwable $e) {
                 $this->tenantManager->semTenant(function () use ($subscricao) {
                     $subscricao->update(['estado' => 'cancelada', 'cancelada_em' => now()]);
@@ -113,6 +105,10 @@ class SubscricaoService
 
                 throw $e;
             }
+
+            // Só bloquear a empresa depois de o gateway ter criado a referência.
+            // Se a atualização falhar, a cobrança fica pendente e pode ser reconciliada.
+            $this->garantirEstadoPendenteSeNecessario($empresa);
 
             Log::info('Subscrição iniciada, aguarda pagamento', [
                 'empresa_id' => $empresa->id,
@@ -236,6 +232,17 @@ class SubscricaoService
         Log::info('Renovação automática retomada', ['subscricao_id' => $subscricao->id]);
 
         return $subscricao->fresh();
+    }
+
+    protected function garantirEstadoPendenteSeNecessario(Empresa $empresa): void
+    {
+        $this->tenantManager->semTenant(function () use ($empresa) {
+            $empresaAtual = Empresa::query()->findOrFail($empresa->id);
+
+            if (! $empresaAtual->temAcesso()) {
+                $this->tenantService->marcarPendente($empresaAtual);
+            }
+        });
     }
 
     protected function criarPagamento(Subscricao $subscricao, Plano $plano): Pagamento
