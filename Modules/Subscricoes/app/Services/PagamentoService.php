@@ -165,8 +165,8 @@ class PagamentoService
     }
 
     /**
-     * Aceita pagamentos iguais ou superiores ao valor devido, mas converte
-     * os montantes em unidades menores usando strings decimais — nunca float.
+     * Exige correspondência exata entre o valor recebido e o valor devido.
+     * Os montantes são comparados em unidades menores, nunca com float.
      */
     protected function validarValorRecebido(Pagamento $pagamento, ?string $valorRecebido): void
     {
@@ -177,9 +177,9 @@ class PagamentoService
         $recebido = $this->paraUnidadesMenores($valorRecebido, 'valor recebido');
         $devido = $this->paraUnidadesMenores((string) $pagamento->valor, 'valor devido');
 
-        if ($recebido < $devido) {
+        if ($recebido !== $devido) {
             throw new DomainException(
-                "Valor recebido ({$valorRecebido}) inferior ao devido ({$pagamento->valor}) no pagamento {$pagamento->id}."
+                "Valor recebido ({$valorRecebido}) diferente do devido ({$pagamento->valor}) no pagamento {$pagamento->id}."
             );
         }
     }
