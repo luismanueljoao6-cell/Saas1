@@ -65,7 +65,7 @@ class ExportacaoSafTTest extends TestCase
         // worker de filas real) antes de gerar o XML.
         $this->assertFalse(app(TenantManager::class)->has());
 
-        $xml = app(TenantManager::class)->semTenant(fn () => app(SafTExportService::class)->gerar(
+        $xml = app(TenantManager::class)->semTenant(fn () => app(SafTExportService::class)->gerarValidado(
             $empresa,
             now()->startOfMonth(),
             now()->endOfMonth(),
