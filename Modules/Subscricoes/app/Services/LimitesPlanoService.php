@@ -38,6 +38,7 @@ class LimitesPlanoService implements LimitesDaEmpresa
         $subscricao = $this->tenantManager->semTenant(fn () => Subscricao::query()
             ->where('empresa_id', $empresa->id)
             ->where('estado', 'ativa')
+            ->where('termina_em', '>', now())
             ->with('plano')
             ->latest('id')
             ->first());
