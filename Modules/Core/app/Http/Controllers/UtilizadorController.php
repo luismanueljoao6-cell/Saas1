@@ -5,6 +5,7 @@ namespace Modules\Core\Http\Controllers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
@@ -41,20 +42,38 @@ class UtilizadorController extends Controller
     {
         $empresa = $request->user()->empresa;
 
-        if ($mensagem = $this->mensagemSeLimiteAtingido($empresa)) {
-            return back()->withInput($request->except('password', 'password_confirmation'))
-                ->with('erro', $mensagem);
-        }
-
         try {
-            $novoUtilizador = User::create([
-                'empresa_id' => $empresa->id,
-                'name' => $request->validated('name'),
-                'email' => $request->validated('email'),
-                'password' => Hash::make($request->validated('password')),
-            ]);
+            // O bloqueio da empresa serializa pedidos simultâneos para que
+            // duas requisições não consumam a mesma última vaga do plano.
+            [$novoUtilizador, $mensagem] = DB::transaction(function () use ($request, $empresa) {
+                $empresaBloqueada = Empresa::query()
+                    ->lockForUpdate()
+                    ->findOrFail($empresa->id);
 
-            $this->atribuirPapel($novoUtilizador, $empresa->id, $request->boolean('administrador'));
+                if ($mensagem = $this->mensagemSeLimiteAtingido($empresaBloqueada)) {
+                    return [null, $mensagem];
+                }
+
+                $novoUtilizador = User::create([
+                    'empresa_id' => $empresaBloqueada->id,
+                    'name' => $request->validated('name'),
+                    'email' => $request->validated('email'),
+                    'password' => Hash::make($request->validated('password')),
+                ]);
+
+                $this->atribuirPapel(
+                    $novoUtilizador,
+                    $empresaBloqueada->id,
+                    $request->boolean('administrador')
+                );
+
+                return [$novoUtilizador, null];
+            });
+
+            if ($mensagem !== null) {
+                return back()->withInput($request->except('password', 'password_confirmation'))
+                    ->with('erro', $mensagem);
+            }
 
             Log::info('Novo utilizador adicionado à empresa', [
                 'empresa_id' => $empresa->id,
@@ -87,15 +106,42 @@ class UtilizadorController extends Controller
             return back()->with('erro', 'Não podes desativar a tua própria conta.');
         }
 
-        // Reativar também conta para o limite — senão desativar e reativar
-        // seria uma forma de contornar o número de utilizadores do plano.
-        if (! $utilizador->ativo && ($mensagem = $this->mensagemSeLimiteAtingido($admin->empresa))) {
+        try {
+            [$utilizadorAtual, $mensagem] = DB::transaction(function () use ($admin, $utilizador) {
+                $empresa = Empresa::query()
+                    ->lockForUpdate()
+                    ->findOrFail($admin->empresa_id);
+
+                $utilizadorAtual = User::query()
+                    ->where('empresa_id', $empresa->id)
+                    ->lockForUpdate()
+                    ->findOrFail($utilizador->id);
+
+                // Reativar também conta para o limite. A contagem e a
+                // alteração ficam serializadas pela linha da empresa.
+                if (! $utilizadorAtual->ativo && ($mensagem = $this->mensagemSeLimiteAtingido($empresa))) {
+                    return [null, $mensagem];
+                }
+
+                $utilizadorAtual->update(['ativo' => ! $utilizadorAtual->ativo]);
+
+                return [$utilizadorAtual, null];
+            });
+        } catch (Throwable $e) {
+            Log::error('Falha ao alterar estado do utilizador', [
+                'empresa_id' => $admin->empresa_id,
+                'utilizador_id' => $utilizador->id,
+                'erro' => $e->getMessage(),
+            ]);
+
+            return back()->with('erro', 'Não foi possível alterar o estado do utilizador. Tenta novamente.');
+        }
+
+        if ($mensagem !== null) {
             return back()->with('erro', $mensagem);
         }
 
-        $utilizador->update(['ativo' => ! $utilizador->ativo]);
-
-        return back()->with('sucesso', $utilizador->ativo ? 'Utilizador reativado.' : 'Utilizador desativado.');
+        return back()->with('sucesso', $utilizadorAtual->ativo ? 'Utilizador reativado.' : 'Utilizador desativado.');
     }
 
     protected function mensagemSeLimiteAtingido(Empresa $empresa): ?string
