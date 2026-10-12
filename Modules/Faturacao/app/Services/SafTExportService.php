@@ -133,6 +133,26 @@ class SafTExportService
             }
         }
 
+        $tipoPadrao = strtoupper(trim((string) config('faturacao.saft_tipo_produto_padrao', '')));
+        $idsFaturas = Fatura::withoutGlobalScopes()->where('empresa_id', $empresa->id)->select('id');
+        $linhasManuais = FaturaLinha::whereIn('fatura_id', $idsFaturas)
+            ->whereNull('produto_id')->get(['id', 'tipo_saft']);
+        foreach ($linhasManuais as $linha) {
+            $tipo = strtoupper(trim((string) ($linha->tipo_saft ?: $tipoPadrao)));
+            if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+                $problemas[] = 'A linha manual de fatura '.$linha->id.' não tem classificação SAF-T válida.';
+            }
+        }
+
+        $idsNotas = NotaCreditoDebito::withoutGlobalScopes()->where('empresa_id', $empresa->id)->select('id');
+        $linhasNotas = NotaCreditoDebitoLinha::whereIn('nota_credito_debito_id', $idsNotas)->get(['id', 'tipo_saft']);
+        foreach ($linhasNotas as $linha) {
+            $tipo = strtoupper(trim((string) ($linha->tipo_saft ?: $tipoPadrao)));
+            if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+                $problemas[] = 'A linha de nota de crédito/débito '.$linha->id.' não tem classificação SAF-T válida.';
+            }
+        }
+
         return array_values(array_unique($problemas));
     }
 
