@@ -340,7 +340,7 @@ class SegurancaPagamentoTest extends TestCase
             );
             $this->fail('Um pagamento expirado não deve ativar a subscrição automaticamente.');
         } catch (DomainException $e) {
-            $this->assertStringContainsString('estado é', $e->getMessage());
+            $this->assertStringContainsString('não está pendente e válida', $e->getMessage());
         }
 
         $this->assertSame(
@@ -361,6 +361,28 @@ class SegurancaPagamentoTest extends TestCase
         $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
         Pagamento::withoutGlobalScopes()->whereKey($pagamento->id)->update([
             'estado' => 'cancelado',
+        ]);
+
+        $this->expectException(DomainException::class);
+        app(PagamentoService::class)->confirmar(
+            $pagamento->fresh(),
+            [],
+            null,
+            '9900.00'
+        );
+    }
+
+
+    public function test_referencia_pendente_fora_do_prazo_nao_pode_ativar_subscricao(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000017');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+
+        // Mesmo que o job diário ainda não tenha marcado a referência como
+        // expirada, o prazo deve ser revalidado no momento da confirmação.
+        Pagamento::withoutGlobalScopes()->whereKey($pagamento->id)->update([
+            'expira_em' => now()->subMinute(),
         ]);
 
         $this->expectException(DomainException::class);
