@@ -2,7 +2,6 @@
 
 namespace Modules\EstudioMusica\Services;
 
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Modules\Faturacao\Models\Cliente;
 
