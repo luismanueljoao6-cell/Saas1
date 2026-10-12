@@ -74,7 +74,7 @@ class PagamentoService
                     if ($empresa->estado_subscricao === 'ativa' && $empresa->subscricao_expira_em?->isFuture()) {
                         $base = $empresa->subscricao_expira_em;
                     }
-                    $terminaEm = $base->copy()->addDays($subscricao->plano->periodo_dias);
+                    $terminaEm = $base->copy()->addDays($subscricao->periodo_dias ?? $subscricao->plano->periodo_dias);
 
                     $pagamento->update([
                         'estado' => 'confirmado',
@@ -102,7 +102,10 @@ class PagamentoService
                     // O pacote pago define os serviços da empresa. Os que ficam
                     // de fora são desativados, nunca apagados. Planos sem
                     // 'servicos' (ex.: antigos) não alteram nada.
-                    if (! empty($subscricao->plano->servicos)) {
+                    if ($subscricao->servicos !== null) {
+                        $empresa->definirServicos($subscricao->servicos);
+                    } elseif (! empty($subscricao->plano->servicos)) {
+                        // Compatibilidade com subscrições antigas sem snapshot.
                         $empresa->definirServicos($subscricao->plano->servicos);
                     }
 
