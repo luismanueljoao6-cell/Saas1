@@ -140,6 +140,29 @@ class SegurancaPagamentoTest extends TestCase
         $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
     }
 
+    public function test_alterar_plano_nao_muda_termos_de_uma_compra_ja_iniciada(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000012');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+
+        $plano->update(['preco' => 12000, 'periodo_dias' => 60]);
+
+        $this->assertSame('9900.00', (string) $pagamento->fresh()->valor);
+
+        app(PagamentoService::class)->confirmar(
+            $pagamento,
+            [],
+            null,
+            '9900.00'
+        );
+
+        $this->assertSame(
+            now()->addDays(30)->toDateString(),
+            $empresa->fresh()->subscricao_expira_em->toDateString()
+        );
+    }
+
     public function test_nao_permite_iniciar_subscricao_com_plano_inativo(): void
     {
         $this->usarGateway();
