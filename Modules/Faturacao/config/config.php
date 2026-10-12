@@ -95,7 +95,6 @@ return [
     // Campos exigidos pelo SAF-T que não existem no modelo atual da empresa.
     // Configurar com dados reais antes de usar gerarValidado().
     'saft_conta_clientes' => env('FATURACAO_SAFT_CONTA_CLIENTES', ''),
-    'saft_cidade_padrao' => env('FATURACAO_SAFT_CIDADE_PADRAO', ''),
     'saft_tipo_produto_padrao' => env('FATURACAO_SAFT_TIPO_PRODUTO_PADRAO', ''),
     'saft_source_id' => env('FATURACAO_SAFT_SOURCE_ID', 'Sistema'),
     // Mapeamento explícito opcional: ex. {"14.00":"NOR","7.00":"RED"} após validação fiscal.
