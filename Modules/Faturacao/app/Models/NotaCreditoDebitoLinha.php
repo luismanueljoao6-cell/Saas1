@@ -16,6 +16,8 @@ class NotaCreditoDebitoLinha extends Model
         'quantidade',
         'preco_unitario',
         'taxa_iva',
+        'codigo_isencao_iva',
+        'motivo_isencao_iva',
         'valor_sem_iva',
         'valor_iva',
         'valor_total',
