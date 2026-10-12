@@ -165,23 +165,49 @@ class PagamentoService
     }
 
     /**
-     * Aceita igual ou superior ao devido (comparação em cêntimos, sem float
-     * a decidir arredondamentos de fronteira).
+     * Aceita pagamentos iguais ou superiores ao valor devido, mas converte
+     * os montantes em unidades menores usando strings decimais — nunca float.
      */
     protected function validarValorRecebido(Pagamento $pagamento, ?string $valorRecebido): void
     {
-        if ($valorRecebido === null || $valorRecebido === '') {
+        if ($valorRecebido === null || trim($valorRecebido) === '') {
             return;
         }
 
-        $recebido = (int) round(((float) $valorRecebido) * 100);
-        $devido = (int) round(((float) $pagamento->valor) * 100);
+        $recebido = $this->paraUnidadesMenores($valorRecebido, 'valor recebido');
+        $devido = $this->paraUnidadesMenores((string) $pagamento->valor, 'valor devido');
 
         if ($recebido < $devido) {
             throw new DomainException(
                 "Valor recebido ({$valorRecebido}) inferior ao devido ({$pagamento->valor}) no pagamento {$pagamento->id}."
             );
         }
+    }
+
+    /**
+     * Converte um montante decimal positivo em unidades menores (2 casas).
+     * Rejeita notação científica, separador ambíguo, negativos e mais de
+     * duas casas decimais para evitar arredondamentos silenciosos.
+     */
+    private function paraUnidadesMenores(string $valor, string $campo): int
+    {
+        $valor = trim($valor);
+
+        if (! preg_match('/^\\d+(?:\\.\\d{1,2})?$/', $valor)) {
+            throw new DomainException("Formato inválido para {$campo}.");
+        }
+
+        [$inteiro, $decimal] = array_pad(explode('.', $valor, 2), 2, '');
+        $inteiro = ltrim($inteiro, '0');
+        $inteiro = $inteiro === '' ? '0' : $inteiro;
+        $decimal = str_pad($decimal, 2, '0');
+
+        // Os valores da coluna DECIMAL(12,2) cabem em inteiro de 64 bits.
+        if (strlen($inteiro) > 10) {
+            throw new DomainException("Valor fora do intervalo permitido para {$campo}.");
+        }
+
+        return ((int) $inteiro * 100) + (int) $decimal;
     }
 
     /**
