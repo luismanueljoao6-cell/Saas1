@@ -103,16 +103,24 @@ class RegistoEmpresaService
             return;
         }
 
-        app(PermissionRegistrar::class)->setPermissionsTeamId($empresaId);
+        $registrar = app(PermissionRegistrar::class);
+        $equipaAnterior = $registrar->getPermissionsTeamId();
+        $registrar->setPermissionsTeamId($empresaId);
 
-        // 'empresa_id' explícito: sem ele o firstOrCreate procura o papel
-        // pelo nome em TODAS as empresas e reutilizaria o de outra.
-        $papel = Role::firstOrCreate([
-            'name' => self::PAPEL_ADMINISTRADOR,
-            'guard_name' => 'web',
-            'empresa_id' => $empresaId,
-        ]);
+        try {
+            // 'empresa_id' explícito: sem ele o firstOrCreate procura o papel
+            // pelo nome em TODAS as empresas e reutilizaria o de outra.
+            $papel = Role::firstOrCreate([
+                'name' => self::PAPEL_ADMINISTRADOR,
+                'guard_name' => 'web',
+                'empresa_id' => $empresaId,
+            ]);
 
-        $utilizador->assignRole($papel);
+            $utilizador->assignRole($papel);
+        } finally {
+            // O registo é uma rota pública e não passa pelo middleware tenant;
+            // restaurar evita deixar o team ID desta empresa no processo.
+            $registrar->setPermissionsTeamId($equipaAnterior);
+        }
     }
 }
