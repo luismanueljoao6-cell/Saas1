@@ -61,6 +61,16 @@ class PagamentoService
                         return [$pagamento, collect(), null];
                     }
 
+                    // Só uma cobrança ainda pendente pode ser confirmada pelo
+                    // fluxo normal. A rotina diária pode já ter expirado a
+                    // referência; pagamentos tardios precisam de reconciliação
+                    // manual, não devem reativar automaticamente uma subscrição.
+                    if ($pagamento->estado !== 'pendente') {
+                        throw new DomainException(
+                            "Não é possível confirmar o pagamento {$pagamento->id} porque o seu estado é '{$pagamento->estado}'."
+                        );
+                    }
+
                     $this->validarValorRecebido($pagamento, $valorRecebido);
 
                     $subscricao = $pagamento->subscricao()->with('plano')->firstOrFail();
