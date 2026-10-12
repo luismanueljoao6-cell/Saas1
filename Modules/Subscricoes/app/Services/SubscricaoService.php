@@ -9,11 +9,13 @@ use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantService;
+use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Models\Subscricao;
 use Modules\Subscricoes\Notifications\RenovacaoProximaNotification;
 use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
+use RuntimeException;
 use Throwable;
 
 class SubscricaoService
@@ -25,50 +27,77 @@ class SubscricaoService
     ) {}
 
     /**
-     * Cria uma subscrição pendente e pede ao gateway uma referência de
-     * pagamento. Se já existir uma referência pendente e ainda válida para
-     * o MESMO plano, devolve-a em vez de gerar outra.
+     * Cria uma subscrição e uma intenção de pagamento de forma serializada
+     * por empresa. A chamada HTTP ao gateway fica fora da transação.
      *
-     * Duas fases, de propósito: (1) transação curta só com escritas na BD;
-     * (2) chamada HTTP ao gateway FORA da transação (não segura uma ligação
-     * à BD até 10 s). Se o gateway falhar, o pagamento fica 'expirado' e a
-     * subscrição 'cancelada' — nunca um "pendente" sem referência.
+     * Se já existir uma referência válida para o mesmo plano, reutiliza-a.
+     * Se outro pedido estiver a criar a referência, não cria uma segunda
+     * cobrança: pede ao cliente para repetir o pedido após a primeira operação.
      *
      * @throws Throwable
      */
     public function iniciar(Empresa $empresa, Plano $plano): Pagamento
     {
         try {
-            if ($existente = $this->referenciaPendenteDoMesmoPlano($empresa, $plano)) {
-                Log::info('Referência de pagamento pendente reutilizada', [
-                    'empresa_id' => $empresa->id,
-                    'pagamento_id' => $existente->id,
-                ]);
+            [$subscricao, $pagamento, $reutilizado] = $this->tenantManager->semTenant(
+                fn () => DB::transaction(function () use ($empresa, $plano) {
+                    // Serializa pedidos simultâneos de subscrição da mesma empresa.
+                    $empresaBloqueada = Empresa::query()->lockForUpdate()->findOrFail($empresa->id);
 
-                return $existente;
-            }
+                    $existente = Pagamento::query()
+                        ->where('empresa_id', $empresaBloqueada->id)
+                        ->where('estado', 'pendente')
+                        ->where('expira_em', '>', now())
+                        ->whereHas('subscricao', fn ($query) => $query
+                            ->where('plano_id', $plano->id)
+                            ->where('estado', 'pendente'))
+                        ->latest('id')
+                        ->first();
 
-            [$subscricao, $pagamento] = DB::transaction(function () use ($empresa, $plano) {
-                $subscricao = Subscricao::create([
-                    'empresa_id' => $empresa->id,
-                    'plano_id' => $plano->id,
-                    'estado' => 'pendente',
-                    'renovacao_automatica' => true,
-                ]);
+                    if ($existente) {
+                        return [null, $existente, true];
+                    }
 
-                $pagamento = $this->criarPagamento($subscricao, $plano);
+                    $subscricao = Subscricao::create([
+                        'empresa_id' => $empresaBloqueada->id,
+                        'plano_id' => $plano->id,
+                        'estado' => 'pendente',
+                        'renovacao_automatica' => true,
+                    ]);
 
-                if (! $empresa->temAcesso()) {
-                    $this->tenantService->marcarPendente($empresa);
+                    $pagamento = $this->criarPagamento($subscricao, $plano);
+
+                    if (! $empresaBloqueada->temAcesso()) {
+                        $this->tenantService->marcarPendente($empresaBloqueada);
+                    }
+
+                    return [$subscricao, $pagamento, false];
+                })
+            );
+
+            if ($reutilizado) {
+                if (! $pagamento->referencia_externa) {
+                    throw new RuntimeException(
+                        'Já existe um pedido de pagamento em preparação para este plano. Tente novamente dentro de instantes.'
+                    );
                 }
 
-                return [$subscricao, $pagamento];
-            });
+                Log::info('Referência de pagamento pendente reutilizada', [
+                    'empresa_id' => $empresa->id,
+                    'pagamento_id' => $pagamento->id,
+                ]);
+
+                return $this->tenantManager->semTenant(
+                    fn () => $pagamento->fresh(['subscricao.plano'])
+                );
+            }
 
             try {
                 $pagamento = $this->pedirReferenciaAoGateway($pagamento);
             } catch (Throwable $e) {
-                $subscricao->update(['estado' => 'cancelada', 'cancelada_em' => now()]);
+                $this->tenantManager->semTenant(function () use ($subscricao) {
+                    $subscricao->update(['estado' => 'cancelada', 'cancelada_em' => now()]);
+                });
 
                 throw $e;
             }
@@ -80,7 +109,9 @@ class SubscricaoService
                 'referencia_externa' => $pagamento->referencia_externa,
             ]);
 
-            return $this->tenantManager->semTenant(fn () => $pagamento->fresh(['subscricao.plano']));
+            return $this->tenantManager->semTenant(
+                fn () => $pagamento->fresh(['subscricao.plano'])
+            );
         } catch (Throwable $e) {
             Log::error('Falha ao iniciar subscrição', [
                 'empresa_id' => $empresa->id,
@@ -93,23 +124,57 @@ class SubscricaoService
     }
 
     /**
-     * Gera a referência de pagamento do PRÓXIMO período de uma subscrição
-     * ativa e avisa os utilizadores da empresa (e-mails depois de tudo
-     * gravado; uma falha de e-mail não invalida a referência).
+     * Gera uma referência para o próximo período. A operação é idempotente:
+     * se já houver uma referência pendente para esta subscrição, reutiliza-a.
      */
     public function gerarRenovacao(Subscricao $subscricao): Pagamento
     {
         return $this->tenantManager->semTenant(function () use ($subscricao) {
-            $subscricao->loadMissing('plano', 'empresa');
+            [$subscricaoBloqueada, $pagamento, $reutilizado] = DB::transaction(function () use ($subscricao) {
+                $subscricaoBloqueada = Subscricao::query()
+                    ->lockForUpdate()
+                    ->with('plano', 'empresa')
+                    ->findOrFail($subscricao->id);
 
-            $pagamento = DB::transaction(fn () => $this->criarPagamento($subscricao, $subscricao->plano));
-            $pagamento = $this->pedirReferenciaAoGateway($pagamento);
+                $existente = Pagamento::query()
+                    ->where('subscricao_id', $subscricaoBloqueada->id)
+                    ->where('estado', 'pendente')
+                    ->where('expira_em', '>', now())
+                    ->latest('id')
+                    ->first();
 
-            $subscricao->empresa->utilizadores()->where('ativo', true)->get()
-                ->each(function (User $utilizador) use ($subscricao, $pagamento) {
+                if ($existente) {
+                    return [$subscricaoBloqueada, $existente, true];
+                }
+
+                return [
+                    $subscricaoBloqueada,
+                    $this->criarPagamento($subscricaoBloqueada, $subscricaoBloqueada->plano),
+                    false,
+                ];
+            });
+
+            if ($reutilizado && ! $pagamento->referencia_externa) {
+                throw new RuntimeException(
+                    'Já existe uma referência de renovação em preparação. Tente novamente dentro de instantes.'
+                );
+            }
+
+            if (! $reutilizado) {
+                try {
+                    $pagamento = $this->pedirReferenciaAoGateway($pagamento);
+                } catch (Throwable $e) {
+                    throw $e;
+                }
+            }
+
+            $subscricaoBloqueada->loadMissing('plano', 'empresa');
+
+            $subscricaoBloqueada->empresa->utilizadores()->where('ativo', true)->get()
+                ->each(function (User $utilizador) use ($subscricaoBloqueada, $pagamento) {
                     try {
                         $utilizador->notify(new RenovacaoProximaNotification(
-                            $subscricao->termina_em->format('d/m/Y'),
+                            $subscricaoBloqueada->termina_em->format('d/m/Y'),
                             (string) $pagamento->referencia_externa,
                             (string) $pagamento->valor,
                             $pagamento->moeda,
@@ -123,18 +188,17 @@ class SubscricaoService
                     }
                 });
 
-            Log::info('Referência de renovação gerada', [
-                'subscricao_id' => $subscricao->id,
+            Log::info($reutilizado ? 'Referência de renovação reutilizada' : 'Referência de renovação gerada', [
+                'subscricao_id' => $subscricaoBloqueada->id,
                 'pagamento_id' => $pagamento->id,
             ]);
 
-            return $pagamento;
+            return $pagamento->fresh(['subscricao.plano']);
         });
     }
 
     /**
-     * Cancela a renovação automática (a empresa mantém acesso até
-     * termina_em, tal como qualquer subscrição "cancelada mas paga").
+     * Cancela a renovação automática; o acesso mantém-se até termina_em.
      */
     public function cancelarRenovacao(Subscricao $subscricao): Subscricao
     {
@@ -173,39 +237,28 @@ class SubscricaoService
         ]);
     }
 
-    /**
-     * Chamada ao gateway, fora de qualquer transação. Sem referência, o
-     * pagamento é inútil: marca-o 'expirado' para nunca ser reutilizado por
-     * referenciaPendenteDoMesmoPlano().
-     */
     protected function pedirReferenciaAoGateway(Pagamento $pagamento): Pagamento
     {
         try {
             $resultado = $this->gateway->gerarReferencia($pagamento);
 
+            if (empty($resultado['referencia_externa'])) {
+                throw GatewayPagamentoException::falhaAoGerarReferencia(
+                    $this->gateway->identificador(),
+                    'o gateway não devolveu uma referência externa'
+                );
+            }
+
             $pagamento->update([
-                'referencia_externa' => $resultado['referencia_externa'],
-                'payload_bruto' => $resultado['payload'],
+                'referencia_externa' => (string) $resultado['referencia_externa'],
+                'payload_bruto' => $resultado['payload'] ?? [],
             ]);
 
-            return $pagamento;
+            return $pagamento->fresh();
         } catch (Throwable $e) {
             $pagamento->update(['estado' => 'expirado']);
 
             throw $e;
         }
-    }
-
-    protected function referenciaPendenteDoMesmoPlano(Empresa $empresa, Plano $plano): ?Pagamento
-    {
-        $pendentes = $this->tenantManager->semTenant(fn () => Pagamento::query()
-            ->where('empresa_id', $empresa->id)
-            ->where('estado', 'pendente')
-            ->where('expira_em', '>', now())
-            ->with('subscricao.plano')
-            ->latest('id')
-            ->get());
-
-        return $pendentes->first(fn (Pagamento $p) => $p->subscricao?->plano_id === $plano->id);
     }
 }
