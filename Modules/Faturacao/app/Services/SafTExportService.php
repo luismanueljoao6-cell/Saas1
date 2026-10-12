@@ -211,26 +211,70 @@ class SafTExportService
     protected function tabelasMestras(DOMDocument $doc, Empresa $empresa): DOMElement
     {
         $tabelas = $doc->createElementNS(self::NAMESPACE_SAFT, 'MasterFiles');
+        $contaClientes = trim((string) config('faturacao.saft_conta_clientes', ''));
 
         $clientes = Cliente::withoutGlobalScopes()->where('empresa_id', $empresa->id)->orderBy('id')->lazy(200);
         foreach ($clientes as $cliente) {
             $c = $doc->createElementNS(self::NAMESPACE_SAFT, 'Customer');
-            $c->appendChild($this->no($doc, 'CustomerID', $cliente->id));
+            $c->appendChild($this->no($doc, 'CustomerID', 'CLI-'.$cliente->id));
+            $c->appendChild($this->no($doc, 'AccountID', $contaClientes));
             $c->appendChild($this->no($doc, 'CustomerTaxID', $cliente->nif ?: '999999999'));
-            $c->appendChild($this->no($doc, 'CompanyName', $cliente->nome));
-            $c->appendChild($this->no($doc, 'Address', $cliente->morada));
+            $c->appendChild($this->no($doc, 'CompanyName', $cliente->nome ?: 'Consumidor final'));
+            $morada = $doc->createElementNS(self::NAMESPACE_SAFT, 'BillingAddress');
+            $morada->appendChild($this->no($doc, 'AddressDetail', $cliente->morada ?: 'Não indicado'));
+            $morada->appendChild($this->no($doc, 'City', config('faturacao.saft_cidade_padrao', 'Não indicado')));
+            $morada->appendChild($this->no($doc, 'Country', 'AO'));
+            $c->appendChild($morada);
+            $c->appendChild($this->no($doc, 'SelfBillingIndicator', 0));
+            if ($cliente->telefone) $c->appendChild($this->no($doc, 'Telephone', $cliente->telefone));
+            if ($cliente->email) $c->appendChild($this->no($doc, 'Email', $cliente->email));
             $tabelas->appendChild($c);
         }
 
         $produtos = Produto::withoutGlobalScopes()->where('empresa_id', $empresa->id)->orderBy('id')->lazy(200);
         foreach ($produtos as $produto) {
+            $codigo = trim((string) ($produto->codigo ?: 'PROD-'.$produto->id));
             $p = $doc->createElementNS(self::NAMESPACE_SAFT, 'Product');
-            $p->appendChild($this->no($doc, 'ProductCode', $produto->codigo ?: $produto->id));
+            $p->appendChild($this->no($doc, 'ProductType', $this->tipoProdutoSafT($produto)));
+            $p->appendChild($this->no($doc, 'ProductCode', $codigo));
             $p->appendChild($this->no($doc, 'ProductDescription', $produto->nome));
+            $p->appendChild($this->no($doc, 'ProductNumberCode', $codigo));
             $tabelas->appendChild($p);
         }
 
+        $taxas = Produto::withoutGlobalScopes()->where('empresa_id', $empresa->id)
+            ->whereNotNull('taxa_iva')->distinct()->orderBy('taxa_iva')->pluck('taxa_iva')
+            ->map(static fn ($taxa): string => number_format((float) $taxa, 2, '.', ''))->unique()->values();
+        if ($taxas->isNotEmpty()) {
+            $taxTable = $doc->createElementNS(self::NAMESPACE_SAFT, 'TaxTable');
+            foreach ($taxas as $taxa) {
+                $entrada = $doc->createElementNS(self::NAMESPACE_SAFT, 'TaxTableEntry');
+                $entrada->appendChild($this->no($doc, 'TaxType', 'IVA'));
+                $entrada->appendChild($this->no($doc, 'TaxCountryRegion', 'AO'));
+                $entrada->appendChild($this->no($doc, 'TaxCode', $this->codigoTaxa((float) $taxa)));
+                $entrada->appendChild($this->no($doc, 'Description', 'IVA '.$taxa.'%'));
+                $entrada->appendChild($this->no($doc, 'TaxPercentage', $taxa));
+                $taxTable->appendChild($entrada);
+            }
+            $tabelas->appendChild($taxTable);
+        }
         return $tabelas;
+    }
+
+    protected function tipoProdutoSafT(Produto $produto): string
+    {
+        $tipo = strtoupper(trim((string) config('faturacao.saft_tipo_produto_padrao', '')));
+        if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+            throw new \RuntimeException('Configure FATURACAO_SAFT_TIPO_PRODUTO_PADRAO (P, S, O, E ou I) antes de exportar produtos SAF-T.');
+        }
+        return $tipo;
+    }
+
+    protected function codigoTaxa(float $taxa): string
+    {
+        $codigos = config('faturacao.saft_codigos_taxa', []);
+        $codigo = $codigos[(string) number_format($taxa, 2, '.', '')] ?? null;
+        return is_string($codigo) && $codigo !== '' ? $codigo : number_format($taxa, 2, '.', '');
     }
 
     protected function documentosFonte(DOMDocument $doc, Empresa $empresa, Carbon $inicio, Carbon $fim): DOMElement
@@ -289,29 +333,71 @@ class SafTExportService
     protected function documento(DOMDocument $doc, string $tipo, Fatura|NotaCreditoDebito $m, string $campoValor): DOMElement
     {
         $no = $doc->createElementNS(self::NAMESPACE_SAFT, 'Invoice');
+        $cliente = Cliente::withoutGlobalScopes()->where('empresa_id', $m->empresa_id)->find($m->cliente_id);
+        if (! $cliente) {
+            throw new \RuntimeException('O documento '.$m->numero_documento.' referencia um cliente inexistente na mesma empresa.');
+        }
+        if (trim((string) $m->hash) === '') {
+            throw new \RuntimeException('O documento '.$m->numero_documento.' não tem hash fiscal; exportação interrompida.');
+        }
 
         $no->appendChild($this->no($doc, 'InvoiceNo', $m->numero_documento));
-        $no->appendChild($this->no($doc, 'InvoiceType', $tipo));
-        $no->appendChild($this->no($doc, 'InvoiceStatus', 'N'));
-        $no->appendChild($this->no($doc, 'InvoiceDate', $m->data_emissao->format('Y-m-d')));
-        $no->appendChild($this->no($doc, 'SystemEntryDate', $m->data_hora_sistema->format('Y-m-d\TH:i:s')));
-        $no->appendChild($this->no($doc, 'CustomerID', $m->cliente_id));
+        $status = $doc->createElementNS(self::NAMESPACE_SAFT, 'DocumentStatus');
+        $status->appendChild($this->no($doc, 'InvoiceStatus', 'N'));
+        $status->appendChild($this->no($doc, 'InvoiceStatusDate', $m->data_hora_sistema->format('Y-m-d\\TH:i:s')));
+        $status->appendChild($this->no($doc, 'SourceID', config('faturacao.saft_source_id', 'Sistema')));
+        $status->appendChild($this->no($doc, 'SourceBilling', 'P'));
+        $no->appendChild($status);
         $no->appendChild($this->no($doc, 'Hash', $m->hash));
-        $no->appendChild($this->no($doc, 'HashControl', $m->chave_versao));
-        $no->appendChild($this->no($doc, 'GrossTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_total))));
-        $no->appendChild($this->no($doc, 'NetTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_sem_iva))));
-        $no->appendChild($this->no($doc, 'TaxPayable', Dinheiro::formatar(Dinheiro::centimos($m->valor_iva))));
+        $no->appendChild($this->no($doc, 'HashControl', $m->chave_versao ?: '0'));
+        $no->appendChild($this->no($doc, 'InvoiceDate', $m->data_emissao->format('Y-m-d')));
+        $no->appendChild($this->no($doc, 'InvoiceType', $tipo));
+        $regimes = $doc->createElementNS(self::NAMESPACE_SAFT, 'SpecialRegimes');
+        $regimes->appendChild($this->no($doc, 'SelfBillingIndicator', 0));
+        $regimes->appendChild($this->no($doc, 'CashVATSchemeIndicator', 0));
+        $regimes->appendChild($this->no($doc, 'ThirdPartiesBillingIndicator', 0));
+        $no->appendChild($regimes);
+        $no->appendChild($this->no($doc, 'SourceID', config('faturacao.saft_source_id', 'Sistema')));
+        $no->appendChild($this->no($doc, 'SystemEntryDate', $m->data_hora_sistema->format('Y-m-d\\TH:i:s')));
+        $no->appendChild($this->no($doc, 'CustomerID', 'CLI-'.$cliente->id));
 
-        foreach ($m->linhas as $linha) {
+        $linhas = $m->linhas;
+        if ($linhas->isEmpty()) {
+            throw new \RuntimeException('O documento '.$m->numero_documento.' não tem linhas para exportar.');
+        }
+        foreach ($linhas as $indice => $linha) {
             $l = $doc->createElementNS(self::NAMESPACE_SAFT, 'Line');
-            $l->appendChild($this->no($doc, 'Description', $linha->descricao));
+            $produto = $linha->relationLoaded('produto') ? $linha->produto : null;
+            $codigo = $produto ? (string) ($produto->codigo ?: 'PROD-'.$produto->id) : 'SERVICO-'.$m->id.'-'.($indice + 1);
+            $descricao = trim((string) $linha->descricao);
+            $taxa = (float) $linha->taxa_iva;
+            $l->appendChild($this->no($doc, 'LineNumber', $indice + 1));
+            $l->appendChild($this->no($doc, 'ProductCode', $codigo));
+            $l->appendChild($this->no($doc, 'ProductDescription', $descricao));
             $l->appendChild($this->no($doc, 'Quantity', $linha->quantidade));
+            $l->appendChild($this->no($doc, 'UnitOfMeasure', $produto?->unidade ?: 'UN'));
             $l->appendChild($this->no($doc, 'UnitPrice', Dinheiro::formatar(Dinheiro::centimos($linha->preco_unitario))));
+            $l->appendChild($this->no($doc, 'TaxBase', Dinheiro::formatar(Dinheiro::centimos($linha->valor_sem_iva))));
+            $l->appendChild($this->no($doc, 'TaxPointDate', $m->data_emissao->format('Y-m-d')));
+            $l->appendChild($this->no($doc, 'Description', $descricao));
             $l->appendChild($this->no($doc, $campoValor, Dinheiro::formatar(Dinheiro::centimos($linha->valor_sem_iva))));
-            $l->appendChild($this->no($doc, 'TaxPercentage', $linha->taxa_iva));
+            $tax = $doc->createElementNS(self::NAMESPACE_SAFT, 'Tax');
+            $tax->appendChild($this->no($doc, 'TaxType', 'IVA'));
+            $tax->appendChild($this->no($doc, 'TaxCountryRegion', 'AO'));
+            $tax->appendChild($this->no($doc, 'TaxCode', $this->codigoTaxa($taxa)));
+            $tax->appendChild($this->no($doc, 'TaxPercentage', number_format($taxa, 2, '.', '')));
+            $l->appendChild($tax);
+            if ($taxa == 0.0) {
+                throw new \RuntimeException('A linha '.$indice.' do documento '.$m->numero_documento.' tem IVA 0%; motivo e código legal de isenção são obrigatórios.');
+            }
             $no->appendChild($l);
         }
 
+        $totais = $doc->createElementNS(self::NAMESPACE_SAFT, 'DocumentTotals');
+        $totais->appendChild($this->no($doc, 'TaxPayable', Dinheiro::formatar(Dinheiro::centimos($m->valor_iva))));
+        $totais->appendChild($this->no($doc, 'NetTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_sem_iva))));
+        $totais->appendChild($this->no($doc, 'GrossTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_total))));
+        $no->appendChild($totais);
         return $no;
     }
 }
