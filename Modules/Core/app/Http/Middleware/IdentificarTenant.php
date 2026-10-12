@@ -23,59 +23,76 @@ class IdentificarTenant
 
     public function handle(Request $request, Closure $next): Response
     {
-        $utilizador = Auth::user();
+        // Não confiar no estado deixado por outro pedido, sobretudo em
+        // Octane e outros processos PHP persistentes.
+        $this->tenantManager->clear();
+        $registrar = class_exists(PermissionRegistrar::class)
+            ? app(PermissionRegistrar::class)
+            : null;
 
-        if (! $utilizador) {
-            // Não deveria acontecer se 'auth' correr antes, mas falha em
-            // segurança de qualquer forma.
-            throw new TenantNaoEncontradoException;
+        if ($registrar !== null) {
+            $registrar->setPermissionsTeamId(null);
         }
 
-        // Um utilizador desativado deixa de ter acesso IMEDIATAMENTE, mesmo
-        // com a sessão já aberta (antes, `ativo` só era verificado no login).
-        if (! $utilizador->ativo) {
-            Log::info('Sessão terminada: utilizador desativado.', ['utilizador_id' => $utilizador->id]);
+        try {
+            $utilizador = Auth::user();
 
-            // Pedidos de API (guard sanctum) não têm sessão nem logout().
-            if ($request->expectsJson() || $request->is('api/*')) {
-                abort(403, 'Esta conta está desativada.');
+            if (! $utilizador) {
+                // Não deveria acontecer se 'auth' correr antes, mas falha em
+                // segurança de qualquer forma.
+                throw new TenantNaoEncontradoException;
             }
 
-            Auth::logout();
+            // Um utilizador desativado deixa de ter acesso IMEDIATAMENTE, mesmo
+            // com a sessão já aberta (antes, `ativo` só era verificado no login).
+            if (! $utilizador->ativo) {
+                Log::info('Sessão terminada: utilizador desativado.', ['utilizador_id' => $utilizador->id]);
 
-            if ($request->hasSession()) {
-                $request->session()->invalidate();
-                $request->session()->regenerateToken();
+                // Pedidos de API (guard sanctum) não têm sessão nem logout().
+                if ($request->expectsJson() || $request->is('api/*')) {
+                    abort(403, 'Esta conta está desativada.');
+                }
+
+                Auth::logout();
+
+                if ($request->hasSession()) {
+                    $request->session()->invalidate();
+                    $request->session()->regenerateToken();
+                }
+
+                return redirect()->route('core.login')->withErrors([
+                    'email' => 'Esta conta foi desativada. Contacta o administrador da tua empresa.',
+                ]);
             }
 
-            return redirect()->route('core.login')->withErrors([
-                'email' => 'Esta conta foi desativada. Contacta o administrador da tua empresa.',
-            ]);
-        }
+            // Super admins da plataforma não têm tenant; o contexto começa
+            // limpo e só podem aceder a dados globais por bypass explícito.
+            if ($utilizador->is_super_admin) {
+                return $next($request);
+            }
 
-        // Super admins da plataforma não têm empresa_id — navegam sem
-        // tenant definido (a TenantScope, por omissão, bloqueia tudo; usa
-        // TenantManager::semTenant() explicitamente nas rotas de admin).
-        if ($utilizador->is_super_admin) {
+            if (! $utilizador->empresa_id) {
+                Log::warning('Utilizador autenticado sem empresa associada.', [
+                    'utilizador_id' => $utilizador->id,
+                ]);
+
+                throw new TenantNaoEncontradoException;
+            }
+
+            $this->tenantManager->set($utilizador->empresa_id);
+
+            if ($registrar !== null) {
+                $registrar->setPermissionsTeamId($utilizador->empresa_id);
+            }
+
             return $next($request);
+        } finally {
+            // Limpa mesmo quando o controller lança exceção ou devolve cedo.
+            $this->tenantManager->clear();
+
+            if ($registrar !== null) {
+                $registrar->setPermissionsTeamId(null);
+            }
         }
-
-        if (! $utilizador->empresa_id) {
-            Log::warning('Utilizador autenticado sem empresa associada.', [
-                'utilizador_id' => $utilizador->id,
-            ]);
-
-            throw new TenantNaoEncontradoException;
-        }
-
-        $this->tenantManager->set($utilizador->empresa_id);
-
-        // Faz o spatie/laravel-permission usar a mesma empresa como "team",
-        // para que papéis/permissões fiquem corretamente isolados por tenant.
-        if (class_exists(PermissionRegistrar::class)) {
-            app(PermissionRegistrar::class)->setPermissionsTeamId($utilizador->empresa_id);
-        }
-
-        return $next($request);
     }
 }
