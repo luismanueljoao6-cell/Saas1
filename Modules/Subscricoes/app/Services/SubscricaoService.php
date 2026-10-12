@@ -71,6 +71,9 @@ class SubscricaoService
                     $subscricao = Subscricao::create([
                         'empresa_id' => $empresaBloqueada->id,
                         'plano_id' => $plano->id,
+                        'periodo_dias' => $plano->periodo_dias,
+                        'limites' => $plano->limites ?? [],
+                        'servicos' => $plano->servicos ?? [],
                         'estado' => 'pendente',
                         'renovacao_automatica' => true,
                     ]);
