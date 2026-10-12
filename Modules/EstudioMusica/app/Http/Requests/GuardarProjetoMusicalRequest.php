@@ -15,9 +15,9 @@ class GuardarProjetoMusicalRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'cliente_id' => ['required', 'exists:clientes,id'],
-            'produtor_user_id' => ['nullable', 'exists:users,id'],
-            'engenheiro_user_id' => ['nullable', 'exists:users,id'],
+            'cliente_id' => ['required', Rule::exists('clientes', 'id')->where('empresa_id', $this->user()->empresa_id)],
+            'produtor_user_id' => ['nullable', Rule::exists('users', 'id')->where('empresa_id', $this->user()->empresa_id)],
+            'engenheiro_user_id' => ['nullable', Rule::exists('users', 'id')->where('empresa_id', $this->user()->empresa_id)],
             'nome' => ['required', 'string', 'max:255'],
             'estilo' => ['nullable', 'string', 'max:255'],
             'prazo_entrega' => ['nullable', 'date'],
