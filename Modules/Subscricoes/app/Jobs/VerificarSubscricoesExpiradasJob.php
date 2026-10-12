@@ -138,6 +138,23 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
                                 return;
                             }
 
+                            // Uma subscrição antiga pode ter ficado ativa por
+                            // inconsistência ou concorrência depois de outra compra.
+                            // Nunca suspender a empresa se existir outra subscrição
+                            // ativa com período ainda válido.
+                            $outraSubscricaoValida = Subscricao::query()
+                                ->where('empresa_id', $subscricaoAtual->empresa_id)
+                                ->where('id', '!=', $subscricaoAtual->id)
+                                ->where('estado', 'ativa')
+                                ->where('termina_em', '>', now())
+                                ->exists();
+
+                            if ($outraSubscricaoValida) {
+                                $subscricaoAtual->update(['estado' => 'expirada']);
+
+                                return;
+                            }
+
                             $empresa = Empresa::query()
                                 ->lockForUpdate()
                                 ->findOrFail($subscricaoAtual->empresa_id);
