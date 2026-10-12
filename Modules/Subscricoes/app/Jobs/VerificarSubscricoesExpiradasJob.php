@@ -8,6 +8,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
@@ -92,7 +93,19 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
             ->chunkById(100, function ($empresas) use ($tenantService) {
                 foreach ($empresas as $empresa) {
                     try {
-                        $tenantService->suspender($empresa);
+                        DB::transaction(function () use ($empresa, $tenantService) {
+                            $empresaAtual = Empresa::query()
+                                ->lockForUpdate()
+                                ->findOrFail($empresa->id);
+
+                            if (
+                                $empresaAtual->estado_subscricao === 'trial'
+                                && $empresaAtual->subscricao_expira_em !== null
+                                && $empresaAtual->subscricao_expira_em->isPast()
+                            ) {
+                                $tenantService->suspender($empresaAtual);
+                            }
+                        });
                     } catch (Throwable $e) {
                         Log::error('Falha ao terminar o trial de uma empresa', [
                             'empresa_id' => $empresa->id,
@@ -112,8 +125,26 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
             ->chunkById(100, function ($subscricoes) use ($tenantService) {
                 foreach ($subscricoes as $subscricao) {
                     try {
-                        $subscricao->update(['estado' => 'expirada']);
-                        $tenantService->suspender($subscricao->empresa);
+                        DB::transaction(function () use ($subscricao, $tenantService) {
+                            $subscricaoAtual = Subscricao::query()
+                                ->lockForUpdate()
+                                ->findOrFail($subscricao->id);
+
+                            if (
+                                $subscricaoAtual->estado !== 'ativa'
+                                || $subscricaoAtual->termina_em === null
+                                || $subscricaoAtual->termina_em->isFuture()
+                            ) {
+                                return;
+                            }
+
+                            $empresa = Empresa::query()
+                                ->lockForUpdate()
+                                ->findOrFail($subscricaoAtual->empresa_id);
+
+                            $tenantService->suspender($empresa);
+                            $subscricaoAtual->update(['estado' => 'expirada']);
+                        });
                     } catch (Throwable $e) {
                         Log::error('Falha ao suspender subscrição vencida', [
                             'subscricao_id' => $subscricao->id,
@@ -132,7 +163,19 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
             ->chunkById(100, function ($empresas) use ($tenantService) {
                 foreach ($empresas as $empresa) {
                     try {
-                        $tenantService->expirar($empresa);
+                        DB::transaction(function () use ($empresa, $tenantService) {
+                            $empresaAtual = Empresa::query()
+                                ->lockForUpdate()
+                                ->findOrFail($empresa->id);
+
+                            if (
+                                $empresaAtual->estado_subscricao === 'suspensa'
+                                && $empresaAtual->periodo_tolerancia_ate !== null
+                                && $empresaAtual->periodo_tolerancia_ate->isPast()
+                            ) {
+                                $tenantService->expirar($empresaAtual);
+                            }
+                        });
                     } catch (Throwable $e) {
                         Log::error('Falha ao expirar empresa após período de tolerância', [
                             'empresa_id' => $empresa->id,
