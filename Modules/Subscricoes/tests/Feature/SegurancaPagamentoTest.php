@@ -363,6 +363,47 @@ class SegurancaPagamentoTest extends TestCase
         }
     }
 
+    public function test_cancelar_renovacao_invalida_referencia_pendente_e_webhook_nao_renova(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000018');
+
+        $pagamentoInicial = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        app(PagamentoService::class)->confirmar($pagamentoInicial, [], null, '9900.00');
+
+        $subscricao = Subscricao::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->firstOrFail();
+        app(TenantManager::class)->set($empresa->id);
+
+        $pagamentoRenovacao = app(SubscricaoService::class)->gerarRenovacao($subscricao);
+        $expiracaoOriginal = $empresa->fresh()->subscricao_expira_em;
+
+        app(SubscricaoService::class)->cancelarRenovacao($subscricao);
+
+        $this->assertSame(
+            'expirado',
+            Pagamento::withoutGlobalScopes()->findOrFail($pagamentoRenovacao->id)->estado
+        );
+
+        try {
+            app(PagamentoService::class)->confirmar(
+                $pagamentoRenovacao->fresh(),
+                [],
+                null,
+                '9900.00'
+            );
+            $this->fail('Uma referência de renovação cancelada não pode renovar a subscrição.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('não pode ser confirmado automaticamente', $e->getMessage());
+        }
+
+        $this->assertSame(
+            $expiracaoOriginal->toDateTimeString(),
+            $empresa->fresh()->subscricao_expira_em->toDateTimeString()
+        );
+    }
+
     public function test_nao_permite_retomar_renovacao_de_subscricao_vencida(): void
     {
         $this->usarGateway();
