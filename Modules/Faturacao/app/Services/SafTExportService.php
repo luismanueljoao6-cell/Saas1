@@ -102,12 +102,22 @@ class SafTExportService
             'conta contabilística de clientes' => config('faturacao.saft_conta_clientes'),
         ];
         foreach ($obrigatorios as $campo => $valor) {
-            if (! is_string($valor) || trim($valor) === '') $problemas[] = 'Configure '.$campo.' no ambiente.';
+            if (! is_string($valor) || trim($valor) === '') {
+                $problemas[] = 'Configure '.$campo.' no ambiente.';
+            }
         }
-        if (trim((string) ($empresa->nif ?? '')) === '') $problemas[] = 'A empresa não tem NIF.';
-        if (trim((string) ($empresa->nome_legal ?: $empresa->nome_comercial)) === '') $problemas[] = 'A empresa não tem nome legal/comercial.';
-        if (trim((string) ($empresa->morada ?? '')) === '') $problemas[] = 'A empresa não tem morada fiscal.';
-        if (trim((string) ($empresa->municipio ?? '')) === '') $problemas[] = 'A empresa não tem município fiscal.';
+        if (trim((string) ($empresa->nif ?? '')) === '') {
+            $problemas[] = 'A empresa não tem NIF.';
+        }
+        if (trim((string) ($empresa->nome_legal ?: $empresa->nome_comercial)) === '') {
+            $problemas[] = 'A empresa não tem nome legal/comercial.';
+        }
+        if (trim((string) ($empresa->morada ?? '')) === '') {
+            $problemas[] = 'A empresa não tem morada fiscal.';
+        }
+        if (trim((string) ($empresa->municipio ?? '')) === '') {
+            $problemas[] = 'A empresa não tem município fiscal.';
+        }
 
         $clientes = Cliente::withoutGlobalScopes()->where('empresa_id', $empresa->id)->get(['id', 'nome', 'nif', 'morada', 'municipio']);
         foreach ($clientes as $cliente) {
@@ -318,8 +328,12 @@ class SafTExportService
             $morada->appendChild($this->no($doc, 'Country', 'AO'));
             $c->appendChild($morada);
             $c->appendChild($this->no($doc, 'SelfBillingIndicator', 0));
-            if ($cliente->telefone) $c->appendChild($this->no($doc, 'Telephone', $cliente->telefone));
-            if ($cliente->email) $c->appendChild($this->no($doc, 'Email', $cliente->email));
+            if ($cliente->telefone) {
+                $c->appendChild($this->no($doc, 'Telephone', $cliente->telefone));
+            }
+            if ($cliente->email) {
+                $c->appendChild($this->no($doc, 'Email', $cliente->email));
+            }
             $tabelas->appendChild($c);
         }
 
@@ -404,7 +418,9 @@ class SafTExportService
     {
         $codigos = config('faturacao.saft_codigos_taxa', []);
         $codigo = $codigos[(string) number_format($taxa, 2, '.', '')] ?? null;
-        if ($taxa == 0.0) return 'ISE';
+        if ($taxa == 0.0) {
+            return 'ISE';
+        }
         return is_string($codigo) && $codigo !== '' ? $codigo : number_format($taxa, 2, '.', '');
     }
 
@@ -473,7 +489,9 @@ class SafTExportService
             ->whereBetween('data_emissao', [$inicio->toDateString(), $fim->toDateString()])
             ->orderBy('serie_id')->orderBy('numero_sequencial')->get();
 
-        if ($recibos->isEmpty()) return null;
+        if ($recibos->isEmpty()) {
+            return null;
+        }
 
         $pagamentos = $doc->createElementNS(self::NAMESPACE_SAFT, 'Payments');
         $pagamentos->appendChild($this->no($doc, 'NumberOfEntries', $recibos->count()));
