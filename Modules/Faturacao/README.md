@@ -172,7 +172,7 @@ grace period, consegues consultar faturas antigas mas não criar novas
    FATURACAO_SAFT_CODIGOS_TAXA={"14.00":"NOR"}
    ```
 
-Os campos SAF-T adicionais são explícitos: classifica cada produto como P/S/O/E/I na página Produtos; completa a morada e o município de cada cliente; configura o NIF do produtor, o ProductID no formato Nome da aplicação/Nome do produtor e a conta contabilística real de clientes. `FATURACAO_SAFT_TIPO_PRODUTO_PADRAO` só se aplica a linhas manuais sem produto associado. O mapeamento de taxas tem de refletir o regime fiscal aplicável; o exemplo de 14% não substitui confirmação fiscal.\n\n4. **Migrar**
+Os campos SAF-T adicionais são explícitos: classifica cada produto como P/S/O/E/I na página Produtos; completa a morada e o município de cada cliente; configura o NIF do produtor, o ProductID no formato Nome da aplicação/Nome do produtor e a conta contabilística real de clientes. `FATURACAO_SAFT_TIPO_PRODUTO_PADRAO` só se aplica a linhas manuais sem produto associado. O mapeamento de taxas tem de refletir o regime fiscal aplicável; o exemplo de 14% não substitui confirmação fiscal. As notas de crédito exigem referência válida à fatura original; a exportação falha em vez de produzir referências fictícias.\n\n4. **Migrar**
    ```bash
    php artisan migrate
    ```
@@ -182,7 +182,10 @@ Os campos SAF-T adicionais são explícitos: classifica cada produto como P/S/O/
 5. **Correr os testes** (geram e descartam a sua própria chave RSA de teste,
    não usam a chave de produção):
    ```bash
+   php artisan test --filter=ExportacaoSafTTest
+   php artisan test --filter=SafTRegrasEValidacaoTest
    php artisan test --filter=CadeiaFiscalTest
+   php artisan test
    ```
 
 ## Rotas principais
