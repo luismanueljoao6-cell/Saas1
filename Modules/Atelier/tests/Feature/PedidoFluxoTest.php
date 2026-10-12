@@ -65,6 +65,25 @@ class PedidoFluxoTest extends TestCase
         $this->assertTrue($pedido->fresh()->estaFinalizado());
     }
 
+    public function test_transicao_usa_estado_persistido_e_nao_o_estado_obsoleto(): void
+    {
+        Event::fake([PedidoMudouEstado::class]);
+        $pedido = $this->criarPedido('400000012');
+        $instanciaObsoleta = Pedido::findOrFail($pedido->id);
+        $servico = app(PedidoStatusService::class);
+
+        foreach (['em_corte', 'em_costura', 'primeira_prova', 'pronto_para_retirada'] as $estado) {
+            $servico->avancarPara($pedido, $estado);
+        }
+
+        // A instância ainda está "pendente", mas a linha persistida já está
+        // pronta para retirada. A transição tem de validar o estado real.
+        $servico->avancarPara($instanciaObsoleta, 'entregue');
+
+        $this->assertSame('entregue', $pedido->fresh()->status);
+        $this->assertSame('entregue', $instanciaObsoleta->status);
+    }
+
     public function test_ajustes_pode_voltar_a_uma_nova_prova(): void
     {
         Event::fake([PedidoMudouEstado::class]);
