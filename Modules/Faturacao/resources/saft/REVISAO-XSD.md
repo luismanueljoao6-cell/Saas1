@@ -1,53 +1,42 @@
 # Revisão estrutural do exportador SAF-T (AO)
 
-Data da revisão: 2026-10-11
+Data da revisão: 2026-10-12
 
-## Estado
+## Alterações implementadas nesta branch
 
-O XML gerado por `SafTExportService` é provisório e **não deve ser tratado como validado**. O XSD de referência encontra-se neste diretório em `SAFTAO1.01_01.xsd`. A existência do esquema no repositório não significa que o exportador passe na validação.
+- Cabeçalho e raiz XML usam o namespace e a versão declarados pelo XSD versionado.
+- Endereços de empresa e cliente são estruturas; clientes têm campos de município e província.
+- Clientes incluem AccountID, CustomerTaxID, BillingAddress e SelfBillingIndicator.
+- Produtos incluem ProductType, ProductCode, ProductDescription e ProductNumberCode; a classificação pode ser registada por produto na página Produtos.
+- TaxTable é construída a partir das taxas presentes em produtos e linhas de faturas/notas.
+- Documentos de venda incluem DocumentStatus, SpecialRegimes, linhas com estrutura Tax e DocumentTotals na sequência do esquema.
+- Notas de crédito/débito preservam a distinção entre DebitAmount e CreditAmount.
+- Recibos emitidos são incluídos na secção Payments. Um recibo sem fatura de origem, com referências inconsistentes ou sem assinatura bloqueia a exportação.
+- IVA a zero exige motivo legal e código de isenção com formato Mnn; os serviços de criação validam as taxas permitidas e não aceitam dados de isenção incompletos.
+- O job de fila usa gerarValidado(), que faz pré-validação dos dados fiscais e valida o XML contra o XSD antes de guardar o ficheiro. gerar() permanece apenas para compatibilidade/diagnóstico.
 
-## Diferenças verificadas entre o serviço atual e o XSD
+## Dados que não devem ser inventados
 
-### Raiz e cabeçalho
+A exportação validada falha fechada se faltarem dados reais do produtor do software, ProductID, conta contabilística de clientes, NIF/morada/município da empresa, morada/município do cliente ou classificação fiscal do produto. Configurações de produtor e conta contabilística devem ser valores reais e confirmados. Não usar um NIF do cliente como NIF do produtor.
 
-- O serviço cria `AuditFile` sem o namespace `urn:OECD:StandardAuditFile-Tax:AO_1.01_01`.
-- O valor atual de `AuditFileVersion` é `1.0`; o esquema de referência identifica a versão `1.01_01`.
-- `CompanyAddress` é emitido como texto simples, mas o XSD exige uma estrutura com `AddressDetail`, `City` e `Country` (e campos opcionais na ordem definida).
-- O cabeçalho não emite `TaxEntity`, `ProductCompanyTaxID`, `SoftwareValidationNumber` e `ProductVersion`.
-- `ProductID` deve identificar aplicação e empresa produtora no formato `Nome da aplicação/Nome da empresa produtora`; o valor atual não identifica a empresa produtora.
-- A configuração atual `saft_numero_certificado` é usada como `SoftwareCertificateNumber`, mas o cabeçalho XSD da versão consultada pede `SoftwareValidationNumber`. O significado destes campos não deve ser confundido nem preenchido com um número inventado.
+## Limitações ainda abertas
 
-### Tabelas mestras
+1. O XSD neste repositório está marcado como Development. A validação contra este ficheiro não prova que a AGT o aceite nem substitui certificação.
+2. O código da taxa, regime fiscal, motivos de isenção e semântica contabilística têm de ser confirmados para o regime efetivo de cada contribuinte.
+3. Recibos de adiantamento sem fatura de origem são permitidos pelo modelo de dados, mas não podem ser exportados com a estrutura atual de Payments; a exportação falha em vez de omiti-los.
+4. Ainda não foi possível executar a suite de testes nem a validação XSD dentro deste ambiente de edição remota. É obrigatório executar a suite na branch e corrigir todos os resultados antes de integrar na main.
+5. Esta entrega exporta faturas, notas de crédito/débito e recibos; não gera GeneralLedgerEntries nem o plano de contas, pelo que não deve ser apresentada como SAF-T de contabilidade completo.
 
-- Cada `Customer` exige `CustomerID`, `AccountID`, `CustomerTaxID`, `CompanyName`, `BillingAddress` e `SelfBillingIndicator`, na ordem definida. O serviço atual emite apenas quatro campos e usa `Address` em vez de `BillingAddress`.
-- O XSD documenta o NIF `999999999` para o cliente genérico “Consumidor final”. Esse valor só deve ser usado para esse cliente genérico, não como substituto universal para qualquer cliente sem NIF.
-- Cada `Product` exige `ProductType`, `ProductCode`, `ProductDescription` e `ProductNumberCode`; o serviço atual emite apenas código e descrição.
-- O XSD admite `TaxTable` na tabela mestre e o serviço não a gera. A tabela deve ser coerente com os impostos realmente usados nos documentos.
+## Verificação local obrigatória
 
-### Documentos de venda
+Executar na branch de trabalho:
 
-A sequência do XSD para cada `Invoice` começa com `InvoiceNo`, `DocumentStatus`, `Hash`, `HashControl`, `InvoiceDate`, `InvoiceType`, `SpecialRegimes`, `SourceID`, `SystemEntryDate` e `CustomerID`, antes das linhas. O serviço atual emite uma sequência diferente e coloca campos de totais diretamente no documento.
+```bash
+php artisan migrate
+php artisan test --filter=ExportacaoSafTTest
+php artisan test --filter=SafTRegrasEValidacaoTest
+php artisan test --filter=RegrasDeNegocioTest
+php artisan test
+```
 
-Cada `Line` exige pelo menos `LineNumber`, `ProductCode`, `ProductDescription`, `Quantity`, `UnitOfMeasure`, `UnitPrice`, `TaxPointDate`, `Description`, um de `DebitAmount`/`CreditAmount` e uma estrutura `Tax`. O serviço atual não emite vários destes campos e usa `TaxPercentage` diretamente, em vez da estrutura `Tax`.
-
-Os totais devem estar agrupados dentro de `DocumentTotals`, na ordem `TaxPayable`, `NetTotal`, `GrossTotal`. O serviço atual não cria esse agrupamento.
-
-### Âmbito dos documentos
-
-- O serviço exporta faturas e notas de crédito/débito sob `SalesInvoices`.
-- A consulta atual não inclui recibos emitidos. A especificação SAF-T consultada menciona documentos de conferência e recibos emitidos quando existam; o âmbito final e a forma de os exportar devem ser decididos com base no tipo de SAF-T exigido e nos dados de pagamentos do módulo.
-- Este serviço não gera `GeneralLedgerEntries` nem o plano de contas. Portanto, não é um exportador completo de SAF-T de contabilidade.
-
-## Plano seguro de implementação
-
-1. Confirmar o tipo de SAF-T a entregar e os requisitos aplicáveis junto da AGT.
-2. Adicionar configuração explícita para os dados reais do produtor de software; não fabricar NIF nem número de validação.
-3. Construir nós XML com namespace consistente e estruturas de endereço e cabeçalho na ordem do XSD.
-4. Mapear clientes, produtos, códigos/unidades e impostos sem inventar dados fiscais.
-5. Corrigir o mapeamento de estado/origem, linhas, impostos e totais dos documentos.
-6. Decidir e implementar a exportação de recibos/pagamentos conforme o âmbito confirmado.
-7. Acrescentar testes que validem XML de cenários reais contra este XSD e verificar os erros com libxml; executar toda a suite antes de integrar na `main`.
-
-## Limitação da revisão
-
-Esta nota é uma comparação estática do serviço e do XSD versionado no repositório. Ainda não foi executado `DOMDocument::schemaValidate()` no XML gerado, nem a suite de testes foi executada nesta branch. A validade final depende também de dados fiscais corretos e da confirmação de que esta versão do XSD é a aplicável à submissão pretendida.
+Só depois de todos os testes passarem, e após confirmar a versão oficial aplicável do XSD e a configuração fiscal real, preparar a PR para revisão.
