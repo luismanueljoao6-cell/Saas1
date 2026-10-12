@@ -117,7 +117,7 @@ class SafTExportService
 
         $produtos = Produto::withoutGlobalScopes()->where('empresa_id', $empresa->id)->get(['id', 'tipo_saft']);
         foreach ($produtos as $produto) {
-            $tipo = strtoupper(trim((string) ($produto->tipo_saft ?: config('faturacao.saft_tipo_produto_padrao', ''))));
+            $tipo = strtoupper(trim((string) $produto->tipo_saft));
             if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
                 $problemas[] = 'O produto '.$produto->id.' não tem classificação SAF-T P/S/O/E/I.';
             }
@@ -347,9 +347,9 @@ class SafTExportService
 
     protected function tipoProdutoSafT(Produto $produto): string
     {
-        $tipo = strtoupper(trim((string) ($produto->tipo_saft ?: config('faturacao.saft_tipo_produto_padrao', ''))));
+        $tipo = strtoupper(trim((string) $produto->tipo_saft));
         if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
-            throw new \RuntimeException('Configure FATURACAO_SAFT_TIPO_PRODUTO_PADRAO (P, S, O, E ou I) antes de exportar produtos SAF-T.');
+            throw new \RuntimeException('Classifique o produto '.$produto->id.' como P, S, O, E ou I antes de exportar SAF-T.');
         }
         return $tipo;
     }
