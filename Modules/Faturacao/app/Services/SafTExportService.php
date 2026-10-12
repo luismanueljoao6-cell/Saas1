@@ -305,7 +305,7 @@ class SafTExportService
     {
         $tipo = strtoupper(trim((string) config('faturacao.saft_tipo_produto_padrao', '')));
         if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
-            throw new \\RuntimeException('Configure FATURACAO_SAFT_TIPO_PRODUTO_PADRAO antes de exportar linhas sem produto associado.');
+            throw new \RuntimeException('Configure FATURACAO_SAFT_TIPO_PRODUTO_PADRAO antes de exportar linhas sem produto associado.');
         }
         return $tipo;
     }
