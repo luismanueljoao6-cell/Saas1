@@ -48,7 +48,7 @@ class GerarSafTJob implements ShouldBeUnique, ShouldQueue
         $inicio = Carbon::createFromFormat('Y-m-d', $this->dataInicio)->startOfDay();
         $fim = Carbon::createFromFormat('Y-m-d', $this->dataFim)->endOfDay();
 
-        $xml = $safTExportService->gerar($this->empresa, $inicio, $fim);
+        $xml = $safTExportService->gerarValidado($this->empresa, $inicio, $fim);
 
         $caminho = "faturacao/saft/{$this->empresa->id}/SAFT_{$inicio->toDateString()}_{$fim->toDateString()}.xml";
         Storage::disk('local')->put($caminho, $xml);
