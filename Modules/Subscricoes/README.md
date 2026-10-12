@@ -131,7 +131,6 @@ métodos alternativos" do pedido original), sem duplicar lógica.
    SUBSCRICOES_GATEWAY=proxypay
    PROXYPAY_BASE_URL=https://api.proxypay.co.ao
    PROXYPAY_API_KEY=
-   PROXYPAY_WEBHOOK_TOKEN=
    SUBSCRICOES_MOEDA=AOA
    SUBSCRICOES_VALIDADE_REFERENCIA_DIAS=3
    SUBSCRICOES_AVISO_RENOVACAO_DIAS=3
