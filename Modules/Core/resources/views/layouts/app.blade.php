@@ -1,85 +1,101 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('titulo', 'Plataforma de Gestão')</title>
 
-    @vite(['Modules/Core/resources/css/app.css'])
+    {{-- Aplica o tema guardado ANTES de pintar a página (evita o "flash" claro->escuro). --}}
+    <script>
+        (function () {
+            try {
+                var guardado = localStorage.getItem('tema');
+                var escuro = guardado ? guardado === 'escuro' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+                document.documentElement.classList.toggle('dark', escuro);
+            } catch (e) {}
+        })();
 
-    {{-- Alpine.js via CDN para os pequenos toques de interatividade deste
-         módulo (ex.: mostrar/ocultar password). Numa fase seguinte, mover
-         para um pacote npm importado e compilado pelo Vite. --}}
+        function alternarTema() {
+            var escuro = document.documentElement.classList.toggle('dark');
+            try { localStorage.setItem('tema', escuro ? 'escuro' : 'claro'); } catch (e) {}
+        }
+    </script>
+
+    {{-- Inter (servida pelo Bunny Fonts, sem rastreio). Se preferires self-host, remove estas 3 linhas
+         e instala @fontsource-variable/inter; o CSS já tem fallback para a fonte do sistema. --}}
+    <link rel="preconnect" href="https://fonts.bunny.net">
+    <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet">
+
+    @vite(['Modules/Core/resources/css/app.css'])
+    @stack('estilos')
+
+    {{-- Alpine.js via CDN (já usado neste módulo). Numa fase seguinte, mover para npm + Vite. --}}
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+<body class="h-full bg-slate-50 font-sans text-slate-900 antialiased dark:bg-zinc-950 dark:text-zinc-100">
 
     @auth
-        @php($itensMenu = app(\Modules\Core\Services\MenuRegistry::class)->itens())
-        <nav x-data="{ aberto: false }" class="border-b border-slate-200 bg-white">
-            <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-                <a href="{{ route('core.painel') }}" class="text-sm font-semibold text-slate-900">
-                    {{ auth()->user()->empresa->nome_comercial ?? 'Plataforma de Gestão' }}
-                </a>
+        @php($nav = \Modules\Core\Support\Navegacao::grupos())
 
-                {{-- Desktop: lista horizontal --}}
-                <div class="hidden items-center gap-5 sm:flex">
-                    @foreach ($itensMenu as $item)
-                        <a href="{{ $item['url'] }}"
-                           class="text-sm {{ request()->routeIs($item['rota']) ? 'font-semibold text-indigo-600' : 'text-slate-600 hover:text-slate-900' }}">
-                            {{ $item['rotulo'] }}
-                        </a>
-                    @endforeach
-                    <form method="POST" action="{{ route('core.logout') }}">
-                        @csrf
-                        <button type="submit" class="text-sm text-slate-500 hover:text-slate-900">Sair</button>
-                    </form>
-                </div>
+        <div x-data="{ menuAberto: false }" @keydown.escape.window="menuAberto = false" class="min-h-screen">
+            {{-- Fundo escurecido do menu em ecrãs pequenos --}}
+            <div x-show="menuAberto" x-cloak x-transition.opacity @click="menuAberto = false"
+                 class="fixed inset-0 z-40 bg-zinc-900/50 lg:hidden"></div>
 
-                {{-- Mobile: botão hambúrguer --}}
-                <button type="button" @click="aberto = !aberto" class="sm:hidden" aria-label="Abrir menu">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path x-show="!aberto" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                        <path x-show="aberto" x-cloak stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
+            @include('core::partials.sidebar')
+
+            <div class="flex min-h-screen flex-col lg:pl-64">
+                @include('core::partials.header')
+
+                <main class="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+                    <div class="mx-auto w-full max-w-7xl">
+                        @if (session('sucesso'))
+                            <div x-data="{ visivel: true }" x-show="visivel" role="status"
+                                 class="mb-4 flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                <span>{{ session('sucesso') }}</span>
+                                <button type="button" @click="visivel = false" class="shrink-0 opacity-70 hover:opacity-100" aria-label="Fechar aviso">
+                                    @include('core::partials.icone', ['nome' => 'fechar', 'classe' => 'size-4'])
+                                </button>
+                            </div>
+                        @endif
+
+                        @if (session('erro'))
+                            <div x-data="{ visivel: true }" x-show="visivel" role="alert"
+                                 class="mb-4 flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+                                <span>{{ session('erro') }}</span>
+                                <button type="button" @click="visivel = false" class="shrink-0 opacity-70 hover:opacity-100" aria-label="Fechar aviso">
+                                    @include('core::partials.icone', ['nome' => 'fechar', 'classe' => 'size-4'])
+                                </button>
+                            </div>
+                        @endif
+
+                        @yield('conteudo')
+                    </div>
+                </main>
             </div>
-
-            {{-- Mobile: lista em coluna, só aparece quando aberto --}}
-            <div x-show="aberto" x-cloak class="border-t border-slate-200 sm:hidden">
-                <div class="flex flex-col divide-y divide-slate-100">
-                    @foreach ($itensMenu as $item)
-                        <a href="{{ $item['url'] }}"
-                           class="px-4 py-3 text-sm {{ request()->routeIs($item['rota']) ? 'font-semibold text-indigo-600' : 'text-slate-700' }}">
-                            {{ $item['rotulo'] }}
-                        </a>
-                    @endforeach
-                    <form method="POST" action="{{ route('core.logout') }}" class="px-4 py-3">
-                        @csrf
-                        <button type="submit" class="text-sm text-slate-500">Sair</button>
-                    </form>
-                </div>
+        </div>
+    @else
+        {{-- Visitantes (login, registo): mantém o ecrã simples e centrado. --}}
+        @if (session('sucesso'))
+            <div class="border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                {{ session('sucesso') }}
             </div>
-        </nav>
+        @endif
+
+        @if (session('erro'))
+            <div class="border-b border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-800 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+                {{ session('erro') }}
+            </div>
+        @endif
+
+        <main class="flex min-h-screen flex-col items-center justify-center px-4 py-10">
+            <div class="w-full max-w-5xl">
+                @yield('conteudo')
+            </div>
+        </main>
     @endauth
 
-    @if (session('sucesso'))
-        <div class="bg-emerald-50 border-b border-emerald-200 text-emerald-800 text-sm px-4 py-3 text-center">
-            {{ session('sucesso') }}
-        </div>
-    @endif
-
-    @if (session('erro'))
-        <div class="bg-red-50 border-b border-red-200 text-red-800 text-sm px-4 py-3 text-center">
-            {{ session('erro') }}
-        </div>
-    @endif
-
-    <main class="flex min-h-screen flex-col items-center px-4 py-10 @guest justify-center @endguest">
-        <div class="w-full max-w-5xl">
-            @yield('conteudo')
-        </div>
-    </main>
-
+    @stack('scripts')
 </body>
 </html>
