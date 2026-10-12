@@ -36,7 +36,7 @@ return new class extends Migration
             $table->dropColumn(['tipo_saft', 'codigo_isencao_iva', 'motivo_isencao_iva']);
         });
         Schema::table('fatura_linhas', function (Blueprint $table): void {
-            $table->dropColumn(['codigo_isencao_iva', 'motivo_isencao_iva']);
+            $table->dropColumn(['tipo_saft', 'codigo_isencao_iva', 'motivo_isencao_iva']);
         });
         Schema::table('produtos', function (Blueprint $table): void {
             $table->dropColumn('tipo_saft');
