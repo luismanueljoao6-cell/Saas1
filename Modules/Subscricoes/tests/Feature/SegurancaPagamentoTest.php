@@ -372,7 +372,6 @@ class SegurancaPagamentoTest extends TestCase
         );
     }
 
-
     public function test_referencia_pendente_fora_do_prazo_nao_pode_ativar_subscricao(): void
     {
         $this->usarGateway();
