@@ -151,10 +151,12 @@ grace period, consegues consultar faturas antigas mas não criar novas
 2. **Gerar o par de chaves RSA** (nunca committer a privada):
    ```bash
    mkdir -p storage/app/faturacao
-   openssl genrsa -out storage/app/faturacao/chave-privada.pem 2048
+   openssl genrsa -out storage/app/faturacao/chave-privada.pem 1024
    openssl rsa -in storage/app/faturacao/chave-privada.pem -pubout -out storage/app/faturacao/chave-publica.pem
    echo "storage/app/faturacao/" >> .gitignore
    ```
+
+   **Atenção:** o XSD de referência limita a assinatura (`Hash`) a 172 caracteres, incompatível com RSA-2048. RSA-1024 é um requisito legado e criptograficamente mais fraco; confirma o tamanho de chave exigido na especificação oficial atual da AGT antes de produção. Se já emitiste documentos com uma chave, não a substituas sem o procedimento oficial de rotação e sem preservar a cadeia fiscal.
 
 3. **Variáveis de ambiente**:
    ```
