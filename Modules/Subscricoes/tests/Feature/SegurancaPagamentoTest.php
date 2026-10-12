@@ -483,4 +483,33 @@ class SegurancaPagamentoTest extends TestCase
             Subscricao::withoutGlobalScopes()->findOrFail($subscricaoAntiga->id)->estado
         );
     }
+    public function test_subscricao_vencida_deixa_de_conceder_limites_do_plano_mesmo_antes_do_job(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000019');
+        $plano->update(['limites' => ['max_utilizadores' => 99]]);
+
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
+
+        $subscricao = Subscricao::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->firstOrFail();
+        $subscricao->update([
+            'limites' => ['max_utilizadores' => 99],
+            'termina_em' => now()->subSecond(),
+        ]);
+
+        config(['subscricoes.limites_sem_plano.max_utilizadores' => 3]);
+
+        $limite = app(\\Modules\\Core\\Contracts\\LimitesDaEmpresa::class)
+            ->limite($empresa->fresh(), 'max_utilizadores');
+
+        $this->assertSame(
+            3,
+            $limite,
+            'Uma subscrição vencida não deve manter os limites pagos só porque o job de expiração ainda não correu.'
+        );
+    }
+
 }
