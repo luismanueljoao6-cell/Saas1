@@ -318,4 +318,58 @@ class SegurancaPagamentoTest extends TestCase
         ], $corpo);
         $this->assertFalse($gateway->validarPedidoWebhook($tokenNaUrl));
     }
+
+    public function test_pagamento_expirado_nao_pode_ativar_subscricao_por_webhook_tardio(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000015');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+
+        // Simula a rotina diária que expira uma referência antes de chegar
+        // uma notificação atrasada do gateway.
+        Pagamento::withoutGlobalScopes()->whereKey($pagamento->id)->update([
+            'estado' => 'expirado',
+        ]);
+
+        try {
+            app(PagamentoService::class)->confirmar(
+                $pagamento->fresh(),
+                [],
+                null,
+                '9900.00'
+            );
+            $this->fail('Um pagamento expirado não deve ativar a subscrição automaticamente.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('estado é', $e->getMessage());
+        }
+
+        $this->assertSame(
+            'expirado',
+            Pagamento::withoutGlobalScopes()->findOrFail($pagamento->id)->estado
+        );
+        $this->assertSame('trial', $empresa->fresh()->estado_subscricao);
+        $this->assertSame(
+            'pendente',
+            Subscricao::withoutGlobalScopes()->findOrFail($pagamento->subscricao_id)->estado
+        );
+    }
+
+    public function test_pagamento_cancelado_nao_pode_ser_confirmado_automaticamente(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000016');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        Pagamento::withoutGlobalScopes()->whereKey($pagamento->id)->update([
+            'estado' => 'cancelado',
+        ]);
+
+        $this->expectException(DomainException::class);
+        app(PagamentoService::class)->confirmar(
+            $pagamento->fresh(),
+            [],
+            null,
+            '9900.00'
+        );
+    }
+
 }
