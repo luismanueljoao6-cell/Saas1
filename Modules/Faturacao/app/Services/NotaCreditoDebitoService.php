@@ -58,7 +58,7 @@ class NotaCreditoDebitoService
 
         $linhas = $fatura->linhas()->get()->map(fn ($linha) => [
             'descricao' => $linha->descricao,
-            'tipo_saft' => $linha->tipo_saft,
+            'tipo_saft' => $linha->produto?->tipo_saft ?: $linha->tipo_saft,
             'quantidade' => $linha->quantidade,
             'preco_unitario' => $linha->preco_unitario,
             'taxa_iva' => $linha->taxa_iva,
