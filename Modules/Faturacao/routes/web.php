@@ -20,6 +20,8 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao'])
 
         Route::get('/produtos', [ProdutoController::class, 'index'])->name('produtos.index');
         Route::post('/produtos', [ProdutoController::class, 'store'])->name('produtos.store');
+        Route::post('/produtos/{produto}/classificar', [ProdutoController::class, 'classificar'])
+            ->whereNumber('produto')->name('produtos.classificar');
 
         Route::get('/faturas', [FaturaController::class, 'index'])->name('faturas.index');
         Route::get('/faturas/criar', [FaturaController::class, 'criar'])->name('faturas.criar');
