@@ -284,11 +284,7 @@ class SubscricaoService
     protected function garantirEstadoPendenteSeNecessario(Empresa $empresa): void
     {
         $this->tenantManager->semTenant(function () use ($empresa) {
-            $empresaAtual = Empresa::query()->findOrFail($empresa->id);
-
-            if (! $empresaAtual->temAcesso()) {
-                $this->tenantService->marcarPendente($empresaAtual);
-            }
+            $this->tenantService->marcarPendenteSeSemAcesso($empresa);
         });
     }
 

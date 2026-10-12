@@ -5,6 +5,7 @@ namespace Modules\Subscricoes\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantService;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
@@ -154,5 +155,25 @@ class FluxoPagamentoTest extends TestCase
         // 30 dias novos a somar aos que já lá estavam: a diferença tem de
         // ser (muito perto de) 30 dias, nunca menos.
         $this->assertGreaterThanOrEqual(29, $terminaAntes->diffInDays($terminaDepois));
+    }
+
+    public function test_estado_pendente_nao_sobrescreve_ativacao_concorrente(): void
+    {
+        $empresa = $this->criarEmpresa('200000007', 'expirada');
+        $modeloAntigo = $empresa->fresh();
+
+        // Simula a confirmação de outro pagamento entre a leitura inicial e
+        // a tentativa de marcar a empresa como pendente.
+        $empresa->update([
+            'estado_subscricao' => 'ativa',
+            'subscricao_expira_em' => now()->addDays(30),
+            'periodo_tolerancia_ate' => null,
+        ]);
+
+        $resultado = app(TenantService::class)->marcarPendenteSeSemAcesso($modeloAntigo);
+
+        $this->assertSame('ativa', $resultado->estado_subscricao);
+        $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
+        $this->assertTrue($empresa->fresh()->temAcesso());
     }
 }
