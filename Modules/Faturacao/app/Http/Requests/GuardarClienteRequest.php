@@ -23,6 +23,8 @@ class GuardarClienteRequest extends FormRequest
             // README do módulo Core sobre a mesma cautela.
             'nif' => ['nullable', 'string', 'max:20', Rule::unique('clientes', 'nif')->where('empresa_id', $empresaId)],
             'morada' => ['nullable', 'string', 'max:255'],
+            'municipio' => ['nullable', 'string', 'max:100'],
+            'provincia' => ['nullable', 'string', 'max:100'],
             'email' => ['nullable', 'email', 'max:255'],
             'telefone' => ['nullable', 'string', 'max:30'],
         ];
