@@ -294,7 +294,7 @@ class SafTExportService
 
     protected function tipoProdutoSafT(Produto $produto): string
     {
-        $tipo = strtoupper(trim((string) config('faturacao.saft_tipo_produto_padrao', '')));
+        $tipo = strtoupper(trim((string) ($produto->tipo_saft ?: config('faturacao.saft_tipo_produto_padrao', ''))));
         if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
             throw new \RuntimeException('Configure FATURACAO_SAFT_TIPO_PRODUTO_PADRAO (P, S, O, E ou I) antes de exportar produtos SAF-T.');
         }
@@ -314,6 +314,7 @@ class SafTExportService
     {
         $codigos = config('faturacao.saft_codigos_taxa', []);
         $codigo = $codigos[(string) number_format($taxa, 2, '.', '')] ?? null;
+        if ($taxa == 0.0) return 'ISE';
         return is_string($codigo) && $codigo !== '' ? $codigo : number_format($taxa, 2, '.', '');
     }
 
@@ -430,7 +431,13 @@ class SafTExportService
             $tax->appendChild($this->no($doc, 'TaxPercentage', number_format($taxa, 2, '.', '')));
             $l->appendChild($tax);
             if ($taxa == 0.0) {
-                throw new \RuntimeException('A linha '.$indice.' do documento '.$m->numero_documento.' tem IVA 0%; motivo e código legal de isenção são obrigatórios.');
+                $codigoIsencao = trim((string) $linha->codigo_isencao_iva);
+                $motivoIsencao = trim((string) $linha->motivo_isencao_iva);
+                if (! preg_match('/^M[0-9]{2}$/', $codigoIsencao) || mb_strlen($motivoIsencao) < 6 || mb_strlen($motivoIsencao) > 60) {
+                    throw new \RuntimeException('A linha '.($indice + 1).' do documento '.$m->numero_documento.' tem IVA 0%; informe um código legal M01–M99 e um motivo entre 6 e 60 caracteres.');
+                }
+                $l->appendChild($this->no($doc, 'TaxExemptionReason', $motivoIsencao));
+                $l->appendChild($this->no($doc, 'TaxExemptionCode', $codigoIsencao));
             }
             $no->appendChild($l);
         }
