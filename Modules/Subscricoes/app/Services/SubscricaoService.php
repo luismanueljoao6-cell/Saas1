@@ -40,6 +40,10 @@ class SubscricaoService
     public function iniciar(Empresa $empresa, Plano $plano): Pagamento
     {
         try {
+            if (! $plano->ativo) {
+                throw new DomainException('Este plano não está disponível para novas subscrições.');
+            }
+
             [$subscricao, $pagamento, $reutilizado] = $this->tenantManager->semTenant(
                 fn () => DB::transaction(function () use ($empresa, $plano) {
                     // Serializa pedidos simultâneos de subscrição da mesma empresa.
