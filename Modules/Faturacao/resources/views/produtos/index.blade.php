@@ -48,6 +48,19 @@
                     <div>
                         <p class="text-sm font-medium text-slate-900">{{ $produto->nome }}</p>
                         <p class="text-xs text-slate-500">{{ $produto->codigo }} — {{ $produto->unidade }}</p>
+                        <form method="POST" action="{{ route('faturacao.produtos.classificar', $produto) }}" class="mt-2 flex items-center gap-2">
+                            @csrf
+                            <label class="text-xs text-slate-500" for="tipo-saft-{{ $produto->id }}">Tipo SAF-T</label>
+                            <select id="tipo-saft-{{ $produto->id }}" name="tipo_saft" required class="rounded border border-slate-300 px-2 py-1 text-xs">
+                                <option value="">Por classificar</option>
+                                <option value="P" @selected($produto->tipo_saft === 'P')>P — Produto</option>
+                                <option value="S" @selected($produto->tipo_saft === 'S')>S — Serviço</option>
+                                <option value="O" @selected($produto->tipo_saft === 'O')>O — Outros</option>
+                                <option value="E" @selected($produto->tipo_saft === 'E')>E — IEC</option>
+                                <option value="I" @selected($produto->tipo_saft === 'I')>I — Imposto/taxa</option>
+                            </select>
+                            <button type="submit" class="text-xs font-medium text-indigo-600">Guardar</button>
+                        </form>
                     </div>
                     <p class="text-sm font-medium text-slate-900">{{ number_format((float) $produto->preco_unitario, 2, ',', ' ') }} AOA</p>
                 </div>
