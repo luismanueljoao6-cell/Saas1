@@ -31,9 +31,10 @@ class CoreServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../../config/config.php', 'core');
 
-        // Singleton: uma única instância do TenantManager por pedido HTTP
-        // (ou por execução de comando artisan / job).
-        $this->app->singleton(TenantManager::class);
+        // Scoped: partilhado dentro do pedido/job atual, mas limpo entre
+        // ciclos de vida em servidores persistentes (Octane/queue workers).
+        // Singleton poderia conservar o tenant do pedido anterior.
+        $this->app->scoped(TenantManager::class);
 
         // Idem para o MenuRegistry — cada módulo instalado regista aqui os
         // seus próprios itens (ver boot() de cada ServiceProvider); tem de
