@@ -172,6 +172,37 @@ class SegurancaPagamentoTest extends TestCase
     }
 
 
+
+    public function test_nao_permite_cobrancas_pendentes_para_planos_diferentes(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000009');
+        $outroPlano = Plano::create([
+            'nome' => 'Plano alternativo',
+            'slug' => 'plano-alternativo-810000009',
+            'preco' => 15000,
+            'periodo_dias' => 30,
+        ]);
+
+        $primeiro = app(SubscricaoService::class)->iniciar($empresa, $plano);
+
+        try {
+            app(SubscricaoService::class)->iniciar($empresa, $outroPlano);
+            $this->fail('Devia impedir uma segunda cobrança para outro plano.');
+        } catch (DomainException) {
+            // esperado: não permitir duas cobranças pendentes concorrentes.
+        }
+
+        $this->assertSame(
+            1,
+            Pagamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->count()
+        );
+        $this->assertSame(
+            $primeiro->id,
+            Pagamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->first()->id
+        );
+    }
+
     public function test_valor_recebido_superior_ao_devido_e_rejeitado(): void
     {
         $this->usarGateway();
