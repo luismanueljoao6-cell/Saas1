@@ -4,7 +4,9 @@ namespace Modules\Faturacao\Services;
 
 use DOMDocument;
 use DOMElement;
+use InvalidArgumentException;
 use LibXMLError;
+use RuntimeException;
 use Illuminate\Support\Carbon;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
@@ -34,11 +36,11 @@ class SafTExportService
         $erroPeriodo = $this->validarPeriodo($inicio, $fim);
 
         if ($erroPeriodo !== null) {
-            throw new \InvalidArgumentException($erroPeriodo);
+            throw new InvalidArgumentException($erroPeriodo);
         }
 
         if ($this->exportacaoBloqueada()) {
-            throw new \RuntimeException('Exportação SAF-T bloqueada em produção: software sem número de certificação AGT configurado.');
+            throw new RuntimeException('Exportação SAF-T bloqueada em produção: software sem número de certificação AGT configurado.');
         }
 
         $doc = new DOMDocument('1.0', 'UTF-8');
@@ -213,7 +215,7 @@ class SafTExportService
 
             $valido = $documento->schemaValidate($caminhoXsd);
             $erros = array_values(array_map(
-                static fn (\LibXMLError $erro): string => trim($erro->message).' (linha '.$erro->line.')',
+                static fn (LibXMLError $erro): string => trim($erro->message).' (linha '.$erro->line.')',
                 libxml_get_errors(),
             ));
 
