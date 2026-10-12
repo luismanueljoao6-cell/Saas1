@@ -140,6 +140,29 @@ class SegurancaPagamentoTest extends TestCase
         $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
     }
 
+    public function test_confirmacao_repetida_nao_estende_duas_vezes_o_periodo_pago(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000010');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+
+        $servico = app(PagamentoService::class);
+        $servico->confirmar($pagamento, [], null, '9900.00');
+        $primeiraExpiracao = $empresa->fresh()->subscricao_expira_em;
+
+        $servico->confirmar($pagamento, [], null, '9900.00');
+        $segundaExpiracao = $empresa->fresh()->subscricao_expira_em;
+
+        $this->assertSame(
+            $primeiraExpiracao->toDateTimeString(),
+            $segundaExpiracao->toDateTimeString()
+        );
+        $this->assertSame(
+            1,
+            Pagamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->where('estado', 'confirmado')->count()
+        );
+    }
+
     public function test_iniciar_reutiliza_referencia_pendente_do_mesmo_plano(): void
     {
         $this->usarGateway();
