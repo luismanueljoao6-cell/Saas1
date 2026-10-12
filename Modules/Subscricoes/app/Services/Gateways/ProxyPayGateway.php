@@ -36,15 +36,12 @@ class ProxyPayGateway implements GatewayPagamentoInterface
 
     protected ?string $apiKey;
 
-    protected ?string $webhookToken;
-
     protected ?string $entityId;
 
     public function __construct()
     {
         $this->baseUrl = rtrim((string) config('subscricoes.gateways.proxypay.base_url'), '/');
         $this->apiKey = config('subscricoes.gateways.proxypay.api_key');
-        $this->webhookToken = config('subscricoes.gateways.proxypay.webhook_token');
         $this->entityId = config('subscricoes.gateways.proxypay.entity_id');
     }
 
