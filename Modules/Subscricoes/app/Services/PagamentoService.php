@@ -89,7 +89,17 @@ class PagamentoService
 
                     $this->validarValorRecebido($pagamento, $valorRecebido);
 
-                    $subscricao = $pagamento->subscricao()->with('plano')->firstOrFail();
+                    $subscricao = $pagamento->subscricao()->with('plano')->lockForUpdate()->firstOrFail();
+
+                    // Uma referência de renovação deixa de ser válida quando a
+                    // renovação automática foi cancelada. A verificação sob lock
+                    // fecha a corrida entre o cancelamento e um webhook em curso.
+                    if ($subscricao->estado === 'ativa' && ! $subscricao->renovacao_automatica) {
+                        throw new DomainException(
+                            "A renovação da subscrição {$subscricao->id} foi cancelada; o pagamento pendente não pode ativá-la."
+                        );
+                    }
+
                     // Lock na empresa: dois pagamentos da mesma empresa confirmados em
                     // paralelo leriam o mesmo subscricao_expira_em e um sobrescreveria o
                     // outro (perda de dias pagos).

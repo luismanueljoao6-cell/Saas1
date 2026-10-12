@@ -246,6 +246,15 @@ class SubscricaoService
             return $bloqueada->fresh();
         });
 
+        // Invalidar referências de renovação ainda não pagas. Fazemos isto
+        // depois de gravar o cancelamento para não inverter a ordem de locks
+        // com a confirmação do pagamento; PagamentoService também valida a
+        // flag sob lock para cobrir webhooks concorrentes.
+        $this->tenantManager->semTenant(fn () => Pagamento::query()
+            ->where('subscricao_id', $atualizada->id)
+            ->where('estado', 'pendente')
+            ->update(['estado' => 'expirado']));
+
         Log::info('Renovação automática cancelada', ['subscricao_id' => $atualizada->id]);
 
         return $atualizada;
