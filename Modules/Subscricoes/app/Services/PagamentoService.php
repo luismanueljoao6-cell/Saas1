@@ -61,6 +61,32 @@ class PagamentoService
                         return [$pagamento, collect(), null];
                     }
 
+                    // Um webhook atrasado não pode reativar uma subscrição
+                    // a partir de uma referência expirada/cancelada. Se houve
+                    // transferência real, a reconciliação deve ser explícita
+                    // por um administrador, após confirmar o recebimento.
+                    $reconciliacaoManual = $confirmadoPor !== null
+                        && in_array($pagamento->estado, ['expirado', 'cancelado'], true);
+
+                    if (
+                        $pagamento->estado !== 'pendente'
+                        && ! $reconciliacaoManual
+                    ) {
+                        throw new DomainException(
+                            "O pagamento {$pagamento->id} não pode ser confirmado automaticamente no estado '{$pagamento->estado}'. Requer reconciliação manual."
+                        );
+                    }
+
+                    if (
+                        ! $reconciliacaoManual
+                        && $pagamento->expira_em !== null
+                        && $pagamento->expira_em->isPast()
+                    ) {
+                        throw new DomainException(
+                            "A referência do pagamento {$pagamento->id} expirou. A confirmação exige reconciliação manual."
+                        );
+                    }
+
                     $this->validarValorRecebido($pagamento, $valorRecebido);
 
                     $subscricao = $pagamento->subscricao()->with('plano')->firstOrFail();

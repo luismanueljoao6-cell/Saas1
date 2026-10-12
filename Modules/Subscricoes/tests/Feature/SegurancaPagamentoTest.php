@@ -6,7 +6,10 @@ use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
+use Modules\Core\Services\TenantService;
 use Modules\Subscricoes\Jobs\ProcessarPagamentoConfirmadoJob;
+use Modules\Subscricoes\Jobs\VerificarSubscricoesExpiradasJob;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Models\Subscricao;
@@ -93,6 +96,24 @@ class SegurancaPagamentoTest extends TestCase
 
         $this->assertSame('confirmado', $confirmado->estado);
         $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
+    }
+
+    public function test_webhook_atrasado_nao_ativa_pagamento_expirado(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000015');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        $pagamento->update(['estado' => 'expirado']);
+
+        try {
+            app(PagamentoService::class)->confirmar($pagamento->fresh(), [], null, '9900.00');
+            $this->fail('Um webhook atrasado não deve ativar um pagamento expirado.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('reconciliação manual', $e->getMessage());
+        }
+
+        $this->assertSame('expirado', $pagamento->fresh()->estado);
+        $this->assertSame('trial', $empresa->fresh()->estado_subscricao);
     }
 
     public function test_falha_do_gateway_nao_deixa_pagamento_pendente_sem_referencia(): void
@@ -317,5 +338,80 @@ class SegurancaPagamentoTest extends TestCase
             'CONTENT_TYPE' => 'application/json',
         ], $corpo);
         $this->assertFalse($gateway->validarPedidoWebhook($tokenNaUrl));
+    }
+
+    public function test_cancelar_renovacao_impede_gerar_nova_referencia_automatica(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000013');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
+
+        $subscricao = Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->firstOrFail();
+        app(TenantManager::class)->set($empresa->id);
+        app(SubscricaoService::class)->cancelarRenovacao($subscricao);
+
+        $this->expectException(DomainException::class);
+        try {
+            app(SubscricaoService::class)->gerarRenovacao($subscricao);
+        } finally {
+            $this->assertSame(
+                1,
+                Pagamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->count(),
+                'Não deve ser criada uma nova cobrança depois do cancelamento da renovação.'
+            );
+        }
+    }
+
+    public function test_nao_permite_retomar_renovacao_de_subscricao_vencida(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000014');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
+
+        $subscricao = Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->firstOrFail();
+        app(TenantManager::class)->set($empresa->id);
+        $subscricao->update(['termina_em' => now()->subDay()]);
+
+        $this->expectException(DomainException::class);
+        app(SubscricaoService::class)->retomarRenovacao($subscricao);
+    }
+
+    public function test_expiracao_de_subscricao_antiga_nao_suspende_empresa_com_outra_subscricao_valida(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000016');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
+
+        $tenantManager = app(TenantManager::class);
+        $subscricaoAntiga = Subscricao::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->firstOrFail();
+        $subscricaoAntiga->update(['termina_em' => now()->subDay()]);
+
+        $tenantManager->semTenant(fn () => Subscricao::create([
+            'empresa_id' => $empresa->id,
+            'plano_id' => $plano->id,
+            'periodo_dias' => 30,
+            'limites' => $plano->limites ?? [],
+            'servicos' => $plano->servicos ?? [],
+            'estado' => 'ativa',
+            'inicio_em' => now()->subDay(),
+            'termina_em' => now()->addDays(20),
+            'renovacao_automatica' => true,
+        ]));
+
+        app(VerificarSubscricoesExpiradasJob::class)->handle(
+            $tenantManager,
+            app(TenantService::class)
+        );
+
+        $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
+        $this->assertSame(
+            'expirada',
+            Subscricao::withoutGlobalScopes()->findOrFail($subscricaoAntiga->id)->estado
+        );
     }
 }

@@ -151,6 +151,20 @@ class SubscricaoService
                     ->with('plano', 'empresa')
                     ->findOrFail($subscricao->id);
 
+                // A rotina diária pode ter lido esta subscrição antes de um
+                // administrador cancelar a renovação. Revalidar sob lock evita
+                // criar uma cobrança depois de o cancelamento já ter sido gravado.
+                if (
+                    $subscricaoBloqueada->estado !== 'ativa'
+                    || ! $subscricaoBloqueada->renovacao_automatica
+                    || $subscricaoBloqueada->termina_em === null
+                    || $subscricaoBloqueada->termina_em->isPast()
+                ) {
+                    throw new DomainException(
+                        'Só é possível gerar uma renovação automática para uma subscrição ativa, ainda válida e com renovação automática ligada.'
+                    );
+                }
+
                 $existente = Pagamento::query()
                     ->where('subscricao_id', $subscricaoBloqueada->id)
                     ->where('estado', 'pendente')
@@ -219,26 +233,52 @@ class SubscricaoService
      */
     public function cancelarRenovacao(Subscricao $subscricao): Subscricao
     {
-        $subscricao->update([
-            'renovacao_automatica' => false,
-            'cancelada_em' => now(),
-        ]);
+        $atualizada = DB::transaction(function () use ($subscricao) {
+            $bloqueada = Subscricao::query()
+                ->lockForUpdate()
+                ->findOrFail($subscricao->id);
 
-        Log::info('Renovação automática cancelada', ['subscricao_id' => $subscricao->id]);
+            $bloqueada->update([
+                'renovacao_automatica' => false,
+                'cancelada_em' => now(),
+            ]);
 
-        return $subscricao->fresh();
+            return $bloqueada->fresh();
+        });
+
+        Log::info('Renovação automática cancelada', ['subscricao_id' => $atualizada->id]);
+
+        return $atualizada;
     }
 
     public function retomarRenovacao(Subscricao $subscricao): Subscricao
     {
-        $subscricao->update([
-            'renovacao_automatica' => true,
-            'cancelada_em' => null,
-        ]);
+        $atualizada = DB::transaction(function () use ($subscricao) {
+            $bloqueada = Subscricao::query()
+                ->lockForUpdate()
+                ->findOrFail($subscricao->id);
 
-        Log::info('Renovação automática retomada', ['subscricao_id' => $subscricao->id]);
+            if (
+                $bloqueada->estado !== 'ativa'
+                || $bloqueada->termina_em === null
+                || $bloqueada->termina_em->isPast()
+            ) {
+                throw new DomainException(
+                    'Só é possível retomar a renovação automática de uma subscrição ativa e ainda válida.'
+                );
+            }
 
-        return $subscricao->fresh();
+            $bloqueada->update([
+                'renovacao_automatica' => true,
+                'cancelada_em' => null,
+            ]);
+
+            return $bloqueada->fresh();
+        });
+
+        Log::info('Renovação automática retomada', ['subscricao_id' => $atualizada->id]);
+
+        return $atualizada;
     }
 
     protected function garantirEstadoPendenteSeNecessario(Empresa $empresa): void
