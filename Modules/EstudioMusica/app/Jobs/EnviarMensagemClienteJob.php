@@ -28,7 +28,7 @@ use Throwable;
  * devolve false em vez de lançar, por isso a falha de um nunca impede os
  * outros dois.
  */
-class EnviarMensagemClienteJob implements ShouldQueue, ShouldBeEncrypted
+class EnviarMensagemClienteJob implements ShouldBeEncrypted, ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
