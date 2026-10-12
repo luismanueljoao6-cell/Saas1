@@ -79,6 +79,20 @@ return [
     'saft_numero_certificado' => env('FATURACAO_SAFT_NUMERO_CERTIFICADO', '0'),
 
     /*
+    |--------------------------------------------------------------------------
+    | Metadados SAF-T do produtor do software
+    |--------------------------------------------------------------------------
+    | Estes valores pertencem ao produtor da aplicação, nunca à empresa cliente.
+    | Não preencher o NIF do produtor até existir um valor real e confirmado.
+    | O número de validação usa "0" quando não aplicável, conforme o XSD de
+    | referência; isso não afirma nem substitui certificação AGT.
+    */
+    'saft_nif_produtor' => env('FATURACAO_SAFT_NIF_PRODUTOR', ''),
+    'saft_numero_validacao' => env('FATURACAO_SAFT_NUMERO_VALIDACAO', '0'),
+    'saft_product_id' => env('FATURACAO_SAFT_PRODUCT_ID', ''),
+    'saft_product_version' => env('FATURACAO_SAFT_PRODUCT_VERSION', '1.0.0'),
+
+    /*
     | Taxas de IVA aceites na emissão (percentagens, separadas por vírgula no .env).
     | Confirma contra a tabela atual da AGT antes de produção. Taxa 0 (isenção)
     | está DESATIVADA por omissão: exige motivo de isenção (códigos M no SAF-T), ainda
