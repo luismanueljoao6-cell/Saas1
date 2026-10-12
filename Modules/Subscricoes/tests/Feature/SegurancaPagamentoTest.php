@@ -23,8 +23,7 @@ class SegurancaPagamentoTest extends TestCase
 
     protected function usarGateway(bool $falha = false): void
     {
-        $this->app->singleton(GatewayPagamentoInterface::class, fn () => new class ($falha) implements GatewayPagamentoInterface
-        {
+        $this->app->singleton(GatewayPagamentoInterface::class, fn () => new class ($falha) implements GatewayPagamentoInterface {
             public function __construct(private bool $falha) {}
 
             public function identificador(): string
@@ -170,8 +169,6 @@ class SegurancaPagamentoTest extends TestCase
             );
         }
     }
-
-
 
     public function test_nao_permite_cobrancas_pendentes_para_planos_diferentes(): void
     {
