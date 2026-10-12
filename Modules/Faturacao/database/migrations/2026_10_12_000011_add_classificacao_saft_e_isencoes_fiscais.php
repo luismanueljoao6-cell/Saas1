@@ -18,12 +18,14 @@ return new class extends Migration
         });
 
         Schema::table('fatura_linhas', function (Blueprint $table): void {
-            $table->string('codigo_isencao_iva', 3)->nullable()->after('taxa_iva');
+            $table->string('tipo_saft', 1)->nullable()->after('taxa_iva');
+            $table->string('codigo_isencao_iva', 3)->nullable()->after('tipo_saft');
             $table->string('motivo_isencao_iva', 255)->nullable()->after('codigo_isencao_iva');
         });
 
         Schema::table('notas_credito_debito_linhas', function (Blueprint $table): void {
-            $table->string('codigo_isencao_iva', 3)->nullable()->after('taxa_iva');
+            $table->string('tipo_saft', 1)->nullable()->after('taxa_iva');
+            $table->string('codigo_isencao_iva', 3)->nullable()->after('tipo_saft');
             $table->string('motivo_isencao_iva', 255)->nullable()->after('codigo_isencao_iva');
         });
     }
@@ -31,7 +33,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('notas_credito_debito_linhas', function (Blueprint $table): void {
-            $table->dropColumn(['codigo_isencao_iva', 'motivo_isencao_iva']);
+            $table->dropColumn(['tipo_saft', 'codigo_isencao_iva', 'motivo_isencao_iva']);
         });
         Schema::table('fatura_linhas', function (Blueprint $table): void {
             $table->dropColumn(['codigo_isencao_iva', 'motivo_isencao_iva']);
