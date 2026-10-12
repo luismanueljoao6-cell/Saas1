@@ -5,6 +5,7 @@ namespace Modules\Subscricoes\Tests\Feature;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantService;
@@ -503,7 +504,7 @@ class SegurancaPagamentoTest extends TestCase
 
         config(['subscricoes.limites_sem_plano.max_utilizadores' => 3]);
 
-        $limite = app(\Modules\Core\Contracts\LimitesDaEmpresa::class)
+        $limite = app(LimitesDaEmpresa::class)
             ->limite($empresa->fresh(), 'max_utilizadores');
 
         $this->assertSame(
