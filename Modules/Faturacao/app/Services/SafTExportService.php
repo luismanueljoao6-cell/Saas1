@@ -659,6 +659,7 @@ class SafTExportService
         $totais->appendChild($this->no($doc, 'NetTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_sem_iva))));
         $totais->appendChild($this->no($doc, 'GrossTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_total))));
         $no->appendChild($totais);
+
         return $no;
     }
 }
