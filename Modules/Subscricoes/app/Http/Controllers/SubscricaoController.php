@@ -19,7 +19,7 @@ class SubscricaoController extends Controller
 
     public function iniciar(IniciarSubscricaoRequest $request): RedirectResponse
     {
-        $plano = Plano::findOrFail($request->validated('plano_id'));
+        $plano = Plano::ativos()->findOrFail($request->validated('plano_id'));
 
         try {
             $pagamento = $this->subscricaoService->iniciar($request->user()->empresa, $plano);
