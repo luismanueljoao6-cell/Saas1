@@ -8,6 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        Schema::table('clientes', function (Blueprint $table): void {
+            $table->string('municipio', 100)->nullable()->after('morada');
+            $table->string('provincia', 100)->nullable()->after('municipio');
+        });
+
         Schema::table('produtos', function (Blueprint $table): void {
             $table->string('tipo_saft', 1)->nullable()->after('codigo');
         });
@@ -33,6 +38,9 @@ return new class extends Migration
         });
         Schema::table('produtos', function (Blueprint $table): void {
             $table->dropColumn('tipo_saft');
+        });
+        Schema::table('clientes', function (Blueprint $table): void {
+            $table->dropColumn(['municipio', 'provincia']);
         });
     }
 };
