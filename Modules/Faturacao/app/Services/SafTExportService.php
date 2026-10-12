@@ -102,7 +102,7 @@ class SafTExportService
             'conta contabilística de clientes' => config('faturacao.saft_conta_clientes'),
         ];
         foreach ($obrigatorios as $campo => $valor) {
-            if (! is_string($valor) || trim($valor) === '') {
+            if (is_string($valor) === false || trim($valor) === '') {
                 $problemas[] = 'Configure '.$campo.' no ambiente.';
             }
         }
@@ -129,10 +129,10 @@ class SafTExportService
             }
             $nomeCliente = mb_strtolower(trim((string) $cliente->nome));
             $consumidorFinal = $nomeCliente === 'consumidor final' && trim((string) $cliente->nif) === '';
-            if (trim((string) $cliente->nif) === '' && ! $consumidorFinal) {
+            if (trim((string) $cliente->nif) === '' && $consumidorFinal === false) {
                 $problemas[] = 'O cliente CLI-'.$cliente->id.' não tem NIF; só o cliente genérico designado Consumidor final pode usar o NIF legal 999999999.';
             }
-            if (trim((string) $cliente->nome) === '' && ! $consumidorFinal) {
+            if (trim((string) $cliente->nome) === '' && $consumidorFinal === false) {
                 $problemas[] = 'O cliente CLI-'.$cliente->id.' não tem nome.';
             }
         }
@@ -140,7 +140,7 @@ class SafTExportService
         $produtos = Produto::withoutGlobalScopes()->where('empresa_id', $empresa->id)->get(['id', 'tipo_saft']);
         foreach ($produtos as $produto) {
             $tipo = strtoupper(trim((string) $produto->tipo_saft));
-            if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+            if (in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true) === false) {
                 $problemas[] = 'O produto '.$produto->id.' não tem classificação SAF-T P/S/O/E/I.';
             }
         }
@@ -151,7 +151,7 @@ class SafTExportService
             ->whereNull('produto_id')->get(['id', 'tipo_saft']);
         foreach ($linhasManuais as $linha) {
             $tipo = strtoupper(trim((string) ($linha->tipo_saft ?: $tipoPadrao)));
-            if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+            if (in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true) === false) {
                 $problemas[] = 'A linha manual de fatura '.$linha->id.' não tem classificação SAF-T válida.';
             }
         }
@@ -160,7 +160,7 @@ class SafTExportService
         $linhasNotas = NotaCreditoDebitoLinha::whereIn('nota_credito_debito_id', $idsNotas)->get(['id', 'tipo_saft']);
         foreach ($linhasNotas as $linha) {
             $tipo = strtoupper(trim((string) ($linha->tipo_saft ?: $tipoPadrao)));
-            if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+            if (in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true) === false) {
                 $problemas[] = 'A linha de nota de crédito/débito '.$linha->id.' não tem classificação SAF-T válida.';
             }
         }
@@ -205,7 +205,7 @@ class SafTExportService
     {
         $caminhoXsd = module_path('Faturacao', 'resources/saft/SAFTAO1.01_01.xsd');
 
-        if (! is_file($caminhoXsd)) {
+        if (is_file($caminhoXsd) === false) {
             throw new RuntimeException('O esquema XSD SAF-T (AO) não foi encontrado: '.$caminhoXsd);
         }
 
@@ -216,7 +216,7 @@ class SafTExportService
         try {
             $carregado = $documento->loadXML($xml, LIBXML_NONET);
 
-            if (! $carregado) {
+            if ($carregado === false) {
                 return array_values(array_map(
                     static fn (LibXMLError $erro): string => trim($erro->message).' (linha '.$erro->line.')',
                     libxml_get_errors(),
@@ -231,7 +231,7 @@ class SafTExportService
 
             // Nunca apresentar como válido um XML que o libxml rejeitou,
             // mesmo que a biblioteca não forneça detalhes do erro.
-            if (! $valido && $erros === []) {
+            if ($valido === false && $erros === []) {
                 $erros[] = 'O XML não passou na validação XSD, mas o libxml não forneceu detalhes.';
             }
 
@@ -273,7 +273,7 @@ class SafTExportService
         $endereco = $doc->createElementNS(self::NAMESPACE_SAFT, 'CompanyAddress');
         $endereco->appendChild($this->no($doc, 'AddressDetail', $empresa->morada));
         $endereco->appendChild($this->no($doc, 'City', $empresa->municipio));
-        if (! empty($empresa->provincia)) {
+        if (empty($empresa->provincia) === false) {
             $endereco->appendChild($this->no($doc, 'Province', $empresa->provincia));
         }
         $endereco->appendChild($this->no($doc, 'Country', 'AO'));
@@ -314,7 +314,7 @@ class SafTExportService
             $c->appendChild($this->no($doc, 'AccountID', $contaClientes));
             $nomeCliente = mb_strtolower(trim((string) $cliente->nome));
             $consumidorFinal = $nomeCliente === 'consumidor final' && trim((string) $cliente->nif) === '';
-            if (trim((string) $cliente->nif) === '' && ! $consumidorFinal) {
+            if (trim((string) $cliente->nif) === '' && $consumidorFinal === false) {
                 throw new RuntimeException('O cliente CLI-'.$cliente->id.' não tem NIF; apenas o cliente genérico Consumidor final pode usar 999999999.');
             }
             $c->appendChild($this->no($doc, 'CustomerTaxID', $consumidorFinal ? '999999999' : $cliente->nif));
@@ -399,7 +399,7 @@ class SafTExportService
     protected function tipoProdutoSafT(Produto $produto): string
     {
         $tipo = strtoupper(trim((string) $produto->tipo_saft));
-        if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+        if (in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true) === false) {
             throw new RuntimeException('Classifique o produto '.$produto->id.' como P, S, O, E ou I antes de exportar SAF-T.');
         }
         return $tipo;
@@ -408,7 +408,7 @@ class SafTExportService
     protected function tipoProdutoGenericoSafT(?string $tipoLinha = null): string
     {
         $tipo = strtoupper(trim((string) ($tipoLinha ?: config('faturacao.saft_tipo_produto_padrao', ''))));
-        if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+        if (in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true) === false) {
             throw new RuntimeException('Classifique a linha manual como P, S, O, E ou I (ou configure um padrão fiscal validado).');
         }
         return $tipo;
@@ -451,7 +451,7 @@ class SafTExportService
         foreach ($faturas as $f) {
             $vendas->appendChild($this->documento($doc, 'FT', $f, 'CreditAmount'));
             $totalCredito += Dinheiro::centimos($f->valor_sem_iva);
-            $entradas++;
+            $entradas += 1;
         }
 
         $notas = NotaCreditoDebito::withoutGlobalScopes()
@@ -465,7 +465,7 @@ class SafTExportService
             $ehCredito
                 ? $totalDebito += Dinheiro::centimos($n->valor_sem_iva)
                 : $totalCredito += Dinheiro::centimos($n->valor_sem_iva);
-            $entradas++;
+            $entradas += 1;
         }
 
         $noEntradas->textContent = (string) $entradas;
@@ -500,7 +500,7 @@ class SafTExportService
         $pagamentos->appendChild($this->no($doc, 'TotalCredit', Dinheiro::formatar($totalCredito)));
 
         foreach ($recibos as $recibo) {
-            if (! $recibo->fatura_id) {
+            if (empty($recibo->fatura_id)) {
                 throw new RuntimeException('O recibo '.$recibo->numero_documento.' não está ligado a uma fatura; o SAF-T exige referência ao documento de origem.');
             }
 
@@ -510,7 +510,7 @@ class SafTExportService
                 ->where('empresa_id', $empresa->id)->find($recibo->cliente_id);
             $serie = Serie::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)->find($recibo->serie_id);
-            if (! $fatura || ! $cliente || ! $serie || ! $fatura->estaEmitido()
+            if ($fatura === null || $cliente === null || $serie === null || $fatura === null->estaEmitido()
                 || (int) $fatura->cliente_id !== (int) $recibo->cliente_id
                 || $serie->tipo_documento !== 'RC'
                 || trim((string) $recibo->hash) === '') {
@@ -565,7 +565,7 @@ class SafTExportService
     {
         $no = $doc->createElementNS(self::NAMESPACE_SAFT, 'Invoice');
         $cliente = Cliente::withoutGlobalScopes()->where('empresa_id', $m->empresa_id)->find($m->cliente_id);
-        if (! $cliente) {
+        if ($cliente === null) {
             throw new RuntimeException('O documento '.$m->numero_documento.' referencia um cliente inexistente na mesma empresa.');
         }
         if (trim((string) $m->hash) === '') {
@@ -622,7 +622,7 @@ class SafTExportService
                 $origem = Fatura::withoutGlobalScopes()
                     ->where('empresa_id', $m->empresa_id)
                     ->find($m->fatura_id);
-                if (! $origem || ! $origem->estaEmitido() || (int) $origem->cliente_id !== (int) $m->cliente_id) {
+                if ($origem === null || $origem === null->estaEmitido() || (int) $origem->cliente_id !== (int) $m->cliente_id) {
                     throw new RuntimeException('A nota de crédito '.$m->numero_documento.' referencia uma fatura inexistente, não emitida ou de outro cliente.');
                 }
                 $referencias = $doc->createElementNS(self::NAMESPACE_SAFT, 'References');
@@ -641,7 +641,7 @@ class SafTExportService
             if ($taxa == 0.0) {
                 $codigoIsencao = trim((string) $linha->codigo_isencao_iva);
                 $motivoIsencao = trim((string) $linha->motivo_isencao_iva);
-                if (! preg_match('/^M[0-9]{2}$/', $codigoIsencao) || mb_strlen($motivoIsencao) < 6 || mb_strlen($motivoIsencao) > 60) {
+                if (preg_match('/^M[0-9]{2}$/', $codigoIsencao) !== 1 || mb_strlen($motivoIsencao) < 6 || mb_strlen($motivoIsencao) > 60) {
                     throw new RuntimeException('A linha '.($indice + 1).' do documento '.$m->numero_documento.' tem IVA 0%; informe um código legal M01–M99 e um motivo entre 6 e 60 caracteres.');
                 }
                 $l->appendChild($this->no($doc, 'TaxExemptionReason', $motivoIsencao));
