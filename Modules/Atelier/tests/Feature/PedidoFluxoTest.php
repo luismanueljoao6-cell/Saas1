@@ -65,7 +65,6 @@ class PedidoFluxoTest extends TestCase
         $this->assertTrue($pedido->fresh()->estaFinalizado());
     }
 
-
     public function test_transicao_rejeita_estado_obsoleto_carregado_antes_de_outra_atualizacao(): void
     {
         Event::fake([PedidoMudouEstado::class]);
