@@ -130,7 +130,7 @@ class NotaCreditoDebitoService
                 (new NotaCreditoDebitoLinha([
                     'nota_credito_debito_id' => $nota->id,
                     'descricao' => $dadosLinha['descricao'],
-                    'tipo_saft' => $dadosLinha['tipo_saft'] ?? null,
+                    'tipo_saft' => $dadosLinha['tipo_saft'] ?? config('faturacao.saft_tipo_produto_padrao') ?: null,
                     'quantidade' => $dadosLinha['quantidade'],
                     'preco_unitario' => $dadosLinha['preco_unitario'],
                     'taxa_iva' => $dadosLinha['taxa_iva'],
@@ -217,8 +217,8 @@ class NotaCreditoDebitoService
                 throw new \InvalidArgumentException('A taxa de IVA da linha '.($indice + 1).' não está autorizada na configuração fiscal.');
             }
             $tipo = strtoupper(trim((string) ($linha['tipo_saft'] ?? '')));
-            if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
-                throw new \InvalidArgumentException('Selecione o tipo fiscal SAF-T da linha '.($indice + 1).'.');
+            if ($tipo !== '' && ! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+                throw new \InvalidArgumentException('O tipo fiscal SAF-T da linha '.($indice + 1).' é inválido.');
             }
             if ((float) ($linha['quantidade'] ?? 0) <= 0 || (float) ($linha['preco_unitario'] ?? -1) < 0) {
                 throw new \InvalidArgumentException('Quantidade e preço da linha '.($indice + 1).' são inválidos.');
