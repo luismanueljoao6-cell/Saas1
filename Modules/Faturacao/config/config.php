@@ -16,9 +16,13 @@ return [
     | antes de qualquer documento assinado com ela ser válido.
     |
     | NUNCA committes a chave privada para o Git. Gera-a com:
-    |   openssl genrsa -out storage/app/faturacao/chave-privada.pem 2048
+    |   openssl genrsa -out storage/app/faturacao/chave-privada.pem 1024
     |   openssl rsa -in storage/app/faturacao/chave-privada.pem -pubout -out storage/app/faturacao/chave-publica.pem
     | e acrescenta storage/app/faturacao/ ao .gitignore.
+    | O XSD SAF-T AO versionado limita Hash a 172 caracteres; uma assinatura RSA
+    | de 2048 bits excede esse limite. RSA-1024 é legado e mais fraco: confirma
+    | o requisito com a AGT antes de produção e nunca troques a chave depois de
+    | emitir documentos sem seguir o processo oficial de rotação.
     |
     */
     // `?:` e não o 2.º argumento de env(): uma variável presente mas vazia
