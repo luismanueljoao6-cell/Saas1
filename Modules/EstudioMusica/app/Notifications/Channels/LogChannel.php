@@ -22,9 +22,16 @@ class LogChannel implements CanalSmsInterface, CanalWhatsAppInterface
 
     public function enviar(string $destino, string $mensagem): bool
     {
+        // Tokens de portal são credenciais bearer: nunca os persistir nos logs.
+        $mensagemSemTokens = preg_replace(
+            ['~(/portal/)[A-Za-z0-9]+~', '~([?&]token=)[^&\\s]+~i'],
+            ['$1[TOKEN_REDACTED]', '$1[TOKEN_REDACTED]'],
+            $mensagem,
+        ) ?? '[mensagem não disponível]';
+
         Log::info('[EstudioMusica] Mensagem (canal log, não enviada de verdade)', [
             'destino' => $destino,
-            'mensagem' => $mensagem,
+            'mensagem' => $mensagemSemTokens,
         ]);
 
         return true;
