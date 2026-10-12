@@ -1,12 +1,12 @@
 <?php
 
-namespace Modules\\Atelier\\Services;
+namespace Modules\Atelier\Services;
 
-use Illuminate\\Support\\Facades\\DB;
-use Illuminate\\Support\\Facades\\Log;
-use Modules\\Atelier\\Events\\PedidoMudouEstado;
-use Modules\\Atelier\\Exceptions\\PedidoException;
-use Modules\\Atelier\\Models\\Pedido;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Modules\Atelier\Events\PedidoMudouEstado;
+use Modules\Atelier\Exceptions\PedidoException;
+use Modules\Atelier\Models\Pedido;
 
 class PedidoStatusService
 {
