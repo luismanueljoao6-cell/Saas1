@@ -96,6 +96,24 @@ class SegurancaPagamentoTest extends TestCase
         $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
     }
 
+    public function test_webhook_atrasado_nao_ativa_pagamento_expirado(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000015');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        $pagamento->update(['estado' => 'expirado']);
+
+        try {
+            app(PagamentoService::class)->confirmar($pagamento->fresh(), [], null, '9900.00');
+            $this->fail('Um webhook atrasado não deve ativar um pagamento expirado.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('reconciliação manual', $e->getMessage());
+        }
+
+        $this->assertSame('expirado', $pagamento->fresh()->estado);
+        $this->assertSame('trial', $empresa->fresh()->estado_subscricao);
+    }
+
     public function test_falha_do_gateway_nao_deixa_pagamento_pendente_sem_referencia(): void
     {
         $this->usarGateway(falha: true);
