@@ -316,7 +316,7 @@ class SafTExportService
         foreach ($linhasManuais as $linhaManual) {
             $codigo = 'SERVICO-LINHA-'.$linhaManual->id;
             $p = $doc->createElementNS(self::NAMESPACE_SAFT, 'Product');
-            $p->appendChild($this->no($doc, 'ProductType', $this->tipoProdutoGenericoSafT()));
+            $p->appendChild($this->no($doc, 'ProductType', $this->tipoProdutoGenericoSafT($linhaManual->tipo_saft)));
             $p->appendChild($this->no($doc, 'ProductCode', $codigo));
             $p->appendChild($this->no($doc, 'ProductDescription', $linhaManual->descricao));
             $p->appendChild($this->no($doc, 'ProductNumberCode', $codigo));
@@ -327,7 +327,7 @@ class SafTExportService
         foreach ($linhasNotas as $linhaNota) {
             $codigo = 'NOTA-LINHA-'.$linhaNota->id;
             $p = $doc->createElementNS(self::NAMESPACE_SAFT, 'Product');
-            $p->appendChild($this->no($doc, 'ProductType', $this->tipoProdutoGenericoSafT()));
+            $p->appendChild($this->no($doc, 'ProductType', $this->tipoProdutoGenericoSafT($linhaNota->tipo_saft)));
             $p->appendChild($this->no($doc, 'ProductCode', $codigo));
             $p->appendChild($this->no($doc, 'ProductDescription', $linhaNota->descricao));
             $p->appendChild($this->no($doc, 'ProductNumberCode', $codigo));
@@ -367,11 +367,11 @@ class SafTExportService
         return $tipo;
     }
 
-    protected function tipoProdutoGenericoSafT(): string
+    protected function tipoProdutoGenericoSafT(?string $tipoLinha = null): string
     {
-        $tipo = strtoupper(trim((string) config('faturacao.saft_tipo_produto_padrao', '')));
+        $tipo = strtoupper(trim((string) ($tipoLinha ?: config('faturacao.saft_tipo_produto_padrao', ''))));
         if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
-            throw new \RuntimeException('Configure FATURACAO_SAFT_TIPO_PRODUTO_PADRAO antes de exportar linhas sem produto associado.');
+            throw new \RuntimeException('Classifique a linha manual como P, S, O, E ou I (ou configure um padrão fiscal validado).');
         }
         return $tipo;
     }
