@@ -12,6 +12,7 @@ use Modules\Faturacao\Models\FaturaLinha;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
 use Modules\Faturacao\Models\Produto;
+use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
 
 /**
@@ -414,8 +415,87 @@ class SafTExportService
         $noCredito->textContent = Dinheiro::formatar($totalCredito);
 
         $fonte->appendChild($vendas);
+        $pagamentos = $this->pagamentos($doc, $empresa, $inicio, $fim);
+        if ($pagamentos !== null) {
+            $fonte->appendChild($pagamentos);
+        }
 
         return $fonte;
+    }
+
+    protected function pagamentos(DOMDocument $doc, Empresa $empresa, Carbon $inicio, Carbon $fim): ?DOMElement
+    {
+        $recibos = Recibo::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->where('estado', 'emitido')
+            ->whereBetween('data_emissao', [$inicio->toDateString(), $fim->toDateString()])
+            ->orderBy('serie_id')->orderBy('numero_sequencial')->get();
+
+        if ($recibos->isEmpty()) return null;
+
+        $pagamentos = $doc->createElementNS(self::NAMESPACE_SAFT, 'Payments');
+        $pagamentos->appendChild($this->no($doc, 'NumberOfEntries', $recibos->count()));
+        $pagamentos->appendChild($this->no($doc, 'TotalDebit', '0.00'));
+        $totalCredito = $recibos->sum(fn ($recibo) => Dinheiro::centimos($recibo->valor));
+        $pagamentos->appendChild($this->no($doc, 'TotalCredit', Dinheiro::formatar($totalCredito)));
+
+        foreach ($recibos as $recibo) {
+            if (! $recibo->fatura_id) {
+                throw new \RuntimeException('O recibo '.$recibo->numero_documento.' não está ligado a uma fatura; o SAF-T exige referência ao documento de origem.');
+            }
+
+            $fatura = Fatura::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)->find($recibo->fatura_id);
+            $cliente = Cliente::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)->find($recibo->cliente_id);
+            $serie = \Modules\Faturacao\Models\Serie::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)->find($recibo->serie_id);
+            if (! $fatura || ! $cliente || ! $serie || ! $fatura->estaEmitido()) {
+                throw new \RuntimeException('O recibo '.$recibo->numero_documento.' tem referências fiscais inválidas.');
+            }
+
+            $pagamento = $doc->createElementNS(self::NAMESPACE_SAFT, 'Payment');
+            $pagamento->appendChild($this->no($doc, 'PaymentRefNo', 'RC '.$serie->prefixo.$serie->ano.'/'.$recibo->numero_sequencial));
+            $pagamento->appendChild($this->no($doc, 'TransactionDate', $recibo->data_emissao->format('Y-m-d')));
+            $pagamento->appendChild($this->no($doc, 'PaymentType', 'RC'));
+            $pagamento->appendChild($this->no($doc, 'Description', 'Recibo '.$recibo->numero_documento));
+            $pagamento->appendChild($this->no($doc, 'SystemID', config('faturacao.saft_product_id', 'Saas1')));
+            $estado = $doc->createElementNS(self::NAMESPACE_SAFT, 'DocumentStatus');
+            $estado->appendChild($this->no($doc, 'PaymentStatus', 'N'));
+            $estado->appendChild($this->no($doc, 'PaymentStatusDate', $recibo->data_hora_sistema->format('Y-m-d\\TH:i:s')));
+            $estado->appendChild($this->no($doc, 'SourceID', config('faturacao.saft_source_id', 'Sistema')));
+            $estado->appendChild($this->no($doc, 'SourcePayment', 'P'));
+            $pagamento->appendChild($estado);
+
+            $mecanismos = ['dinheiro' => 'NU', 'transferencia' => 'TB', 'multicaixa' => 'MB', 'outro' => 'OU'];
+            $metodo = $doc->createElementNS(self::NAMESPACE_SAFT, 'PaymentMethod');
+            $metodo->appendChild($this->no($doc, 'PaymentMechanism', $mecanismos[$recibo->meio_pagamento] ?? 'OU'));
+            $metodo->appendChild($this->no($doc, 'PaymentAmount', Dinheiro::formatar(Dinheiro::centimos($recibo->valor))));
+            $metodo->appendChild($this->no($doc, 'PaymentDate', $recibo->data_emissao->format('Y-m-d')));
+            $pagamento->appendChild($metodo);
+            $pagamento->appendChild($this->no($doc, 'SourceID', config('faturacao.saft_source_id', 'Sistema')));
+            $pagamento->appendChild($this->no($doc, 'SystemEntryDate', $recibo->data_hora_sistema->format('Y-m-d\\TH:i:s')));
+            $pagamento->appendChild($this->no($doc, 'CustomerID', 'CLI-'.$cliente->id));
+
+            $linha = $doc->createElementNS(self::NAMESPACE_SAFT, 'Line');
+            $linha->appendChild($this->no($doc, 'LineNumber', 1));
+            $origem = $doc->createElementNS(self::NAMESPACE_SAFT, 'SourceDocumentID');
+            $origem->appendChild($this->no($doc, 'OriginatingON', $fatura->numero_documento));
+            $origem->appendChild($this->no($doc, 'InvoiceDate', $fatura->data_emissao->format('Y-m-d')));
+            $origem->appendChild($this->no($doc, 'Description', 'Liquidação da fatura '.$fatura->numero_documento));
+            $linha->appendChild($origem);
+            $linha->appendChild($this->no($doc, 'CreditAmount', Dinheiro::formatar(Dinheiro::centimos($recibo->valor))));
+            $pagamento->appendChild($linha);
+
+            $totais = $doc->createElementNS(self::NAMESPACE_SAFT, 'DocumentTotals');
+            $totais->appendChild($this->no($doc, 'TaxPayable', '0.00'));
+            $totais->appendChild($this->no($doc, 'NetTotal', Dinheiro::formatar(Dinheiro::centimos($recibo->valor))));
+            $totais->appendChild($this->no($doc, 'GrossTotal', Dinheiro::formatar(Dinheiro::centimos($recibo->valor))));
+            $pagamento->appendChild($totais);
+            $pagamentos->appendChild($pagamento);
+        }
+
+        return $pagamentos;
     }
 
     protected function documento(DOMDocument $doc, string $tipo, Fatura|NotaCreditoDebito $m, string $campoValor): DOMElement
