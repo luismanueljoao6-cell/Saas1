@@ -514,7 +514,7 @@ class SafTExportService
                 ->where('empresa_id', $empresa->id)->find($recibo->cliente_id);
             $serie = Serie::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)->find($recibo->serie_id);
-            if ($fatura === null || $cliente === null || $serie === null || $fatura === null->estaEmitido()
+            if ($fatura === null || $cliente === null || $serie === null || $fatura->estaEmitido() === false
                 || (int) $fatura->cliente_id !== (int) $recibo->cliente_id
                 || $serie->tipo_documento !== 'RC'
                 || trim((string) $recibo->hash) === '') {
@@ -584,7 +584,8 @@ class SafTExportService
         $status->appendChild($this->no($doc, 'SourceBilling', 'P'));
         $no->appendChild($status);
         $no->appendChild($this->no($doc, 'Hash', $m->hash));
-        $no->appendChild($this->no($doc, 'HashControl', $m->chave_versao ?: '0'));
+        $hashControl = (string) config('faturacao.saft_numero_certificado', '0') === '0' ? '0' : (string) ($m->chave_versao ?: '0');
+        $no->appendChild($this->no($doc, 'HashControl', $hashControl));
         if ($m instanceof NotaCreditoDebito && $m->tipo === 'credito' && $m->fatura_id === null) {
             throw new RuntimeException('A nota de crédito '.$m->numero_documento.' não referencia a fatura original; não pode ser exportada como SAF-T.');
         }
@@ -625,7 +626,7 @@ class SafTExportService
                 $origem = Fatura::withoutGlobalScopes()
                     ->where('empresa_id', $m->empresa_id)
                     ->find($m->fatura_id);
-                if ($origem === null || $origem === null->estaEmitido() || (int) $origem->cliente_id !== (int) $m->cliente_id) {
+                if ($origem === null || $origem->estaEmitido() === false || (int) $origem->cliente_id !== (int) $m->cliente_id) {
                     throw new RuntimeException('A nota de crédito '.$m->numero_documento.' referencia uma fatura inexistente, não emitida ou de outro cliente.');
                 }
                 $referencias = $doc->createElementNS(self::NAMESPACE_SAFT, 'References');
