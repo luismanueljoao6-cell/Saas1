@@ -28,9 +28,14 @@ class ExportacaoSafTTest extends TestCase
         $caminho = sys_get_temp_dir().'/faturacao-teste-'.uniqid().'.pem';
         file_put_contents($caminho, $chavePrivadaPem);
 
-        config(['faturacao.chave_privada_path' => $caminho]);
-        // Os exemplos de teste são serviços sem produto cadastrado.
-        config(['faturacao.saft_tipo_produto_padrao' => 'S']);
+        config([
+            'faturacao.chave_privada_path' => $caminho,
+            'faturacao.saft_tipo_produto_padrao' => 'S',
+            'faturacao.saft_nif_produtor' => '4000000003',
+            'faturacao.saft_product_id' => 'Saas1/Produtor de teste',
+            'faturacao.saft_conta_clientes' => '2111',
+            'faturacao.saft_codigos_taxa' => ['14.00' => 'NOR'],
+        ]);
 
         $this->beforeApplicationDestroyed(function () use ($caminho) {
             @unlink($caminho);
@@ -77,6 +82,8 @@ class ExportacaoSafTTest extends TestCase
         $this->assertStringContainsString('<BillingAddress>', $xml);
         $this->assertStringContainsString('<TaxTable>', $xml);
         $this->assertStringContainsString('<ProductType>S</ProductType>', $xml);
+        $errosXsd = app(SafTExportService::class)->validarXmlContraXsd($xml);
+        $this->assertSame([], $errosXsd, implode("\n", $errosXsd));
     }
 
     public function test_saft_inclui_referencia_da_fatura_original_na_nota_de_credito(): void
