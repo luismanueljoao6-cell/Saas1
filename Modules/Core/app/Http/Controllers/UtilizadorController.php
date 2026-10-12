@@ -5,6 +5,7 @@ namespace Modules\Core\Http\Controllers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
@@ -41,20 +42,38 @@ class UtilizadorController extends Controller
     {
         $empresa = $request->user()->empresa;
 
-        if ($mensagem = $this->mensagemSeLimiteAtingido($empresa)) {
-            return back()->withInput($request->except('password', 'password_confirmation'))
-                ->with('erro', $mensagem);
-        }
-
         try {
-            $novoUtilizador = User::create([
-                'empresa_id' => $empresa->id,
-                'name' => $request->validated('name'),
-                'email' => $request->validated('email'),
-                'password' => Hash::make($request->validated('password')),
-            ]);
+            // O bloqueio da empresa serializa pedidos simultâneos para que
+            // duas requisições não consumam a mesma última vaga do plano.
+            [$novoUtilizador, $mensagem] = DB::transaction(function () use ($request, $empresa) {
+                $empresaBloqueada = Empresa::query()
+                    ->lockForUpdate()
+                    ->findOrFail($empresa->id);
 
-            $this->atribuirPapel($novoUtilizador, $empresa->id, $request->boolean('administrador'));
+                if ($mensagem = $this->mensagemSeLimiteAtingido($empresaBloqueada)) {
+                    return [null, $mensagem];
+                }
+
+                $novoUtilizador = User::create([
+                    'empresa_id' => $empresaBloqueada->id,
+                    'name' => $request->validated('name'),
+                    'email' => $request->validated('email'),
+                    'password' => Hash::make($request->validated('password')),
+                ]);
+
+                $this->atribuirPapel(
+                    $novoUtilizador,
+                    $empresaBloqueada->id,
+                    $request->boolean('administrador')
+                );
+
+                return [$novoUtilizador, null];
+            });
+
+            if ($mensagem !== null) {
+                return back()->withInput($request->except('password', 'password_confirmation'))
+                    ->with('erro', $mensagem);
+            }
 
             Log::info('Novo utilizador adicionado à empresa', [
                 'empresa_id' => $empresa->id,
