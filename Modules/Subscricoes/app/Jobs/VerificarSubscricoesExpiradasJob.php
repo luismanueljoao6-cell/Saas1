@@ -69,14 +69,39 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
     {
         Subscricao::query()
             ->where('estado', 'pendente')
-            ->with('pagamentos')
+            ->select('id')
             ->chunkById(100, function ($subscricoes) {
                 foreach ($subscricoes as $subscricao) {
-                    $temPagamentoVivo = $subscricao->pagamentos
-                        ->contains(fn ($p) => in_array($p->estado, ['pendente', 'confirmado'], true));
+                    try {
+                        DB::transaction(function () use ($subscricao) {
+                            // A subscrição e os pagamentos podem mudar enquanto o
+                            // job percorre o lote. Recarregar sob lock evita cancelar
+                            // uma subscrição que acabou de ser paga.
+                            $atual = Subscricao::query()
+                                ->lockForUpdate()
+                                ->findOrFail($subscricao->id);
 
-                    if (! $temPagamentoVivo) {
-                        $subscricao->update(['estado' => 'cancelada', 'cancelada_em' => now()]);
+                            if ($atual->estado !== 'pendente') {
+                                return;
+                            }
+
+                            $temPagamentoVivo = Pagamento::query()
+                                ->where('subscricao_id', $atual->id)
+                                ->whereIn('estado', ['pendente', 'confirmado'])
+                                ->exists();
+
+                            if (! $temPagamentoVivo) {
+                                $atual->update([
+                                    'estado' => 'cancelada',
+                                    'cancelada_em' => now(),
+                                ]);
+                            }
+                        });
+                    } catch (Throwable $e) {
+                        Log::error('Falha ao cancelar subscrição sem pagamento vivo', [
+                            'subscricao_id' => $subscricao->id,
+                            'erro' => $e->getMessage(),
+                        ]);
                     }
                 }
             });
