@@ -174,25 +174,27 @@ class SubscricaoService
                 }
             }
 
-            $subscricaoBloqueada->loadMissing('plano', 'empresa');
+            if (! $reutilizado) {
+                $subscricaoBloqueada->loadMissing('plano', 'empresa');
 
-            $subscricaoBloqueada->empresa->utilizadores()->where('ativo', true)->get()
-                ->each(function (User $utilizador) use ($subscricaoBloqueada, $pagamento) {
-                    try {
-                        $utilizador->notify(new RenovacaoProximaNotification(
-                            $subscricaoBloqueada->termina_em->format('d/m/Y'),
-                            (string) $pagamento->referencia_externa,
-                            (string) $pagamento->valor,
-                            $pagamento->moeda,
-                            $pagamento->expira_em->format('d/m/Y'),
-                        ));
-                    } catch (Throwable $e) {
-                        Log::warning('Referência de renovação gerada, mas o aviso falhou', [
-                            'utilizador_id' => $utilizador->id,
-                            'erro' => $e->getMessage(),
-                        ]);
-                    }
-                });
+                $subscricaoBloqueada->empresa->utilizadores()->where('ativo', true)->get()
+                    ->each(function (User $utilizador) use ($subscricaoBloqueada, $pagamento) {
+                        try {
+                            $utilizador->notify(new RenovacaoProximaNotification(
+                                $subscricaoBloqueada->termina_em->format('d/m/Y'),
+                                (string) $pagamento->referencia_externa,
+                                (string) $pagamento->valor,
+                                $pagamento->moeda,
+                                $pagamento->expira_em->format('d/m/Y'),
+                            ));
+                        } catch (Throwable $e) {
+                            Log::warning('Referência de renovação gerada, mas o aviso falhou', [
+                                'utilizador_id' => $utilizador->id,
+                                'erro' => $e->getMessage(),
+                            ]);
+                        }
+                    });
+            }
 
             Log::info($reutilizado ? 'Referência de renovação reutilizada' : 'Referência de renovação gerada', [
                 'subscricao_id' => $subscricaoBloqueada->id,
