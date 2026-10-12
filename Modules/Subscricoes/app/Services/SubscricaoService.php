@@ -73,10 +73,6 @@ class SubscricaoService
 
                     $pagamento = $this->criarPagamento($subscricao, $plano);
 
-                    if (! $empresaBloqueada->temAcesso()) {
-                        $this->tenantService->marcarPendente($empresaBloqueada);
-                    }
-
                     return [$subscricao, $pagamento, false];
                 })
             );
@@ -100,6 +96,16 @@ class SubscricaoService
 
             try {
                 $pagamento = $this->pedirReferenciaAoGateway($pagamento);
+
+                // Só bloquear a empresa depois de o gateway ter criado a
+                // referência. Se a integração falhar, o estado anterior mantém-se.
+                $this->tenantManager->semTenant(function () use ($empresa) {
+                    $empresaAtual = Empresa::query()->findOrFail($empresa->id);
+
+                    if (! $empresaAtual->temAcesso()) {
+                        $this->tenantService->marcarPendente($empresaAtual);
+                    }
+                });
             } catch (Throwable $e) {
                 $this->tenantManager->semTenant(function () use ($subscricao) {
                     $subscricao->update(['estado' => 'cancelada', 'cancelada_em' => now()]);
