@@ -70,13 +70,19 @@ class ExportacaoSafTTest extends TestCase
         $this->assertStringContainsString($empresa->nif, $xml);
         $this->assertStringContainsString('xmlns="urn:OECD:StandardAuditFile-Tax:AO_1.01_01"', $xml);
         $this->assertStringContainsString('<AuditFileVersion>1.01_01</AuditFileVersion>', $xml);
+        $this->assertStringContainsString('<DocumentStatus>', $xml);
+        $this->assertStringContainsString('<SpecialRegimes>', $xml);
+        $this->assertStringContainsString('<DocumentTotals>', $xml);
+        $this->assertStringContainsString('<BillingAddress>', $xml);
+        $this->assertStringContainsString('<TaxTable>', $xml);
+        $this->assertStringContainsString('<ProductType>S</ProductType>', $xml);
     }
 
     /**
      * O modo validado tem de falhar fechado enquanto o gerador não cumprir
      * o XSD: nunca pode devolver silenciosamente um XML estruturalmente inválido.
      */
-    public function test_gerar_validado_interrompe_exportacao_quando_xml_nao_cumpre_xsd(): void
+    public function test_gerar_validado_bloqueia_quando_faltam_dados_fiscais_obrigatorios(): void
     {
         $empresa = Empresa::create(['nome_comercial' => 'Empresa SAF-T', 'nif' => '400000001']);
 
@@ -89,7 +95,7 @@ class ExportacaoSafTTest extends TestCase
 
             $this->fail('A exportação validada não devia devolver XML que não cumpre o XSD.');
         } catch (\RuntimeException $erro) {
-            $this->assertStringContainsString('não passou na validação XSD', $erro->getMessage());
+            $this->assertStringContainsString('dados fiscais obrigatórios', $erro->getMessage());
         }
     }
 
