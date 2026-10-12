@@ -46,12 +46,12 @@ class ExportacaoSafTTest extends TestCase
      */
     public function test_saft_inclui_dados_mesmo_sem_tenant_ambiente_definido(): void
     {
-        $empresa = Empresa::create(['nome_comercial' => 'Empresa SAF-T', 'nif' => '400000001']);
-        $cliente = Cliente::create(['empresa_id' => $empresa->id, 'nome' => 'Cliente SAF-T', 'nif' => null]);
+        $empresa = Empresa::create(['nome_comercial' => 'Empresa SAF-T', 'nome_legal' => 'Empresa SAF-T, Lda.', 'nif' => '4000000001', 'morada' => 'Rua de teste, 10', 'municipio' => 'Luanda', 'provincia' => 'Luanda']);
+        $cliente = Cliente::create(['empresa_id' => $empresa->id, 'nome' => 'Cliente SAF-T', 'nif' => '4000000002', 'morada' => 'Rua do cliente, 20', 'municipio' => 'Luanda', 'provincia' => 'Luanda']);
 
         app(FaturaService::class)->emitir(
             app(FaturaService::class)->criarRascunho($empresa, $cliente, [
-                ['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => 5000, 'taxa_iva' => 14],
+                ['descricao' => 'Serviço', 'tipo_saft' => 'S', 'quantidade' => 1, 'preco_unitario' => 5000, 'taxa_iva' => 14],
             ])
         );
 
