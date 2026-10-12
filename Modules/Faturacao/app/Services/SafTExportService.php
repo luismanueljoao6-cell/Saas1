@@ -4,10 +4,10 @@ namespace Modules\Faturacao\Services;
 
 use DOMDocument;
 use DOMElement;
+use Illuminate\Support\Carbon;
 use InvalidArgumentException;
 use LibXMLError;
 use RuntimeException;
-use Illuminate\Support\Carbon;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
