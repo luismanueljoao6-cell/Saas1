@@ -39,8 +39,33 @@ trait BelongsToTenant
         static::addGlobalScope(new TenantScope);
 
         static::updating(function ($model): void {
+            $tenantManager = app(TenantManager::class);
+
             if ($model->isDirty('empresa_id') && $model->getOriginal('empresa_id') !== null) {
                 throw new \LogicException('empresa_id não pode ser alterado depois de o registo ser criado.');
+            }
+
+            // A scope protege a leitura, mas uma instância carregada durante
+            // um bypass pode sobreviver e ser atualizada por engano. Verifica
+            // também a posse no momento da escrita.
+            if (
+                $tenantManager->has()
+                && ! $tenantManager->emBypass()
+                && (int) $model->getOriginal('empresa_id') !== $tenantManager->id()
+            ) {
+                throw new \LogicException('Não é permitido alterar um registo de outra empresa.');
+            }
+        });
+
+        static::deleting(function ($model): void {
+            $tenantManager = app(TenantManager::class);
+
+            if (
+                $tenantManager->has()
+                && ! $tenantManager->emBypass()
+                && (int) $model->getAttribute('empresa_id') !== $tenantManager->id()
+            ) {
+                throw new \LogicException('Não é permitido eliminar um registo de outra empresa.');
             }
         });
 
