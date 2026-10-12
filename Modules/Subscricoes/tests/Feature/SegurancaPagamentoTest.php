@@ -393,5 +393,4 @@ class SegurancaPagamentoTest extends TestCase
             '9900.00'
         );
     }
-
 }
