@@ -526,6 +526,9 @@ class SafTExportService
         $no->appendChild($status);
         $no->appendChild($this->no($doc, 'Hash', $m->hash));
         $no->appendChild($this->no($doc, 'HashControl', $m->chave_versao ?: '0'));
+        if ($m instanceof NotaCreditoDebito && $m->tipo === 'credito' && $m->fatura_id === null) {
+            throw new \RuntimeException('A nota de crédito '.$m->numero_documento.' não referencia a fatura original; não pode ser exportada como SAF-T.');
+        }
         $no->appendChild($this->no($doc, 'InvoiceDate', $m->data_emissao->format('Y-m-d')));
         $no->appendChild($this->no($doc, 'InvoiceType', $tipo));
         $regimes = $doc->createElementNS(self::NAMESPACE_SAFT, 'SpecialRegimes');
@@ -559,6 +562,18 @@ class SafTExportService
             $l->appendChild($this->no($doc, 'UnitPrice', Dinheiro::formatar(Dinheiro::centimos($linha->preco_unitario))));
             $l->appendChild($this->no($doc, 'TaxBase', Dinheiro::formatar(Dinheiro::centimos($linha->valor_sem_iva))));
             $l->appendChild($this->no($doc, 'TaxPointDate', $m->data_emissao->format('Y-m-d')));
+            if ($m instanceof NotaCreditoDebito && $m->tipo === 'credito') {
+                $origem = Fatura::withoutGlobalScopes()
+                    ->where('empresa_id', $m->empresa_id)
+                    ->find($m->fatura_id);
+                if (! $origem || ! $origem->estaEmitido() || (int) $origem->cliente_id !== (int) $m->cliente_id) {
+                    throw new \RuntimeException('A nota de crédito '.$m->numero_documento.' referencia uma fatura inexistente, não emitida ou de outro cliente.');
+                }
+                $referencias = $doc->createElementNS(self::NAMESPACE_SAFT, 'References');
+                $referencias->appendChild($this->no($doc, 'Reference', $origem->numero_documento));
+                $referencias->appendChild($this->no($doc, 'Reason', $m->motivo));
+                $l->appendChild($referencias);
+            }
             $l->appendChild($this->no($doc, 'Description', $descricao));
             $l->appendChild($this->no($doc, $campoValor, Dinheiro::formatar(Dinheiro::centimos($linha->valor_sem_iva))));
             $tax = $doc->createElementNS(self::NAMESPACE_SAFT, 'Tax');
