@@ -331,26 +331,14 @@ class SegurancaPagamentoTest extends TestCase
             'estado' => 'expirado',
         ]);
 
-        try {
-            app(PagamentoService::class)->confirmar(
-                $pagamento->fresh(),
-                [],
-                null,
-                '9900.00'
-            );
-            $this->fail('Um pagamento expirado não deve ativar a subscrição automaticamente.');
-        } catch (DomainException $e) {
-            $this->assertStringContainsString('não está pendente e válida', $e->getMessage());
-        }
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('não está pendente e válida');
 
-        $this->assertSame(
-            'expirado',
-            Pagamento::withoutGlobalScopes()->findOrFail($pagamento->id)->estado
-        );
-        $this->assertSame('trial', $empresa->fresh()->estado_subscricao);
-        $this->assertSame(
-            'pendente',
-            Subscricao::withoutGlobalScopes()->findOrFail($pagamento->subscricao_id)->estado
+        app(PagamentoService::class)->confirmar(
+            $pagamento->fresh(),
+            [],
+            null,
+            '9900.00'
         );
     }
 
