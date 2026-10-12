@@ -599,6 +599,7 @@ class SafTExportService
         if ($linhas->isEmpty()) {
             throw new RuntimeException('O documento '.$m->numero_documento.' não tem linhas para exportar.');
         }
+        $linhasXml = $doc->createElementNS(self::NAMESPACE_SAFT, 'Lines');
         foreach ($linhas as $indice => $linha) {
             $l = $doc->createElementNS(self::NAMESPACE_SAFT, 'Line');
             $produto = $linha instanceof FaturaLinha && $linha->produto_id
@@ -646,8 +647,9 @@ class SafTExportService
                 $l->appendChild($this->no($doc, 'TaxExemptionReason', $motivoIsencao));
                 $l->appendChild($this->no($doc, 'TaxExemptionCode', $codigoIsencao));
             }
-            $no->appendChild($l);
+            $linhasXml->appendChild($l);
         }
+        $no->appendChild($linhasXml);
 
         $totais = $doc->createElementNS(self::NAMESPACE_SAFT, 'DocumentTotals');
         $totais->appendChild($this->no($doc, 'TaxPayable', Dinheiro::formatar(Dinheiro::centimos($m->valor_iva))));
