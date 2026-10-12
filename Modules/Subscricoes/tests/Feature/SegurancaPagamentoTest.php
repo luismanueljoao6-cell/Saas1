@@ -17,39 +17,45 @@ use Modules\Subscricoes\Services\SubscricaoService;
 use RuntimeException;
 use Tests\TestCase;
 
+class GatewayPagamentoTeste implements GatewayPagamentoInterface
+{
+    public function __construct(private bool $falha = false) {}
+
+    public function identificador(): string
+    {
+        return 'gateway-teste';
+    }
+
+    public function gerarReferencia(Pagamento $pagamento): array
+    {
+        if ($this->falha) {
+            throw new RuntimeException('gateway em baixo');
+        }
+
+        return ['referencia_externa' => 'REF-'.$pagamento->id, 'payload' => ['ok' => true]];
+    }
+
+    public function validarPedidoWebhook(Request $request): bool
+    {
+        return true;
+    }
+
+    public function interpretarNotificacao(Request $request): array
+    {
+        return ['referencia_externa' => 'x', 'estado' => 'confirmado', 'payload' => []];
+    }
+}
+
 class SegurancaPagamentoTest extends TestCase
 {
     use RefreshDatabase;
 
     protected function usarGateway(bool $falha = false): void
     {
-        $this->app->singleton(GatewayPagamentoInterface::class, fn () => new class($falha) implements GatewayPagamentoInterface {
-            public function __construct(private bool $falha) {}
-
-            public function identificador(): string
-            {
-                return 'gateway-teste';
-            }
-
-            public function gerarReferencia(Pagamento $pagamento): array
-            {
-                if ($this->falha) {
-                    throw new RuntimeException('gateway em baixo');
-                }
-
-                return ['referencia_externa' => 'REF-'.$pagamento->id, 'payload' => ['ok' => true]];
-            }
-
-            public function validarPedidoWebhook(Request $request): bool
-            {
-                return true;
-            }
-
-            public function interpretarNotificacao(Request $request): array
-            {
-                return ['referencia_externa' => 'x', 'estado' => 'confirmado', 'payload' => []];
-            }
-        });
+        $this->app->singleton(
+            GatewayPagamentoInterface::class,
+            fn () => new GatewayPagamentoTeste($falha)
+        );
     }
 
     protected function cenario(string $nif): array
