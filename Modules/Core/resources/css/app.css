@@ -3,11 +3,46 @@
 /*
  * Por omissão, o Tailwind só rastreia resources/views na raiz do projeto.
  * Esta linha garante que as classes usadas nas views deste módulo também
- * são incluídas no CSS final. Confirma a sintaxe consoante a versão do
- * Tailwind instalada (escrito para Tailwind CSS 4.x).
+ * são incluídas no CSS final (escrito para Tailwind CSS 4.x).
  */
 @source "../views/**/*.blade.php";
 
 /* Cada módulo compila o seu próprio CSS (ver vite.config.js na raiz do
    projeto) para que, por exemplo, o CSS do Estúdio de Música não seja
    carregado quando o utilizador está no módulo de Faturação. */
+
+/* Modo escuro controlado pela classe "dark" no <html> (ver layouts/app.blade.php),
+   em vez de depender só da preferência do sistema. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+    --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Alpine.js: esconde elementos com x-cloak até o Alpine arrancar (evita "flash"). */
+[x-cloak] {
+    display: none !important;
+}
+
+@layer base {
+    html {
+        font-feature-settings: "cv11", "ss01";
+        -webkit-text-size-adjust: 100%;
+    }
+
+    /* Foco visível para navegação por teclado. */
+    :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+        outline: 2px solid var(--color-indigo-500);
+        outline-offset: 2px;
+    }
+}
+
+/* Respeita quem pediu menos movimento no sistema operativo. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+    }
+}
