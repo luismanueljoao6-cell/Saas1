@@ -1,20 +1,13 @@
 <?php
 
-namespace Modules\Atelier\Services;
+namespace Modules\\Atelier\\Services;
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Modules\Atelier\Events\PedidoMudouEstado;
-use Modules\Atelier\Exceptions\PedidoException;
-use Modules\Atelier\Models\Pedido;
+use Illuminate\\Support\\Facades\\DB;
+use Illuminate\\Support\\Facades\\Log;
+use Modules\\Atelier\\Events\\PedidoMudouEstado;
+use Modules\\Atelier\\Exceptions\\PedidoException;
+use Modules\\Atelier\\Models\\Pedido;
 
-/**
- * Única porta de entrada para mudar Pedido::status. O controller nunca
- * escreve `$pedido->update(['status' => ...])` diretamente — passa sempre
- * por aqui, para que a validação de transições e o disparo do evento (que
- * aciona as notificações ao cliente, requisito C) fiquem garantidos em
- * todos os sítios que mexem no estado de um pedido.
- */
 class PedidoStatusService
 {
     private const TRANSICOES_PERMITIDAS = [
@@ -30,25 +23,37 @@ class PedidoStatusService
 
     public function avancarPara(Pedido $pedido, string $novoEstado, ?string $motivoCancelamento = null): Pedido
     {
-        $estadoAnterior = $pedido->status;
+        return DB::transaction(function () use ($pedido, $novoEstado, $motivoCancelamento) {
+            // Recarrega o estado dentro da transação e bloqueia a linha.
+            // Sem isto, dois pedidos concorrentes podiam validar a mesma
+            // transição antiga e depois sobrescrever um ao outro.
+            $bloqueado = Pedido::query()
+                ->where('empresa_id', $pedido->empresa_id)
+                ->lockForUpdate()
+                ->findOrFail($pedido->id);
 
-        $permitidos = self::TRANSICOES_PERMITIDAS[$estadoAnterior] ?? [];
+            $estadoAnterior = $bloqueado->status;
+            $permitidos = self::TRANSICOES_PERMITIDAS[$estadoAnterior] ?? [];
 
-        if (! in_array($novoEstado, $permitidos, true)) {
-            throw PedidoException::transicaoInvalida($estadoAnterior, $novoEstado);
-        }
-
-        return DB::transaction(function () use ($pedido, $novoEstado, $motivoCancelamento, $estadoAnterior) {
-            $pedido->status = $novoEstado;
-
-            if ($novoEstado === 'cancelado') {
-                $pedido->motivo_cancelamento = $motivoCancelamento;
+            if (! in_array($novoEstado, $permitidos, true)) {
+                throw PedidoException::transicaoInvalida($estadoAnterior, $novoEstado);
             }
 
-            $pedido->save();
+            $bloqueado->status = $novoEstado;
+
+            if ($novoEstado === 'cancelado') {
+                $bloqueado->motivo_cancelamento = $motivoCancelamento;
+            }
+
+            $bloqueado->save();
+
+            // Mantém a instância que o controller entregou sincronizada,
+            // mas o evento usa os dados relidos e gravados sob lock.
+            $pedido->setRawAttributes($bloqueado->getAttributes(), true);
 
             Log::info('Pedido mudou de estado', [
-                'pedido_id' => $pedido->id,
+                'pedido_id' => $bloqueado->id,
+                'empresa_id' => $bloqueado->empresa_id,
                 'de' => $estadoAnterior,
                 'para' => $novoEstado,
             ]);
