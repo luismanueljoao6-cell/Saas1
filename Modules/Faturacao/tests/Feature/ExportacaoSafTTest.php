@@ -28,6 +28,8 @@ class ExportacaoSafTTest extends TestCase
         file_put_contents($caminho, $chavePrivadaPem);
 
         config(['faturacao.chave_privada_path' => $caminho]);
+        // Os exemplos de teste são serviços sem produto cadastrado.
+        config(['faturacao.saft_tipo_produto_padrao' => 'S']);
 
         $this->beforeApplicationDestroyed(function () use ($caminho) {
             @unlink($caminho);
