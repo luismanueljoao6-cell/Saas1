@@ -7,6 +7,7 @@ use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Services\FaturaService;
+use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Modules\Faturacao\Services\SafTExportService;
 use Tests\TestCase;
 
@@ -76,6 +77,45 @@ class ExportacaoSafTTest extends TestCase
         $this->assertStringContainsString('<BillingAddress>', $xml);
         $this->assertStringContainsString('<TaxTable>', $xml);
         $this->assertStringContainsString('<ProductType>S</ProductType>', $xml);
+    }
+
+    public function test_saft_inclui_referencia_da_fatura_original_na_nota_de_credito(): void
+    {
+        $empresa = Empresa::create([
+            'nome_comercial' => 'Empresa SAF-T',
+            'nome_legal' => 'Empresa SAF-T, Lda.',
+            'nif' => '4000000001',
+            'morada' => 'Rua de teste, 10',
+            'municipio' => 'Luanda',
+            'provincia' => 'Luanda',
+        ]);
+        $cliente = Cliente::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Cliente SAF-T',
+            'nif' => '4000000002',
+            'morada' => 'Rua do cliente, 20',
+            'municipio' => 'Luanda',
+            'provincia' => 'Luanda',
+        ]);
+
+        $faturaService = app(FaturaService::class);
+        $fatura = $faturaService->emitir($faturaService->criarRascunho($empresa, $cliente, [
+            ['descricao' => 'Serviço', 'tipo_saft' => 'S', 'quantidade' => 1, 'preco_unitario' => 5000, 'taxa_iva' => 14],
+        ]));
+
+        $notaService = app(NotaCreditoDebitoService::class);
+        $nota = $notaService->criarParaAnularFatura($fatura, 'Correção de teste');
+        $notaService->emitir($nota);
+
+        $xml = app(SafTExportService::class)->gerar(
+            $empresa,
+            now()->startOfMonth(),
+            now()->endOfMonth(),
+        );
+
+        $this->assertStringContainsString('<References>', $xml);
+        $this->assertStringContainsString('<Reference>'.$fatura->numero_documento.'</Reference>', $xml);
+        $this->assertStringContainsString('<Reason>Correção de teste</Reason>', $xml);
     }
 
     /**
