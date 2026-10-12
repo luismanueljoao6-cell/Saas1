@@ -393,7 +393,7 @@ class SafTExportService
         $faturas = Fatura::withoutGlobalScopes()
             ->where('empresa_id', $empresa->id)->where('estado', 'emitida')
             ->whereBetween('data_emissao', [$de, $ate])
-            ->with('linhas.produto')->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
+            ->with('linhas')->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
 
         foreach ($faturas as $f) {
             $vendas->appendChild($this->documento($doc, 'FT', $f, 'CreditAmount'));
@@ -540,7 +540,9 @@ class SafTExportService
         }
         foreach ($linhas as $indice => $linha) {
             $l = $doc->createElementNS(self::NAMESPACE_SAFT, 'Line');
-            $produto = $linha->relationLoaded('produto') ? $linha->produto : null;
+            $produto = $linha instanceof FaturaLinha && $linha->produto_id
+                ? Produto::withoutGlobalScopes()->where('empresa_id', $m->empresa_id)->find($linha->produto_id)
+                : null;
             $codigo = $produto
                 ? (string) ($produto->codigo ?: 'PROD-'.$produto->id)
                 : ($m instanceof Fatura ? 'SERVICO-LINHA-'.$linha->id : 'NOTA-LINHA-'.$linha->id);
