@@ -17,6 +17,20 @@ class ProdutoController extends Controller
         ]);
     }
 
+    public function classificar(Request $request, int $produto): RedirectResponse
+    {
+        $dados = $request->validate([
+            'tipo_saft' => ['required', 'string', 'in:P,S,O,E,I'],
+        ]);
+
+        $registo = Produto::withoutGlobalScopes()
+            ->where('empresa_id', $request->user()->empresa_id)
+            ->findOrFail($produto);
+        $registo->update(['tipo_saft' => $dados['tipo_saft']]);
+
+        return back()->with('sucesso', 'Classificação SAF-T atualizada.');
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $dados = $request->validate([
