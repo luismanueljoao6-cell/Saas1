@@ -21,6 +21,7 @@ class ProdutoController extends Controller
     {
         $dados = $request->validate([
             'codigo' => ['nullable', 'string', 'max:50'],
+            'tipo_saft' => ['required', 'string', 'in:P,S,O,E,I'],
             'nome' => ['required', 'string', 'max:255'],
             'unidade' => ['nullable', 'string', 'max:20'],
             'preco_unitario' => ['required', 'numeric', 'min:0'],
