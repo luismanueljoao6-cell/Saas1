@@ -502,7 +502,7 @@ class SegurancaPagamentoTest extends TestCase
 
         config(['subscricoes.limites_sem_plano.max_utilizadores' => 3]);
 
-        $limite = app(\\Modules\\Core\\Contracts\\LimitesDaEmpresa::class)
+        $limite = app(\Modules\Core\Contracts\LimitesDaEmpresa::class)
             ->limite($empresa->fresh(), 'max_utilizadores');
 
         $this->assertSame(
