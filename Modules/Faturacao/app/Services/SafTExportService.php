@@ -64,20 +64,20 @@ class SafTExportService
      * diagnóstico durante a migração; não deve ser tratado como exportação
      * SAF-T validada.
      *
-     * @throws \RuntimeException quando o XML não passar a validação XSD
+     * @throws RuntimeException quando o XML não passar a validação XSD
      */
     public function gerarValidado(Empresa $empresa, Carbon $inicio, Carbon $fim): string
     {
         $problemas = $this->validarConfiguracaoObrigatoria($empresa);
         if ($problemas !== []) {
-            throw new \RuntimeException("Exportação SAF-T bloqueada por falta de dados fiscais obrigatórios:\n- ".implode("\n- ", $problemas));
+            throw new RuntimeException("Exportação SAF-T bloqueada por falta de dados fiscais obrigatórios:\n- ".implode("\n- ", $problemas));
         }
 
         $xml = $this->gerar($empresa, $inicio, $fim);
         $erros = $this->validarXmlContraXsd($xml);
 
         if ($erros !== []) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 "O XML SAF-T gerado não passou na validação XSD. A exportação foi interrompida.\n- "
                 .implode("\n- ", $erros)
             );
@@ -196,7 +196,7 @@ class SafTExportService
         $caminhoXsd = module_path('Faturacao', 'resources/saft/SAFTAO1.01_01.xsd');
 
         if (! is_file($caminhoXsd)) {
-            throw new \RuntimeException('O esquema XSD SAF-T (AO) não foi encontrado: '.$caminhoXsd);
+            throw new RuntimeException('O esquema XSD SAF-T (AO) não foi encontrado: '.$caminhoXsd);
         }
 
         $documento = new DOMDocument('1.0', 'UTF-8');
@@ -305,7 +305,7 @@ class SafTExportService
             $nomeCliente = mb_strtolower(trim((string) $cliente->nome));
             $consumidorFinal = $nomeCliente === 'consumidor final' && trim((string) $cliente->nif) === '';
             if (trim((string) $cliente->nif) === '' && ! $consumidorFinal) {
-                throw new \RuntimeException('O cliente CLI-'.$cliente->id.' não tem NIF; apenas o cliente genérico Consumidor final pode usar 999999999.');
+                throw new RuntimeException('O cliente CLI-'.$cliente->id.' não tem NIF; apenas o cliente genérico Consumidor final pode usar 999999999.');
             }
             $c->appendChild($this->no($doc, 'CustomerTaxID', $consumidorFinal ? '999999999' : $cliente->nif));
             $c->appendChild($this->no($doc, 'CompanyName', trim((string) $cliente->nome) !== '' ? $cliente->nome : 'Consumidor final'));
@@ -386,7 +386,7 @@ class SafTExportService
     {
         $tipo = strtoupper(trim((string) $produto->tipo_saft));
         if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
-            throw new \RuntimeException('Classifique o produto '.$produto->id.' como P, S, O, E ou I antes de exportar SAF-T.');
+            throw new RuntimeException('Classifique o produto '.$produto->id.' como P, S, O, E ou I antes de exportar SAF-T.');
         }
         return $tipo;
     }
@@ -395,7 +395,7 @@ class SafTExportService
     {
         $tipo = strtoupper(trim((string) ($tipoLinha ?: config('faturacao.saft_tipo_produto_padrao', ''))));
         if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
-            throw new \RuntimeException('Classifique a linha manual como P, S, O, E ou I (ou configure um padrão fiscal validado).');
+            throw new RuntimeException('Classifique a linha manual como P, S, O, E ou I (ou configure um padrão fiscal validado).');
         }
         return $tipo;
     }
@@ -483,7 +483,7 @@ class SafTExportService
 
         foreach ($recibos as $recibo) {
             if (! $recibo->fatura_id) {
-                throw new \RuntimeException('O recibo '.$recibo->numero_documento.' não está ligado a uma fatura; o SAF-T exige referência ao documento de origem.');
+                throw new RuntimeException('O recibo '.$recibo->numero_documento.' não está ligado a uma fatura; o SAF-T exige referência ao documento de origem.');
             }
 
             $fatura = Fatura::withoutGlobalScopes()
@@ -496,7 +496,7 @@ class SafTExportService
                 || (int) $fatura->cliente_id !== (int) $recibo->cliente_id
                 || $serie->tipo_documento !== 'RC'
                 || trim((string) $recibo->hash) === '') {
-                throw new \RuntimeException('O recibo '.$recibo->numero_documento.' tem referências fiscais inválidas ou não tem assinatura.');
+                throw new RuntimeException('O recibo '.$recibo->numero_documento.' tem referências fiscais inválidas ou não tem assinatura.');
             }
 
             $pagamento = $doc->createElementNS(self::NAMESPACE_SAFT, 'Payment');
@@ -548,10 +548,10 @@ class SafTExportService
         $no = $doc->createElementNS(self::NAMESPACE_SAFT, 'Invoice');
         $cliente = Cliente::withoutGlobalScopes()->where('empresa_id', $m->empresa_id)->find($m->cliente_id);
         if (! $cliente) {
-            throw new \RuntimeException('O documento '.$m->numero_documento.' referencia um cliente inexistente na mesma empresa.');
+            throw new RuntimeException('O documento '.$m->numero_documento.' referencia um cliente inexistente na mesma empresa.');
         }
         if (trim((string) $m->hash) === '') {
-            throw new \RuntimeException('O documento '.$m->numero_documento.' não tem hash fiscal; exportação interrompida.');
+            throw new RuntimeException('O documento '.$m->numero_documento.' não tem hash fiscal; exportação interrompida.');
         }
 
         $no->appendChild($this->no($doc, 'InvoiceNo', $m->numero_documento));
@@ -564,7 +564,7 @@ class SafTExportService
         $no->appendChild($this->no($doc, 'Hash', $m->hash));
         $no->appendChild($this->no($doc, 'HashControl', $m->chave_versao ?: '0'));
         if ($m instanceof NotaCreditoDebito && $m->tipo === 'credito' && $m->fatura_id === null) {
-            throw new \RuntimeException('A nota de crédito '.$m->numero_documento.' não referencia a fatura original; não pode ser exportada como SAF-T.');
+            throw new RuntimeException('A nota de crédito '.$m->numero_documento.' não referencia a fatura original; não pode ser exportada como SAF-T.');
         }
         $no->appendChild($this->no($doc, 'InvoiceDate', $m->data_emissao->format('Y-m-d')));
         $no->appendChild($this->no($doc, 'InvoiceType', $tipo));
@@ -579,7 +579,7 @@ class SafTExportService
 
         $linhas = $m->linhas;
         if ($linhas->isEmpty()) {
-            throw new \RuntimeException('O documento '.$m->numero_documento.' não tem linhas para exportar.');
+            throw new RuntimeException('O documento '.$m->numero_documento.' não tem linhas para exportar.');
         }
         foreach ($linhas as $indice => $linha) {
             $l = $doc->createElementNS(self::NAMESPACE_SAFT, 'Line');
@@ -604,7 +604,7 @@ class SafTExportService
                     ->where('empresa_id', $m->empresa_id)
                     ->find($m->fatura_id);
                 if (! $origem || ! $origem->estaEmitido() || (int) $origem->cliente_id !== (int) $m->cliente_id) {
-                    throw new \RuntimeException('A nota de crédito '.$m->numero_documento.' referencia uma fatura inexistente, não emitida ou de outro cliente.');
+                    throw new RuntimeException('A nota de crédito '.$m->numero_documento.' referencia uma fatura inexistente, não emitida ou de outro cliente.');
                 }
                 $referencias = $doc->createElementNS(self::NAMESPACE_SAFT, 'References');
                 $referencias->appendChild($this->no($doc, 'Reference', $origem->numero_documento));
@@ -623,7 +623,7 @@ class SafTExportService
                 $codigoIsencao = trim((string) $linha->codigo_isencao_iva);
                 $motivoIsencao = trim((string) $linha->motivo_isencao_iva);
                 if (! preg_match('/^M[0-9]{2}$/', $codigoIsencao) || mb_strlen($motivoIsencao) < 6 || mb_strlen($motivoIsencao) > 60) {
-                    throw new \RuntimeException('A linha '.($indice + 1).' do documento '.$m->numero_documento.' tem IVA 0%; informe um código legal M01–M99 e um motivo entre 6 e 60 caracteres.');
+                    throw new RuntimeException('A linha '.($indice + 1).' do documento '.$m->numero_documento.' tem IVA 0%; informe um código legal M01–M99 e um motivo entre 6 e 60 caracteres.');
                 }
                 $l->appendChild($this->no($doc, 'TaxExemptionReason', $motivoIsencao));
                 $l->appendChild($this->no($doc, 'TaxExemptionCode', $codigoIsencao));
