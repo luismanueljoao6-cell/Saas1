@@ -138,5 +138,4 @@ class ExportacaoSafTTest extends TestCase
             $this->assertStringContainsString('dados fiscais obrigatórios', $erro->getMessage());
         }
     }
-
 }
