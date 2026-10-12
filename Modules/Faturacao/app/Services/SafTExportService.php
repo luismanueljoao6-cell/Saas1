@@ -327,13 +327,13 @@ class SafTExportService
             }
             $morada->appendChild($this->no($doc, 'Country', 'AO'));
             $c->appendChild($morada);
-            $c->appendChild($this->no($doc, 'SelfBillingIndicator', 0));
             if ($cliente->telefone) {
                 $c->appendChild($this->no($doc, 'Telephone', $cliente->telefone));
             }
             if ($cliente->email) {
                 $c->appendChild($this->no($doc, 'Email', $cliente->email));
             }
+            $c->appendChild($this->no($doc, 'SelfBillingIndicator', 0));
             $tabelas->appendChild($c);
         }
 
