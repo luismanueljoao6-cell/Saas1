@@ -378,6 +378,34 @@ class SegurancaPagamentoTest extends TestCase
         app(SubscricaoService::class)->retomarRenovacao($subscricao);
     }
 
+    public function test_rotina_nao_cancela_subscricao_pendente_com_pagamento_confirmado(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000017');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+
+        // Simula o estado após a confirmação do pagamento, mas antes da
+        // sincronização da subscrição, para garantir que a limpeza não o
+        // transforma num cancelamento irreversível.
+        Pagamento::withoutGlobalScopes()
+            ->whereKey($pagamento->id)
+            ->update(['estado' => 'confirmado']);
+
+        $subscricao = Subscricao::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->firstOrFail();
+
+        app(VerificarSubscricoesExpiradasJob::class)->handle(
+            app(TenantManager::class),
+            app(TenantService::class)
+        );
+
+        $this->assertSame(
+            'pendente',
+            Subscricao::withoutGlobalScopes()->findOrFail($subscricao->id)->estado
+        );
+    }
+
     public function test_expiracao_de_subscricao_antiga_nao_suspende_empresa_com_outra_subscricao_valida(): void
     {
         $this->usarGateway();
