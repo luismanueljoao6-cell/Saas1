@@ -132,4 +132,41 @@ class SegurancaPagamentoTest extends TestCase
         $this->assertSame('confirmado', Pagamento::withoutGlobalScopes()->find($pagamento->id)->estado);
         $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
     }
+
+    public function test_iniciar_reutiliza_referencia_pendente_do_mesmo_plano(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000006');
+
+        $primeiro = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        $segundo = app(SubscricaoService::class)->iniciar($empresa, $plano);
+
+        $this->assertSame($primeiro->id, $segundo->id);
+        $this->assertSame(
+            1,
+            Pagamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->count()
+        );
+        $this->assertSame(
+            1,
+            Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->count()
+        );
+    }
+
+    public function test_valor_recebido_em_notacao_cientifica_e_rejeitado(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000007');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+
+        $this->expectException(DomainException::class);
+
+        try {
+            app(PagamentoService::class)->confirmar($pagamento, [], null, '9.9e3');
+        } finally {
+            $this->assertSame(
+                'pendente',
+                Pagamento::withoutGlobalScopes()->find($pagamento->id)->estado
+            );
+        }
+    }
 }
