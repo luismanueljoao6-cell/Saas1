@@ -63,6 +63,11 @@ class SafTExportService
      */
     public function gerarValidado(Empresa $empresa, Carbon $inicio, Carbon $fim): string
     {
+        $problemas = $this->validarConfiguracaoObrigatoria($empresa);
+        if ($problemas !== []) {
+            throw new \RuntimeException("Exportação SAF-T bloqueada por falta de dados fiscais obrigatórios:\n- ".implode("\n- ", $problemas));
+        }
+
         $xml = $this->gerar($empresa, $inicio, $fim);
         $erros = $this->validarXmlContraXsd($xml);
 
@@ -74,6 +79,48 @@ class SafTExportService
         }
 
         return $xml;
+    }
+
+    /**
+     * Falha fechada quando os dados de identificação não permitem construir um
+     * ficheiro fiscal fiável. Não inventar NIF, conta contabilística, cidade
+     * ou classificação de produtos para satisfazer o XSD.
+     *
+     * @return list<string>
+     */
+    protected function validarConfiguracaoObrigatoria(Empresa $empresa): array
+    {
+        $problemas = [];
+        $obrigatorios = [
+            'NIF do produtor' => config('faturacao.saft_nif_produtor'),
+            'identificação do produto no formato Nome da aplicação/Produtor' => config('faturacao.saft_product_id'),
+            'conta contabilística de clientes' => config('faturacao.saft_conta_clientes'),
+            'cidade padrão dos clientes' => config('faturacao.saft_cidade_padrao'),
+        ];
+        foreach ($obrigatorios as $campo => $valor) {
+            if (! is_string($valor) || trim($valor) === '') $problemas[] = 'Configure '.$campo.' no ambiente.';
+        }
+        if (trim((string) ($empresa->nif ?? '')) === '') $problemas[] = 'A empresa não tem NIF.';
+        if (trim((string) ($empresa->nome_legal ?: $empresa->nome_comercial)) === '') $problemas[] = 'A empresa não tem nome legal/comercial.';
+        if (trim((string) ($empresa->morada ?? '')) === '') $problemas[] = 'A empresa não tem morada fiscal.';
+        if (trim((string) ($empresa->municipio ?? '')) === '') $problemas[] = 'A empresa não tem município fiscal.';
+
+        $clientes = Cliente::withoutGlobalScopes()->where('empresa_id', $empresa->id)->get(['id', 'morada']);
+        foreach ($clientes as $cliente) {
+            if (trim((string) $cliente->morada) === '') {
+                $problemas[] = 'O cliente CLI-'.$cliente->id.' não tem morada.';
+            }
+        }
+
+        $produtos = Produto::withoutGlobalScopes()->where('empresa_id', $empresa->id)->get(['id', 'tipo_saft']);
+        foreach ($produtos as $produto) {
+            $tipo = strtoupper(trim((string) ($produto->tipo_saft ?: config('faturacao.saft_tipo_produto_padrao', ''))));
+            if (! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+                $problemas[] = 'O produto '.$produto->id.' não tem classificação SAF-T P/S/O/E/I.';
+            }
+        }
+
+        return array_values(array_unique($problemas));
     }
 
     /** Em produção, o SAF-T fica bloqueado enquanto não houver número de certificação AGT. */
@@ -223,8 +270,8 @@ class SafTExportService
             $c->appendChild($this->no($doc, 'CustomerTaxID', $cliente->nif ?: '999999999'));
             $c->appendChild($this->no($doc, 'CompanyName', $cliente->nome ?: 'Consumidor final'));
             $morada = $doc->createElementNS(self::NAMESPACE_SAFT, 'BillingAddress');
-            $morada->appendChild($this->no($doc, 'AddressDetail', $cliente->morada ?: 'Não indicado'));
-            $morada->appendChild($this->no($doc, 'City', config('faturacao.saft_cidade_padrao', 'Não indicado')));
+            $morada->appendChild($this->no($doc, 'AddressDetail', $cliente->morada));
+            $morada->appendChild($this->no($doc, 'City', config('faturacao.saft_cidade_padrao', '')));
             $morada->appendChild($this->no($doc, 'Country', 'AO'));
             $c->appendChild($morada);
             $c->appendChild($this->no($doc, 'SelfBillingIndicator', 0));
