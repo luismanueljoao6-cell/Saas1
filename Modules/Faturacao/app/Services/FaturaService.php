@@ -165,7 +165,9 @@ class FaturaService
             $tipo = strtoupper(trim((string) ($linha['tipo_saft'] ?? '')));
             if (! empty($linha['produto_id'])) {
                 $produto = Produto::withoutGlobalScopes()->where('empresa_id', $empresaId)->where('ativo', true)->find($linha['produto_id']);
-                if (! $produto) throw new \DomainException('O produto da linha '.($indice + 1).' não existe, não está ativo ou pertence a outra empresa.');
+                if (! $produto) {
+                    throw new \DomainException('O produto da linha '.($indice + 1).' não existe, não está ativo ou pertence a outra empresa.');
+                }
                 if (! in_array($produto->tipo_saft, ['P', 'S', 'O', 'E', 'I'], true)) {
                     throw new \DomainException('Classifique fiscalmente o produto '.$produto->nome.' antes de o faturar.');
                 }
