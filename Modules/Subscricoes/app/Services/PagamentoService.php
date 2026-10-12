@@ -65,9 +65,13 @@ class PagamentoService
                     // fluxo normal. A rotina diária pode já ter expirado a
                     // referência; pagamentos tardios precisam de reconciliação
                     // manual, não devem reativar automaticamente uma subscrição.
-                    if ($pagamento->estado !== 'pendente') {
+                    if (
+                        $pagamento->estado !== 'pendente'
+                        || $pagamento->expira_em === null
+                        || $pagamento->expira_em->isPast()
+                    ) {
                         throw new DomainException(
-                            "Não é possível confirmar o pagamento {$pagamento->id} porque o seu estado é '{$pagamento->estado}'."
+                            "Não é possível confirmar automaticamente o pagamento {$pagamento->id}: a referência não está pendente e válida."
                         );
                     }
 
