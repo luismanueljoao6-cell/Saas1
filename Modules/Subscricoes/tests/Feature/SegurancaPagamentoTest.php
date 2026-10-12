@@ -6,6 +6,7 @@ use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Subscricoes\Jobs\ProcessarPagamentoConfirmadoJob;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
@@ -327,6 +328,7 @@ class SegurancaPagamentoTest extends TestCase
         app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
 
         $subscricao = Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->firstOrFail();
+        app(TenantManager::class)->set($empresa->id);
         app(SubscricaoService::class)->cancelarRenovacao($subscricao);
 
         $this->expectException(DomainException::class);
@@ -349,6 +351,7 @@ class SegurancaPagamentoTest extends TestCase
         app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
 
         $subscricao = Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->firstOrFail();
+        app(TenantManager::class)->set($empresa->id);
         $subscricao->update(['termina_em' => now()->subDay()]);
 
         $this->expectException(DomainException::class);
