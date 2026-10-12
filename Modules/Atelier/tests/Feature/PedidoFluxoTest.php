@@ -65,24 +65,23 @@ class PedidoFluxoTest extends TestCase
         $this->assertTrue($pedido->fresh()->estaFinalizado());
     }
 
-    public function test_transicao_rejeita_estado_obsoleto_carregado_antes_de_outra_atualizacao(): void
+    public function test_transicao_usa_estado_persistido_e_nao_o_estado_obsoleto(): void
     {
         Event::fake([PedidoMudouEstado::class]);
         $pedido = $this->criarPedido('400000012');
         $instanciaObsoleta = Pedido::findOrFail($pedido->id);
         $servico = app(PedidoStatusService::class);
 
-        $servico->avancarPara($pedido, 'em_corte');
-
-        try {
-            // A instância obsoleta ainda diz "pendente"; em_costura não é
-            // permitido a partir desse estado, mas seria permitido após
-            // "em_corte". O serviço tem de validar o estado persistido.
-            $servico->avancarPara($instanciaObsoleta, 'em_costura');
-            $this->fail('A transição baseada num estado obsoleto devia ser rejeitada.');
-        } catch (PedidoException) {
-            $this->assertSame('em_corte', $pedido->fresh()->status);
+        foreach (['em_corte', 'em_costura', 'primeira_prova', 'pronto_para_retirada'] as $estado) {
+            $servico->avancarPara($pedido, $estado);
         }
+
+        // A instância ainda está "pendente", mas a linha persistida já está
+        // pronta para retirada. A transição tem de validar o estado real.
+        $servico->avancarPara($instanciaObsoleta, 'entregue');
+
+        $this->assertSame('entregue', $pedido->fresh()->status);
+        $this->assertSame('entregue', $instanciaObsoleta->status);
     }
 
     public function test_ajustes_pode_voltar_a_uma_nova_prova(): void
