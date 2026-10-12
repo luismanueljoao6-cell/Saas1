@@ -14,6 +14,7 @@ class Produto extends Model
     protected $fillable = [
         'empresa_id',
         'codigo',
+        'tipo_saft',
         'nome',
         'unidade',
         'preco_unitario',
