@@ -318,4 +318,40 @@ class SegurancaPagamentoTest extends TestCase
         ], $corpo);
         $this->assertFalse($gateway->validarPedidoWebhook($tokenNaUrl));
     }
+
+    public function test_cancelar_renovacao_impede_gerar_nova_referencia_automatica(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000013');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
+
+        $subscricao = Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->firstOrFail();
+        app(SubscricaoService::class)->cancelarRenovacao($subscricao);
+
+        $this->expectException(DomainException::class);
+        try {
+            app(SubscricaoService::class)->gerarRenovacao($subscricao);
+        } finally {
+            $this->assertSame(
+                1,
+                Pagamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->count(),
+                'Não deve ser criada uma nova cobrança depois do cancelamento da renovação.'
+            );
+        }
+    }
+
+    public function test_nao_permite_retomar_renovacao_de_subscricao_vencida(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000014');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
+
+        $subscricao = Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->firstOrFail();
+        $subscricao->update(['termina_em' => now()->subDay()]);
+
+        $this->expectException(DomainException::class);
+        app(SubscricaoService::class)->retomarRenovacao($subscricao);
+    }
 }
