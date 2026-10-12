@@ -8,7 +8,9 @@ use Illuminate\Support\Carbon;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
+use Modules\Faturacao\Models\FaturaLinha;
 use Modules\Faturacao\Models\NotaCreditoDebito;
+use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
 use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Support\Dinheiro;
 
@@ -242,9 +244,14 @@ class SafTExportService
             $tabelas->appendChild($p);
         }
 
-        $taxas = Produto::withoutGlobalScopes()->where('empresa_id', $empresa->id)
-            ->whereNotNull('taxa_iva')->distinct()->orderBy('taxa_iva')->pluck('taxa_iva')
-            ->map(static fn ($taxa): string => number_format((float) $taxa, 2, '.', ''))->unique()->values();
+        $taxasProdutos = Produto::withoutGlobalScopes()->where('empresa_id', $empresa->id)
+            ->whereNotNull('taxa_iva')->pluck('taxa_iva');
+        $idsFaturas = Fatura::withoutGlobalScopes()->where('empresa_id', $empresa->id)->select('id');
+        $idsNotas = NotaCreditoDebito::withoutGlobalScopes()->where('empresa_id', $empresa->id)->select('id');
+        $taxasFaturas = FaturaLinha::whereIn('fatura_id', $idsFaturas)->pluck('taxa_iva');
+        $taxasNotas = NotaCreditoDebitoLinha::whereIn('nota_credito_debito_id', $idsNotas)->pluck('taxa_iva');
+        $taxas = $taxasProdutos->concat($taxasFaturas)->concat($taxasNotas)
+            ->map(static fn ($taxa): string => number_format((float) $taxa, 2, '.', ''))->unique()->sort()->values();
         if ($taxas->isNotEmpty()) {
             $taxTable = $doc->createElementNS(self::NAMESPACE_SAFT, 'TaxTable');
             foreach ($taxas as $taxa) {
