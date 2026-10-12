@@ -176,5 +176,4 @@ class FluxoPagamentoTest extends TestCase
         $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
         $this->assertTrue($empresa->fresh()->temAcesso());
     }
-
 }
