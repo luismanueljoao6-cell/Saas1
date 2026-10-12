@@ -171,6 +171,23 @@ class SegurancaPagamentoTest extends TestCase
         }
     }
 
+
+    public function test_valor_recebido_superior_ao_devido_e_rejeitado(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000008');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+
+        try {
+            app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.01');
+            $this->fail('Devia ter rejeitado um valor superior ao devido.');
+        } catch (DomainException) {
+            // esperado: o excedente não pode ser aceite sem política de crédito/reembolso.
+        }
+
+        $this->assertSame('pendente', Pagamento::withoutGlobalScopes()->find($pagamento->id)->estado);
+    }
+
     public function test_webhook_proxypay_valida_hmac_sha256_do_corpo_original(): void
     {
         config(['subscricoes.gateways.proxypay.api_key' => 'chave-de-teste']);
