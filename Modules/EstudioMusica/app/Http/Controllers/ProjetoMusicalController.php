@@ -37,7 +37,11 @@ class ProjetoMusicalController extends Controller
     {
         return view('estudiomusica::projetos.criar', [
             'clientes' => Cliente::orderBy('nome')->get(),
-            'membrosEquipa' => User::orderBy('name')->get(),
+            'membrosEquipa' => User::query()
+                ->where('empresa_id', $request->user()->empresa_id)
+                ->where('ativo', true)
+                ->orderBy('name')
+                ->get(),
         ]);
     }
 
