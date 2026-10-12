@@ -39,6 +39,14 @@ class ProcessarPagamentoConfirmadoJob implements ShouldQueue
         try {
             $pagamento = $pagamentoService->localizarPorReferencia($this->referenciaExterna);
 
+            // Uma referência válida não basta: o pagamento também tem de
+            // pertencer ao gateway que autenticou e enviou esta notificação.
+            if ($pagamento->gateway !== $this->gatewayIdentificador) {
+                throw new DomainException(
+                    "Gateway da notificação ({$this->gatewayIdentificador}) não corresponde ao gateway do pagamento {$pagamento->id} ({$pagamento->gateway})."
+                );
+            }
+
             // Via webhook o valor pago é obrigatório: sem ele não há como
             // verificar o pagamento (só a confirmação manual dispensa o valor).
             if ($this->valorRecebido === null || $this->valorRecebido === '') {

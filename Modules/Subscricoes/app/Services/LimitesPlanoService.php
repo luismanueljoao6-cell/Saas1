@@ -43,7 +43,7 @@ class LimitesPlanoService implements LimitesDaEmpresa
             ->first());
 
         if ($subscricao?->plano) {
-            return $subscricao->plano->limites ?? [];
+            return $subscricao->limites ?? $subscricao->plano->limites ?? [];
         }
 
         return config('subscricoes.limites_sem_plano', []);

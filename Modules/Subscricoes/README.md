@@ -35,13 +35,7 @@ disponível hoje:
   arquitetura está desenhada por trás de `GatewayPagamentoInterface`,
   qualquer um destes é, no limite, uma nova classe.
 
-**Sê honesto contigo próprio sobre isto:** escrevi o `ProxyPayGateway` com
-base na documentação pública e em SDKs de terceiros, não numa chamada real
-testada com credenciais válidas — este ambiente de execução não tem acesso
-à rede. A forma geral está correta (API key no cabeçalho, referência com
-`amount`/`expiry_date`/`custom_fields`, webhook de confirmação), mas os
-nomes exatos de campos/endpoint estão marcados com `// TODO` no código
-para confirmares contra a documentação atual antes de produção.
+**Limite de validação:** a integração foi comparada com a documentação pública da API v2, mas ainda não foi testada com credenciais reais. Antes de produção, confirma os pedidos e respostas no sandbox da ProxyPay, sobretudo a criação da referência e os campos aceites. Os webhooks usam `X-Signature`, HMAC-SHA-256 do corpo HTTP original, com a API key como segredo; a aplicação rejeita assinaturas inválidas e não aceita tokens na query string.
 
 ## Estrutura entregue
 
@@ -131,7 +125,6 @@ métodos alternativos" do pedido original), sem duplicar lógica.
    SUBSCRICOES_GATEWAY=proxypay
    PROXYPAY_BASE_URL=https://api.proxypay.co.ao
    PROXYPAY_API_KEY=
-   PROXYPAY_WEBHOOK_TOKEN=
    SUBSCRICOES_MOEDA=AOA
    SUBSCRICOES_VALIDADE_REFERENCIA_DIAS=3
    SUBSCRICOES_AVISO_RENOVACAO_DIAS=3
@@ -150,8 +143,9 @@ métodos alternativos" do pedido original), sem duplicar lógica.
    ```
    https://<o-teu-dominio>/api/webhooks/proxypay
    ```
-   e confirma no código (`ProxyPayGateway::validarPedidoWebhook`) qual é o
-   mecanismo de assinatura que a tua conta usa.
+   O endpoint valida `X-Signature` com HMAC-SHA-256 do corpo HTTP original,
+   usando `PROXYPAY_API_KEY` como segredo, conforme a documentação oficial
+   da API v2. Não uses tokens na query string.
 
 5. **Garantir que o scheduler e as filas estão a correr** — no Codespace
    (ou no servidor):

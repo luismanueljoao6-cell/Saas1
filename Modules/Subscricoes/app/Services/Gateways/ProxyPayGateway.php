@@ -26,10 +26,9 @@ use Throwable;
  * `Accept: application/vnd.proxypay.v2+json` (NÃO é Bearer).
  * Sandbox: PROXYPAY_BASE_URL=https://api.sandbox.proxypay.co.ao
  *
- * A ProxyPay não documenta assinatura HMAC dos webhooks: a autenticidade
- * assenta num segredo partilhado (cabeçalho OU parâmetro ?token= no URL
- * configurado no painel). Valida o formato do corpo do PUT (`end_datetime`)
- * no sandbox antes de produção.
+ * Os webhooks da ProxyPay v2 são autenticados com HMAC-SHA-256 do corpo
+ * HTTP original, usando a API key como segredo e a assinatura hexadecimal
+ * no cabeçalho X-Signature. Nunca aceitar tokens na query string.
  */
 class ProxyPayGateway implements GatewayPagamentoInterface
 {
@@ -37,15 +36,12 @@ class ProxyPayGateway implements GatewayPagamentoInterface
 
     protected ?string $apiKey;
 
-    protected ?string $webhookToken;
-
     protected ?string $entityId;
 
     public function __construct()
     {
         $this->baseUrl = rtrim((string) config('subscricoes.gateways.proxypay.base_url'), '/');
         $this->apiKey = config('subscricoes.gateways.proxypay.api_key');
-        $this->webhookToken = config('subscricoes.gateways.proxypay.webhook_token');
         $this->entityId = config('subscricoes.gateways.proxypay.entity_id');
     }
 
@@ -113,27 +109,23 @@ class ProxyPayGateway implements GatewayPagamentoInterface
 
     public function validarPedidoWebhook(Request $request): bool
     {
-        if (! $this->webhookToken) {
-            Log::warning('ProxyPay: webhook recebido sem PROXYPAY_WEBHOOK_TOKEN configurado — a rejeitar por omissão.');
+        if (! $this->apiKey) {
+            Log::warning('ProxyPay: webhook rejeitado porque PROXYPAY_API_KEY não está configurada.');
 
             return false;
         }
 
-        $candidatos = [
-            (string) $request->header('Authorization', ''),
-            'Token '.(string) $request->header('X-Webhook-Token', ''),
-            'Token '.(string) $request->query('token', ''),
-        ];
+        $assinatura = strtolower(trim((string) $request->header('X-Signature', '')));
 
-        $esperado = 'Token '.$this->webhookToken;
-
-        foreach ($candidatos as $candidato) {
-            if (hash_equals($esperado, $candidato)) {
-                return true;
-            }
+        if (! preg_match('/^[a-f0-9]{64}$/', $assinatura)) {
+            return false;
         }
 
-        return false;
+        // Importante: assinar os bytes originais, não o JSON descodificado e
+        // novamente serializado, pois espaços/ordem das propriedades alteram o HMAC.
+        $esperada = hash_hmac('sha256', $request->getContent(), $this->apiKey);
+
+        return hash_equals($esperada, $assinatura);
     }
 
     public function interpretarNotificacao(Request $request): array

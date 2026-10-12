@@ -74,7 +74,7 @@ class PagamentoService
                     if ($empresa->estado_subscricao === 'ativa' && $empresa->subscricao_expira_em?->isFuture()) {
                         $base = $empresa->subscricao_expira_em;
                     }
-                    $terminaEm = $base->copy()->addDays($subscricao->plano->periodo_dias);
+                    $terminaEm = $base->copy()->addDays($subscricao->periodo_dias ?? $subscricao->plano->periodo_dias);
 
                     $pagamento->update([
                         'estado' => 'confirmado',
@@ -102,7 +102,12 @@ class PagamentoService
                     // O pacote pago define os serviços da empresa. Os que ficam
                     // de fora são desativados, nunca apagados. Planos sem
                     // 'servicos' (ex.: antigos) não alteram nada.
-                    if (! empty($subscricao->plano->servicos)) {
+                    if ($subscricao->servicos !== null) {
+                        if (! empty($subscricao->servicos)) {
+                            $empresa->definirServicos($subscricao->servicos);
+                        }
+                    } elseif (! empty($subscricao->plano->servicos)) {
+                        // Compatibilidade com subscrições antigas sem snapshot.
                         $empresa->definirServicos($subscricao->plano->servicos);
                     }
 
@@ -165,23 +170,49 @@ class PagamentoService
     }
 
     /**
-     * Aceita igual ou superior ao devido (comparação em cêntimos, sem float
-     * a decidir arredondamentos de fronteira).
+     * Exige correspondência exata entre o valor recebido e o valor devido.
+     * Os montantes são comparados em unidades menores, nunca com float.
      */
     protected function validarValorRecebido(Pagamento $pagamento, ?string $valorRecebido): void
     {
-        if ($valorRecebido === null || $valorRecebido === '') {
+        if ($valorRecebido === null || trim($valorRecebido) === '') {
             return;
         }
 
-        $recebido = (int) round(((float) $valorRecebido) * 100);
-        $devido = (int) round(((float) $pagamento->valor) * 100);
+        $recebido = $this->paraUnidadesMenores($valorRecebido, 'valor recebido');
+        $devido = $this->paraUnidadesMenores((string) $pagamento->valor, 'valor devido');
 
-        if ($recebido < $devido) {
+        if ($recebido !== $devido) {
             throw new DomainException(
-                "Valor recebido ({$valorRecebido}) inferior ao devido ({$pagamento->valor}) no pagamento {$pagamento->id}."
+                "Valor recebido ({$valorRecebido}) diferente do devido ({$pagamento->valor}) no pagamento {$pagamento->id}."
             );
         }
+    }
+
+    /**
+     * Converte um montante decimal positivo em unidades menores (2 casas).
+     * Rejeita notação científica, separador ambíguo, negativos e mais de
+     * duas casas decimais para evitar arredondamentos silenciosos.
+     */
+    private function paraUnidadesMenores(string $valor, string $campo): int
+    {
+        $valor = trim($valor);
+
+        if (! preg_match('/^\\d+(?:\\.\\d{1,2})?$/', $valor)) {
+            throw new DomainException("Formato inválido para {$campo}.");
+        }
+
+        [$inteiro, $decimal] = array_pad(explode('.', $valor, 2), 2, '');
+        $inteiro = ltrim($inteiro, '0');
+        $inteiro = $inteiro === '' ? '0' : $inteiro;
+        $decimal = str_pad($decimal, 2, '0');
+
+        // Os valores da coluna DECIMAL(12,2) cabem em inteiro de 64 bits.
+        if (strlen($inteiro) > 10) {
+            throw new DomainException("Valor fora do intervalo permitido para {$campo}.");
+        }
+
+        return ((int) $inteiro * 100) + (int) $decimal;
     }
 
     /**

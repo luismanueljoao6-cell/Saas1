@@ -29,6 +29,9 @@ class Subscricao extends Model
     protected $fillable = [
         'empresa_id',
         'plano_id',
+        'periodo_dias',
+        'limites',
+        'servicos',
         'estado',
         'inicio_em',
         'termina_em',
@@ -43,6 +46,9 @@ class Subscricao extends Model
             'termina_em' => 'datetime',
             'cancelada_em' => 'datetime',
             'renovacao_automatica' => 'boolean',
+            'periodo_dias' => 'integer',
+            'limites' => 'array',
+            'servicos' => 'array',
         ];
     }
 
