@@ -7,7 +7,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
+use Modules\Core\Services\TenantService;
 use Modules\Subscricoes\Jobs\ProcessarPagamentoConfirmadoJob;
+use Modules\Subscricoes\Jobs\VerificarSubscricoesExpiradasJob;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Models\Subscricao;
@@ -374,5 +376,42 @@ class SegurancaPagamentoTest extends TestCase
 
         $this->expectException(DomainException::class);
         app(SubscricaoService::class)->retomarRenovacao($subscricao);
+    }
+
+    public function test_expiracao_de_subscricao_antiga_nao_suspende_empresa_com_outra_subscricao_valida(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000016');
+        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
+
+        $tenantManager = app(TenantManager::class);
+        $subscricaoAntiga = Subscricao::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->firstOrFail();
+        $subscricaoAntiga->update(['termina_em' => now()->subDay()]);
+
+        $tenantManager->semTenant(fn () => Subscricao::create([
+            'empresa_id' => $empresa->id,
+            'plano_id' => $plano->id,
+            'periodo_dias' => 30,
+            'limites' => $plano->limites ?? [],
+            'servicos' => $plano->servicos ?? [],
+            'estado' => 'ativa',
+            'inicio_em' => now()->subDay(),
+            'termina_em' => now()->addDays(20),
+            'renovacao_automatica' => true,
+        ]));
+
+        app(VerificarSubscricoesExpiradasJob::class)->handle(
+            $tenantManager,
+            app(TenantService::class)
+        );
+
+        $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
+        $this->assertSame(
+            'expirada',
+            Subscricao::withoutGlobalScopes()->findOrFail($subscricaoAntiga->id)->estado
+        );
     }
 }
