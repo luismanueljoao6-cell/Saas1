@@ -225,7 +225,7 @@ class SegurancaPagamentoTest extends TestCase
     public function test_webhook_proxypay_valida_hmac_sha256_do_corpo_original(): void
     {
         config(['subscricoes.gateways.proxypay.api_key' => 'chave-de-teste']);
-        $gateway = new ProxyPayGateway();
+        $gateway = new ProxyPayGateway;
         $corpo = '{"reference_id":123456789,"amount":"9900.00"}';
         $request = Request::create('/api/webhooks/proxypay', 'POST', [], [], [], [
             'CONTENT_TYPE' => 'application/json',
@@ -238,7 +238,7 @@ class SegurancaPagamentoTest extends TestCase
     public function test_webhook_proxypay_rejeita_assinatura_invalida_e_token_na_url(): void
     {
         config(['subscricoes.gateways.proxypay.api_key' => 'chave-de-teste']);
-        $gateway = new ProxyPayGateway();
+        $gateway = new ProxyPayGateway;
         $corpo = '{"reference_id":123456789,"amount":"9900.00"}';
 
         $assinaturaInvalida = Request::create('/api/webhooks/proxypay', 'POST', [], [], [], [
