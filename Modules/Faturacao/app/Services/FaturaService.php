@@ -8,6 +8,7 @@ use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
+use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Support\Dinheiro;
 use Modules\Faturacao\Support\GuardaEmissao;
 use Throwable;
@@ -31,6 +32,8 @@ class FaturaService
         if ((int) $cliente->empresa_id !== (int) $empresa->id) {
             throw new \DomainException('O cliente não pertence a esta empresa.');
         }
+
+        $this->validarLinhasFiscais((int) $empresa->id, $linhas);
 
         return DB::transaction(function () use ($empresa, $cliente, $linhas, $observacoes) {
             $fatura = Fatura::create([
@@ -135,10 +138,40 @@ class FaturaService
                 'quantidade' => $dadosLinha['quantidade'],
                 'preco_unitario' => $dadosLinha['preco_unitario'],
                 'taxa_iva' => $dadosLinha['taxa_iva'],
+                'codigo_isencao_iva' => $dadosLinha['codigo_isencao_iva'] ?? null,
+                'motivo_isencao_iva' => $dadosLinha['motivo_isencao_iva'] ?? null,
                 'ordem' => $indice,
             ]);
 
             $linha->calcularValores()->save();
+        }
+    }
+
+    protected function validarLinhasFiscais(int $empresaId, array $linhas): void
+    {
+        $permitidas = array_map('floatval', (array) config('faturacao.taxas_iva_permitidas', []));
+        foreach ($linhas as $indice => $linha) {
+            $taxa = (float) ($linha['taxa_iva'] ?? -1);
+            if (! in_array($taxa, $permitidas, true)) {
+                throw new \InvalidArgumentException('A taxa de IVA da linha '.($indice + 1).' não está autorizada na configuração fiscal.');
+            }
+            if ((float) ($linha['quantidade'] ?? 0) <= 0 || (float) ($linha['preco_unitario'] ?? -1) < 0) {
+                throw new \InvalidArgumentException('Quantidade e preço da linha '.($indice + 1).' são inválidos.');
+            }
+            if (! empty($linha['produto_id'])) {
+                $produto = Produto::withoutGlobalScopes()->where('empresa_id', $empresaId)->where('ativo', true)->find($linha['produto_id']);
+                if (! $produto) throw new \DomainException('O produto da linha '.($indice + 1).' não existe, não está ativo ou pertence a outra empresa.');
+                if ($produto->taxa_iva !== null && (float) $produto->taxa_iva !== $taxa) {
+                    throw new \DomainException('A taxa de IVA da linha '.($indice + 1).' não corresponde à taxa configurada no produto.');
+                }
+            }
+            if ($taxa == 0.0) {
+                $codigo = trim((string) ($linha['codigo_isencao_iva'] ?? ''));
+                $motivo = trim((string) ($linha['motivo_isencao_iva'] ?? ''));
+                if (! preg_match('/^M[0-9]{2}$/', $codigo) || mb_strlen($motivo) < 6 || mb_strlen($motivo) > 60) {
+                    throw new \InvalidArgumentException('A linha '.($indice + 1).' com IVA 0% exige código de isenção Mnn e motivo legal entre 6 e 60 caracteres.');
+                }
+            }
         }
     }
 
