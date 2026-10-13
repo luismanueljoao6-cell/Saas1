@@ -189,7 +189,7 @@ class FluxoPagamentoTest extends TestCase
         $this->assertTrue($empresa->fresh()->temAcesso());
     }
 
-    public function test_cancelar_renovacao_durante_resposta_do_gateway_expira_pagamento_e_omite_aviso(): void
+    public function test_cancelar_renovacao_durante_resposta_do_gateway_invalida_pagamento(): void
     {
         $empresa = $this->criarEmpresa('200000008');
         $plano = $this->criarPlano('renovacao-corrida');
