@@ -6,42 +6,42 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Chave RSA do produtor de software
+    | Assinatura digital (JWS RS256) — Facturação Electrónica da AGT
     |--------------------------------------------------------------------------
     |
-    | Segundo o mecanismo descrito pela AGT (Ofício Circulado 50001/2013,
-    | com base na Portaria n.º 363/2010), cada documento fiscal é assinado
-    | com a chave PRIVADA do produtor do software — não da empresa cliente.
-    | A chave pública correspondente deve ser comunicada à AGT (modelo 24)
-    | antes de qualquer documento assinado com ela ser válido.
+    | Segundo a especificação oficial da AGT (quiosque AGT > Facturação
+    | Electrónica > Estrutura das Assinaturas Digitais), cada documento é
+    | assinado como JWS compacto, algoritmo RS256 (RSA + SHA-256), sobre o
+    | objecto JSON do documento, com chave RSA de pelo menos 2048 bits.
     |
-    | NUNCA committes a chave privada para o Git. Gera-a com:
-    |   openssl genrsa -out storage/app/faturacao/chave-privada.pem 2048
-    |   openssl rsa -in storage/app/faturacao/chave-privada.pem -pubout -out storage/app/faturacao/chave-publica.pem
-    | e acrescenta storage/app/faturacao/ ao .gitignore.
+    | As chaves do CONTRIBUINTE são emitidas pela AGT no Portal do Contribuinte
+    | ao aderir à faturação eletrónica (uma por NIF). Guarda a chave privada de
+    | cada empresa em:
+    |   {chaves_dir}/{NIF}.pem
+    | e só se não existir esse ficheiro é usada a chave por omissão abaixo
+    | (útil em desenvolvimento e testes). NUNCA committes chaves para o Git.
     |
+    | A chave do SOFTWARE (jwsSoftwareSignature) é outra, gerada pelo produtor;
+    | entra na Fase 2 (comunicação com a AGT).
     */
     // `?:` e não o 2.º argumento de env(): uma variável presente mas vazia
-    // (FATURACAO_CHAVE_PRIVADA_PATH=) devolve '' e não usaria o valor por omissão.
+    // devolve '' e não usaria o valor por omissão.
     'chave_privada_path' => env('FATURACAO_CHAVE_PRIVADA_PATH') ?: storage_path('app/faturacao/chave-privada.pem'),
 
-    /*
-    | Versão da chave em uso — a AGT exige que cada documento registe qual
-    | a versão da chave que o assinou (nº inteiro sequencial), para permitir
-    | rotação de chaves sem invalidar documentos antigos.
-    */
-    'chave_versao' => (int) env('FATURACAO_CHAVE_VERSAO', 1),
+    'chaves_dir' => env('FATURACAO_CHAVES_DIR') ?: storage_path('app/faturacao/chaves'),
 
     /*
-    |--------------------------------------------------------------------------
-    | Algoritmo de assinatura
-    |--------------------------------------------------------------------------
-    | RSA com SHA-1 é o que a família de especificações SAF-T lusófona
-    | historicamente usa (à qual o mecanismo da AGT está claramente
-    | alinhado). Confirma este detalhe contra a documentação técnica atual
-    | da AGT antes de produção — ver README.
+    | Tamanho mínimo aceite para chaves RSA de assinatura (bits). A AGT
+    | recomenda não usar chaves inferiores a 2048 bits.
     */
-    'algoritmo_assinatura' => OPENSSL_ALGO_SHA1,
+    'chave_minima_bits' => 2048,
+
+    /*
+    | Versão da chave em uso — nº inteiro sequencial registado em cada
+    | documento, para permitir rotação de chaves sem invalidar documentos
+    | antigos.
+    */
+    'chave_versao' => (int) env('FATURACAO_CHAVE_VERSAO', 1),
 
     /*
     |--------------------------------------------------------------------------

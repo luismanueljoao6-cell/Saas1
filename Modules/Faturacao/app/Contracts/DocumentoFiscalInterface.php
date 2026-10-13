@@ -28,10 +28,10 @@ interface DocumentoFiscalInterface
     public function estaEmitido(): bool;
 
     /**
-     * String canónica usada como entrada da assinatura RSA. Cada model
-     * decide os seus próprios campos (data, número, valores, hash
-     * anterior) — ver AssinaturaFiscalService::assinar() para a construção
-     * exata e o aviso sobre confirmar o formato contra a AGT.
+     * Objecto JSON canónico assinado como JWS RS256 (jwsDocumentSignature da
+     * API de Facturação Electrónica da AGT): documentNo, taxRegistrationNumber,
+     * documentType, documentDate, customerTaxID, customerCountry, companyName e
+     * documentTotals. Ver Support/PayloadAssinaturaAgt e AssinaturaFiscalService.
      */
     public function construirStringParaAssinar(): string;
 

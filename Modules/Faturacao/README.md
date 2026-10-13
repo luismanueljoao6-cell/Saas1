@@ -201,3 +201,29 @@ verticais — cada um só precisa de `BelongsToTenant` nos seus models e,
 onde vender bens/serviços a clientes gerar necessidade de fatura, podem
 chamar `FaturaService` diretamente (ex.: fechar uma encomenda do Atelier e
 criar logo o rascunho de fatura correspondente).
+
+
+## Assinatura JWS (AGT) — regime atual
+
+Desde a Fase 1 da adequação à Facturação Electrónica (Decreto Presidencial
+71/25 e Decreto Executivo 683/25), cada documento é assinado segundo a
+especificação oficial da AGT (quiosque AGT > Facturação Electrónica):
+
+- **JWS compacto, RS256** (RSA + SHA-256), cabeçalho `{"alg":"RS256","typ":"JWT"}`,
+  Base64URL sem padding, **chave RSA de pelo menos 2048 bits** (chaves mais
+  fracas são recusadas).
+- O que se assina é o **objecto JSON do documento** (`documentNo`,
+  `taxRegistrationNumber`, `documentType`, `documentDate`, `customerTaxID`,
+  `customerCountry`, `companyName`, `documentTotals`), em JSON canónico — não
+  uma string concatenada. Comprador sem NIF => `999999999`.
+- O JWS completo fica na coluna `hash` de cada documento (a antiga assinatura
+  RSA-SHA1 de 172 caracteres, do Ofício Circulado 50001/2013, **já não se usa**).
+  `hash_anterior` mantém-se apenas como cadeia interna para deteção de lacunas;
+  não faz parte do objecto assinado.
+- **O IVA é arredondado por excesso** ao cêntimo (regra do campo `taxContribution`).
+- Chaves por empresa: `storage/app/faturacao/chaves/{NIF}.pem` (emitidas pela AGT
+  no Portal do Contribuinte); sem esse ficheiro usa-se a chave por omissão.
+
+Ainda **não** feito (fases seguintes): pedido de séries à AGT, envio
+`registarFactura`, QR Code, tipos de operação, códigos de isenção e SAF-T(AO).
+Este módulo continua a não substituir a certificação do software pela AGT.

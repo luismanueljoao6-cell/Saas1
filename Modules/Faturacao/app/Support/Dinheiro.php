@@ -5,7 +5,9 @@ namespace Modules\Faturacao\Support;
 /**
  * Aritmética monetária exata: tudo em inteiros (cêntimos / milésimos),
  * sem passar por float na conversão (o texto decimal é lido dígito a
- * dígito). Valores NÃO negativos; arredondamento "half up".
+ * dígito). Valores NÃO negativos. Arredondamento "half up" nos valores base e
+ * POR EXCESSO no imposto: a AGT exige que taxContribution seja arredondado
+ * por excesso ao cêntimo (ex.: 23.144 => 23.15).
  */
 final class Dinheiro
 {
@@ -32,7 +34,7 @@ final class Dinheiro
         $taxa = self::escalar($taxaIva, 2); // 14.00 -> 1400
 
         $semIva = intdiv($milesimos * $preco + 500, 1000);
-        $iva = intdiv($semIva * $taxa + 5000, 10000);
+        $iva = intdiv($semIva * $taxa + 9999, 10000); // por excesso (AGT)
 
         return [
             'sem_iva' => self::formatar($semIva),

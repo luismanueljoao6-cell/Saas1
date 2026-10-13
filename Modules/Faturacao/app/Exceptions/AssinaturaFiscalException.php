@@ -36,4 +36,14 @@ class AssinaturaFiscalException extends Exception
 
         return new self('Falha ao gerar a assinatura RSA do documento.');
     }
+
+    public static function chaveFraca(int $bits, int $minimo): self
+    {
+        return new self("A chave RSA de assinatura tem {$bits} bits; a AGT exige pelo menos {$minimo} bits.");
+    }
+
+    public static function dadosEmFalta(string $motivo): self
+    {
+        return new self('Não é possível assinar o documento: '.$motivo);
+    }
 }

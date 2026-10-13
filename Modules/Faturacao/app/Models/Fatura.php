@@ -7,12 +7,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Core\Traits\BelongsToTenant;
 use Modules\Faturacao\Contracts\DocumentoFiscalInterface;
+use Modules\Faturacao\Support\Dinheiro;
+use Modules\Faturacao\Traits\AssinavelAgt;
 use Modules\Faturacao\Traits\Imutavel;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
 class Fatura extends Model implements DocumentoFiscalInterface
 {
+    use AssinavelAgt;
     use BelongsToTenant;
     use Imutavel;
     use LogsActivity;
@@ -105,21 +108,18 @@ class Fatura extends Model implements DocumentoFiscalInterface
     }
 
     /**
-     * Formato reconstruído a partir da família de especificações SAF-T
-     * lusófona a que o mecanismo da AGT está alinhado (Portaria 363/2010):
-     * data;data-hora-sistema;identificador-documento;valor-total;hash-anterior.
-     * CONFIRMA isto contra a documentação técnica atual da AGT antes de
-     * assinares um único documento real com esta chave — ver README.
+     * Objecto JSON canónico assinado em jwsDocumentSignature (API de Facturação
+     * Electrónica da AGT): documentNo, taxRegistrationNumber, documentType,
+     * documentDate, customerTaxID, customerCountry, companyName e
+     * documentTotals. Ver Support/PayloadAssinaturaAgt.
      */
     public function construirStringParaAssinar(): string
     {
-        return implode(';', [
-            $this->data_emissao->format('Y-m-d'),
-            $this->data_hora_sistema->format('Y-m-d\TH:i:s'),
-            $this->numero_documento,
-            number_format((float) $this->valor_total, 2, '.', ''),
-            $this->hash_anterior ?? '',
-        ]);
+        return $this->payloadAgtJson(
+            Dinheiro::centimos($this->valor_iva),
+            Dinheiro::centimos($this->valor_sem_iva),
+            Dinheiro::centimos($this->valor_total),
+        );
     }
 
     public function prepararParaEmissao(

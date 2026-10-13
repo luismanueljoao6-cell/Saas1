@@ -15,6 +15,7 @@ class Cliente extends Model
         'empresa_id',
         'nome',
         'nif',
+        'pais',
         'morada',
         'email',
         'telefone',

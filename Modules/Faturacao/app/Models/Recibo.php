@@ -6,12 +6,15 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Core\Traits\BelongsToTenant;
 use Modules\Faturacao\Contracts\DocumentoFiscalInterface;
+use Modules\Faturacao\Support\Dinheiro;
+use Modules\Faturacao\Traits\AssinavelAgt;
 use Modules\Faturacao\Traits\Imutavel;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
 class Recibo extends Model implements DocumentoFiscalInterface
 {
+    use AssinavelAgt;
     use BelongsToTenant;
     use Imutavel;
     use LogsActivity;
@@ -95,15 +98,28 @@ class Recibo extends Model implements DocumentoFiscalInterface
         return $this->estado === 'emitido';
     }
 
+    /**
+     * Objecto JSON canónico assinado em jwsDocumentSignature (API de Facturação
+     * Electrónica da AGT). Num recibo, o imposto é o IVA proporcional da fatura
+     * regularizada (arredondado por excesso, como o resto do IVA); sem fatura
+     * (adiantamento), o valor é líquido e o imposto 0. A AGT apura este total
+     * a partir dos documentos de origem — confirmar na homologação.
+     */
     public function construirStringParaAssinar(): string
     {
-        return implode(';', [
-            $this->data_emissao->format('Y-m-d'),
-            $this->data_hora_sistema->format('Y-m-d\TH:i:s'),
-            $this->numero_documento,
-            number_format((float) $this->valor, 2, '.', ''),
-            $this->hash_anterior ?? '',
-        ]);
+        $bruto = Dinheiro::centimos($this->valor);
+        $imposto = 0;
+
+        $fatura = $this->fatura_id
+            ? Fatura::withoutGlobalScopes()->where('empresa_id', $this->empresa_id)->find($this->fatura_id)
+            : null;
+
+        if ($fatura && Dinheiro::centimos($fatura->valor_total) > 0) {
+            $totalFatura = Dinheiro::centimos($fatura->valor_total);
+            $imposto = intdiv($bruto * Dinheiro::centimos($fatura->valor_iva) + $totalFatura - 1, $totalFatura);
+        }
+
+        return $this->payloadAgtJson($imposto, $bruto - $imposto, $bruto);
     }
 
     public function prepararParaEmissao(

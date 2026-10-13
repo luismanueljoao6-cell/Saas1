@@ -50,7 +50,7 @@ class RegrasDeNegocioTest extends TestCase
 
     public function test_calculo_monetario_e_exato(): void
     {
-        $this->assertSame(['sem_iva' => '0.30', 'iva' => '0.04', 'total' => '0.34'], Dinheiro::calcularLinha(3, '0.10', 14));
+        $this->assertSame(['sem_iva' => '0.30', 'iva' => '0.05', 'total' => '0.35'], Dinheiro::calcularLinha(3, '0.10', 14)); // 0.042 => 0.05 (IVA por excesso, AGT)
         $this->assertSame(['sem_iva' => '59.97', 'iva' => '8.40', 'total' => '68.37'], Dinheiro::calcularLinha(3, '19.99', 14));
     }
 
