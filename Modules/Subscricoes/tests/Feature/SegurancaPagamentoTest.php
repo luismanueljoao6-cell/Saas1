@@ -464,8 +464,9 @@ class SegurancaPagamentoTest extends TestCase
                 }
             )
         );
-        // O serviço já foi resolvido durante a compra inicial; resolver de novo
-        // para que receba o gateway de teste configurado para esta corrida.
+        // O gateway e o serviço já foram resolvidos durante a compra inicial.
+        // Limpar ambas as instâncias para usar o gateway de teste desta corrida.
+        $this->app->forgetInstance(GatewayPagamentoInterface::class);
         $this->app->forgetInstance(SubscricaoService::class);
 
         Notification::fake();
@@ -502,6 +503,7 @@ class SegurancaPagamentoTest extends TestCase
                 }
             )
         );
+        $this->app->forgetInstance(GatewayPagamentoInterface::class);
         $this->app->forgetInstance(SubscricaoService::class);
 
         Notification::fake();
