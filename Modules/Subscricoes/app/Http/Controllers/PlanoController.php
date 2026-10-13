@@ -13,7 +13,14 @@ class PlanoController extends Controller
     {
         return view('subscricoes::planos.index', [
             'planos' => Plano::ativos()->get(),
-            'subscricaoAtual' => Subscricao::with('plano')->where('estado', 'ativa')->latest('id')->first(),
+            'subscricaoAtual' => Subscricao::with('plano')
+                ->where('estado', 'ativa')
+                ->where(function ($query) {
+                    $query->whereNull('termina_em')
+                        ->orWhere('termina_em', '>', now());
+                })
+                ->latest('id')
+                ->first(),
         ]);
     }
 }
