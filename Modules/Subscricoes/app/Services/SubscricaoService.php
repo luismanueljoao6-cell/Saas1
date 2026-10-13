@@ -221,6 +221,17 @@ class SubscricaoService
                 }));
 
                 if (! $podeNotificar) {
+                    try {
+                        $this->gateway->cancelarReferencia($pagamento);
+                    } catch (Throwable $e) {
+                        Log::critical('Renovação cancelada durante a chamada ao gateway; falhou a remoção da referência externa', [
+                            'subscricao_id' => $subscricaoBloqueada->id,
+                            'pagamento_id' => $pagamento->id,
+                            'referencia_externa' => $pagamento->referencia_externa,
+                            'erro' => $e->getMessage(),
+                        ]);
+                    }
+
                     Log::warning('Referência de renovação invalidada durante a chamada ao gateway; aviso não enviado', [
                         'subscricao_id' => $subscricaoBloqueada->id,
                         'pagamento_id' => $pagamento->id,
@@ -283,10 +294,34 @@ class SubscricaoService
         // depois de gravar o cancelamento para não inverter a ordem de locks
         // com a confirmação do pagamento; PagamentoService também valida a
         // flag sob lock para cobrir webhooks concorrentes.
+        $pagamentosPendentes = $this->tenantManager->semTenant(fn () => Pagamento::query()
+            ->where('subscricao_id', $atualizada->id)
+            ->where('estado', 'pendente')
+            ->get());
+
         $this->tenantManager->semTenant(fn () => Pagamento::query()
             ->where('subscricao_id', $atualizada->id)
             ->where('estado', 'pendente')
             ->update(['estado' => 'expirado']));
+
+        // Invalidar também a referência externa. Só mudar o estado local não
+        // impede que o cliente pague no Multicaixa e fique sem serviço.
+        foreach ($pagamentosPendentes as $pagamentoPendente) {
+            if (! $pagamentoPendente->referencia_externa) {
+                continue;
+            }
+
+            try {
+                $this->gateway->cancelarReferencia($pagamentoPendente);
+            } catch (Throwable $e) {
+                Log::critical('Referência localmente expirada, mas o cancelamento no gateway falhou', [
+                    'subscricao_id' => $atualizada->id,
+                    'pagamento_id' => $pagamentoPendente->id,
+                    'referencia_externa' => $pagamentoPendente->referencia_externa,
+                    'erro' => $e->getMessage(),
+                ]);
+            }
+        }
 
         Log::info('Renovação automática cancelada', ['subscricao_id' => $atualizada->id]);
 
