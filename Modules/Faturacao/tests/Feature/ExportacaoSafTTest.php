@@ -7,6 +7,7 @@ use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Services\FaturaService;
+use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Modules\Faturacao\Services\SafTExportService;
 use Tests\TestCase;
 
@@ -21,13 +22,20 @@ class ExportacaoSafTTest extends TestCase
         // Emitir uma fatura exige chave privada de assinatura fiscal. No CI
         // não existe chave real, por isso geramos uma só para este processo
         // de teste — nunca escrita de forma persistente, nunca reutilizada.
-        $recurso = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        $recurso = openssl_pkey_new(['private_key_bits' => 1024, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
         openssl_pkey_export($recurso, $chavePrivadaPem);
 
         $caminho = sys_get_temp_dir().'/faturacao-teste-'.uniqid().'.pem';
         file_put_contents($caminho, $chavePrivadaPem);
 
-        config(['faturacao.chave_privada_path' => $caminho]);
+        config([
+            'faturacao.chave_privada_path' => $caminho,
+            'faturacao.saft_tipo_produto_padrao' => 'S',
+            'faturacao.saft_nif_produtor' => '4000000003',
+            'faturacao.saft_product_id' => 'Saas1/Produtor de teste',
+            'faturacao.saft_conta_clientes' => '2111',
+            'faturacao.saft_codigos_taxa' => ['14.00' => 'NOR'],
+        ]);
 
         $this->beforeApplicationDestroyed(function () use ($caminho) {
             @unlink($caminho);
@@ -44,12 +52,12 @@ class ExportacaoSafTTest extends TestCase
      */
     public function test_saft_inclui_dados_mesmo_sem_tenant_ambiente_definido(): void
     {
-        $empresa = Empresa::create(['nome_comercial' => 'Empresa SAF-T', 'nif' => '400000001']);
-        $cliente = Cliente::create(['empresa_id' => $empresa->id, 'nome' => 'Cliente SAF-T', 'nif' => null]);
+        $empresa = Empresa::create(['nome_comercial' => 'Empresa SAF-T', 'nome_legal' => 'Empresa SAF-T, Lda.', 'nif' => '4000000001', 'morada' => 'Rua de teste, 10', 'municipio' => 'Luanda', 'provincia' => 'Luanda']);
+        $cliente = Cliente::create(['empresa_id' => $empresa->id, 'nome' => 'Cliente SAF-T', 'nif' => '4000000002', 'morada' => 'Rua do cliente, 20', 'municipio' => 'Luanda', 'provincia' => 'Luanda']);
 
         app(FaturaService::class)->emitir(
             app(FaturaService::class)->criarRascunho($empresa, $cliente, [
-                ['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => 5000, 'taxa_iva' => 14],
+                ['descricao' => 'Serviço', 'tipo_saft' => 'S', 'quantidade' => 1, 'preco_unitario' => 5000, 'taxa_iva' => 14],
             ])
         );
 
@@ -57,7 +65,7 @@ class ExportacaoSafTTest extends TestCase
         // worker de filas real) antes de gerar o XML.
         $this->assertFalse(app(TenantManager::class)->has());
 
-        $xml = app(TenantManager::class)->semTenant(fn () => app(SafTExportService::class)->gerar(
+        $xml = app(TenantManager::class)->semTenant(fn () => app(SafTExportService::class)->gerarValidado(
             $empresa,
             now()->startOfMonth(),
             now()->endOfMonth(),
@@ -66,5 +74,75 @@ class ExportacaoSafTTest extends TestCase
         $this->assertStringContainsString('Cliente SAF-T', $xml);
         $this->assertStringContainsString('<NumberOfEntries>1</NumberOfEntries>', $xml);
         $this->assertStringContainsString($empresa->nif, $xml);
+        $this->assertStringContainsString('xmlns="urn:OECD:StandardAuditFile-Tax:AO_1.01_01"', $xml);
+        $this->assertStringContainsString('<AuditFileVersion>1.01_01</AuditFileVersion>', $xml);
+        $this->assertStringContainsString('<DocumentStatus>', $xml);
+        $this->assertStringContainsString('<SpecialRegimes>', $xml);
+        $this->assertStringContainsString('<DocumentTotals>', $xml);
+        $this->assertStringContainsString('<BillingAddress>', $xml);
+        $this->assertStringContainsString('<TaxTable>', $xml);
+        $this->assertStringContainsString('<ProductType>S</ProductType>', $xml);
+        $errosXsd = app(SafTExportService::class)->validarXmlContraXsd($xml);
+        $this->assertSame([], $errosXsd, implode("\n", $errosXsd));
+    }
+
+    public function test_saft_inclui_referencia_da_fatura_original_na_nota_de_credito(): void
+    {
+        $empresa = Empresa::create([
+            'nome_comercial' => 'Empresa SAF-T',
+            'nome_legal' => 'Empresa SAF-T, Lda.',
+            'nif' => '4000000001',
+            'morada' => 'Rua de teste, 10',
+            'municipio' => 'Luanda',
+            'provincia' => 'Luanda',
+        ]);
+        $cliente = Cliente::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Cliente SAF-T',
+            'nif' => '4000000002',
+            'morada' => 'Rua do cliente, 20',
+            'municipio' => 'Luanda',
+            'provincia' => 'Luanda',
+        ]);
+
+        $faturaService = app(FaturaService::class);
+        $fatura = $faturaService->emitir($faturaService->criarRascunho($empresa, $cliente, [
+            ['descricao' => 'Serviço', 'tipo_saft' => 'S', 'quantidade' => 1, 'preco_unitario' => 5000, 'taxa_iva' => 14],
+        ]));
+
+        $notaService = app(NotaCreditoDebitoService::class);
+        $nota = $notaService->criarParaAnularFatura($fatura, 'Correção de teste');
+        $notaService->emitir($nota);
+
+        $xml = app(SafTExportService::class)->gerar(
+            $empresa,
+            now()->startOfMonth(),
+            now()->endOfMonth(),
+        );
+
+        $this->assertStringContainsString('<References>', $xml);
+        $this->assertStringContainsString('<Reference>'.$fatura->numero_documento.'</Reference>', $xml);
+        $this->assertStringContainsString('<Reason>Correção de teste</Reason>', $xml);
+    }
+
+    /**
+     * O modo validado tem de falhar fechado enquanto o gerador não cumprir
+     * o XSD: nunca pode devolver silenciosamente um XML estruturalmente inválido.
+     */
+    public function test_gerar_validado_bloqueia_quando_faltam_dados_fiscais_obrigatorios(): void
+    {
+        $empresa = Empresa::create(['nome_comercial' => 'Empresa SAF-T', 'nif' => '400000001']);
+
+        try {
+            app(SafTExportService::class)->gerarValidado(
+                $empresa,
+                now()->startOfMonth(),
+                now()->endOfMonth(),
+            );
+
+            $this->fail('A exportação validada não devia devolver XML que não cumpre o XSD.');
+        } catch (\RuntimeException $erro) {
+            $this->assertStringContainsString('dados fiscais obrigatórios', $erro->getMessage());
+        }
     }
 }
