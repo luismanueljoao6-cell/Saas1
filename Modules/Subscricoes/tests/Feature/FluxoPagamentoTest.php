@@ -2,9 +2,9 @@
 
 namespace Modules\Subscricoes\Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantService;
@@ -22,7 +22,7 @@ class FluxoPagamentoTest extends TestCase
 
     public function test_modelo_subscricao_define_relacoes_para_empresa_plano_e_pagamentos(): void
     {
-        $subscricao = new Subscricao();
+        $subscricao = new Subscricao;
 
         $this->assertInstanceOf(BelongsTo::class, $subscricao->empresa());
         $this->assertInstanceOf(BelongsTo::class, $subscricao->plano());
