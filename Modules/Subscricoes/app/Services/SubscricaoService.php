@@ -190,10 +190,50 @@ class SubscricaoService
             }
 
             if (! $reutilizado) {
-                try {
-                    $pagamento = $this->pedirReferenciaAoGateway($pagamento);
-                } catch (Throwable $e) {
-                    throw $e;
+                $pagamento = $this->pedirReferenciaAoGateway($pagamento);
+
+                // A chamada externa não é transacional: cancelar a renovação
+                // enquanto o gateway responde pode invalidar esta referência.
+                // Revalidar sempre sob lock antes de a comunicar ao cliente.
+                $podeNotificar = $this->tenantManager->semTenant(fn () => DB::transaction(function () use ($pagamento) {
+                    $pagamentoAtual = Pagamento::query()->lockForUpdate()->findOrFail($pagamento->id);
+                    $subscricaoAtual = Subscricao::query()->lockForUpdate()->findOrFail($pagamentoAtual->subscricao_id);
+
+                    if (
+                        $pagamentoAtual->estado !== 'pendente'
+                        || $subscricaoAtual->estado !== 'ativa'
+                        || ! $subscricaoAtual->renovacao_automatica
+                        || $subscricaoAtual->termina_em === null
+                        || $subscricaoAtual->termina_em->isPast()
+                    ) {
+                        if ($pagamentoAtual->estado === 'pendente') {
+                            $pagamentoAtual->update(['estado' => 'expirado']);
+                        }
+
+                        return false;
+                    }
+
+                    return true;
+                }));
+
+                if (! $podeNotificar) {
+                    try {
+                        $this->gateway->cancelarReferencia($pagamento);
+                    } catch (Throwable $e) {
+                        Log::critical('Referência localmente invalidada, mas o cancelamento remoto falhou', [
+                            'subscricao_id' => $pagamento->subscricao_id,
+                            'pagamento_id' => $pagamento->id,
+                            'referencia_externa' => $pagamento->referencia_externa,
+                            'erro' => $e->getMessage(),
+                        ]);
+                    }
+
+                    Log::warning('Referência de renovação invalidada durante a chamada ao gateway; notificação omitida', [
+                        'subscricao_id' => $pagamento->subscricao_id,
+                        'pagamento_id' => $pagamento->id,
+                    ]);
+
+                    return $pagamento->fresh(['subscricao.plano']);
                 }
             }
 
