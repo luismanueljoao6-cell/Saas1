@@ -195,6 +195,7 @@ class PacotesTest extends TestCase
             ->assertSee('Atelier de Costura')
             ->assertSee('Estúdio de Música');
     }
+
     public function test_pagina_de_planos_nao_apresenta_como_atual_uma_subscricao_vencida(): void
     {
         $this->seed(PlanosSeeder::class);
@@ -228,5 +229,4 @@ class PacotesTest extends TestCase
             ->assertOk()
             ->assertViewHas('subscricaoAtual', null);
     }
-
 }
