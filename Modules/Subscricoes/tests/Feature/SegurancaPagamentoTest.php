@@ -25,7 +25,11 @@ use Tests\TestCase;
 
 class GatewayPagamentoTeste implements GatewayPagamentoInterface
 {
-    public function __construct(private bool $falha = false, private ?Closure $duranteGeracao = null, private ?Closure $aoCancelar = null) {}
+    public function __construct(
+        private bool $falha = false,
+        private ?Closure $duranteGeracao = null,
+        private ?Closure $aoCancelar = null,
+    ) {}
 
     public function identificador(): string
     {
