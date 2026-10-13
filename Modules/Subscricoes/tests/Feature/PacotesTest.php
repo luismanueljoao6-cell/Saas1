@@ -9,6 +9,7 @@ use Modules\Core\Models\User;
 use Modules\Subscricoes\Database\Seeders\PlanosSeeder;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
+use Modules\Subscricoes\Models\Subscricao;
 use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
 use Modules\Subscricoes\Services\PagamentoService;
 use Modules\Subscricoes\Services\SubscricaoService;
