@@ -477,6 +477,42 @@ class SegurancaPagamentoTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_expiracao_durante_chamada_ao_gateway_invalida_referencia(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000021');
+        $pagamentoInicial = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        app(PagamentoService::class)->confirmar($pagamentoInicial, [], null, '9900.00');
+
+        $subscricao = Subscricao::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->firstOrFail();
+        $subscricao->update(['termina_em' => now()->addSecond()]);
+
+        $referenciaRemovida = false;
+        $this->app->singleton(
+            GatewayPagamentoInterface::class,
+            fn () => new GatewayPagamentoTeste(
+                false,
+                function (Pagamento $pagamento) use ($subscricao): void {
+                    $subscricao->update(['termina_em' => now()->subSecond()]);
+                },
+                function (Pagamento $pagamento) use (&$referenciaRemovida): void {
+                    $referenciaRemovida = true;
+                }
+            )
+        );
+        $this->app->forgetInstance(SubscricaoService::class);
+
+        Notification::fake();
+
+        $renovacao = app(SubscricaoService::class)->gerarRenovacao($subscricao->fresh());
+
+        $this->assertSame('expirado', Pagamento::withoutGlobalScopes()->findOrFail($renovacao->id)->estado);
+        $this->assertTrue($referenciaRemovida, 'A referência de uma subscrição vencida durante a chamada deve ser removida.');
+        Notification::assertNothingSent();
+    }
+
     public function test_nao_permite_retomar_renovacao_de_subscricao_vencida(): void
     {
         $this->usarGateway();
