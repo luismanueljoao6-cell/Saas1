@@ -426,11 +426,18 @@ class SegurancaPagamentoTest extends TestCase
             ->firstOrFail();
         $subscricao->update(['termina_em' => now()->addDays(2)]);
 
+        $referenciaRemovida = false;
         $this->app->singleton(
             GatewayPagamentoInterface::class,
-            fn () => new GatewayPagamentoTeste(false, function (Pagamento $pagamento) use ($subscricao): void {
-                app(SubscricaoService::class)->cancelarRenovacao($subscricao->fresh());
-            })
+            fn () => new GatewayPagamentoTeste(
+                false,
+                function (Pagamento $pagamento) use ($subscricao): void {
+                    app(SubscricaoService::class)->cancelarRenovacao($subscricao->fresh());
+                },
+                function (Pagamento $pagamento) use (&$referenciaRemovida): void {
+                    $referenciaRemovida = true;
+                }
+            )
         );
 
         Notification::fake();
@@ -438,6 +445,7 @@ class SegurancaPagamentoTest extends TestCase
         $renovacao = app(SubscricaoService::class)->gerarRenovacao($subscricao->fresh());
 
         $this->assertSame('expirado', Pagamento::withoutGlobalScopes()->findOrFail($renovacao->id)->estado);
+        $this->assertTrue($referenciaRemovida, 'A referência criada após o cancelamento deve ser removida no gateway.');
         Notification::assertNothingSent();
     }
 
