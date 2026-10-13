@@ -24,7 +24,7 @@ A exportação validada falha fechada se faltarem dados reais do produtor do sof
 1. O XSD neste repositório está marcado como Development. A validação contra este ficheiro não prova que a AGT o aceite nem substitui certificação.
 2. O código da taxa, regime fiscal, motivos de isenção e semântica contabilística têm de ser confirmados para o regime efetivo de cada contribuinte.
 3. Recibos de adiantamento sem fatura de origem são permitidos pelo modelo de dados, mas não podem ser exportados com a estrutura atual de Payments; a exportação falha em vez de omiti-los.
-4. Ainda não foi possível executar a suite de testes nem a validação XSD dentro deste ambiente de edição remota. É obrigatório executar a suite na branch e corrigir todos os resultados antes de integrar na main.
+4. A suite CI desta branch passou: Pint, Composer validate, testes PHP, Composer audit e testes MySQL. O teste de exportação valida XML contra o XSD versionado. Isto confirma os testes automatizados atuais, não a conformidade fiscal completa nem aceitação pela AGT.
 5. Esta entrega exporta faturas, notas de crédito/débito e recibos; não gera GeneralLedgerEntries nem o plano de contas, pelo que não deve ser apresentada como SAF-T de contabilidade completo.
 
 ## Verificação local obrigatória
@@ -39,4 +39,4 @@ php artisan test --filter=RegrasDeNegocioTest
 php artisan test
 ```
 
-Só depois de todos os testes passarem, e após confirmar a versão oficial aplicável do XSD e a configuração fiscal real, preparar a PR para revisão.
+A suite CI passou nesta branch. Antes de integrar na main, confirmar a versão oficial aplicável do XSD, validar os códigos fiscais e a configuração real, e rever os casos de negócio que não são comprovados apenas pelo CI.
