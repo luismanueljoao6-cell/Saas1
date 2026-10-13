@@ -287,13 +287,33 @@ class SubscricaoService
         });
 
         // Invalidar referências de renovação ainda não pagas. Fazemos isto
-        // depois de gravar o cancelamento para não inverter a ordem de locks
-        // com a confirmação do pagamento; PagamentoService também valida a
-        // flag sob lock para cobrir webhooks concorrentes.
+        // depois de gravar o cancelamento para não inverter a ordem de locks.
+        $pendentes = $this->tenantManager->semTenant(fn () => Pagamento::query()
+            ->where('subscricao_id', $atualizada->id)
+            ->where('estado', 'pendente')
+            ->get());
+
         $this->tenantManager->semTenant(fn () => Pagamento::query()
             ->where('subscricao_id', $atualizada->id)
             ->where('estado', 'pendente')
             ->update(['estado' => 'expirado']));
+
+        foreach ($pendentes as $pendente) {
+            if (! $pendente->referencia_externa) {
+                continue;
+            }
+
+            try {
+                $this->gateway->cancelarReferencia($pendente);
+            } catch (Throwable $e) {
+                Log::critical('Pagamento expirado localmente, mas a referência externa não foi cancelada', [
+                    'subscricao_id' => $atualizada->id,
+                    'pagamento_id' => $pendente->id,
+                    'referencia_externa' => $pendente->referencia_externa,
+                    'erro' => $e->getMessage(),
+                ]);
+            }
+        }
 
         Log::info('Renovação automática cancelada', ['subscricao_id' => $atualizada->id]);
 
