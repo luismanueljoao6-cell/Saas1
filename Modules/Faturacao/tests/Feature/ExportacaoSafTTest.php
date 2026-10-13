@@ -145,4 +145,42 @@ class ExportacaoSafTTest extends TestCase
             $this->assertStringContainsString('dados fiscais obrigatórios', $erro->getMessage());
         }
     }
+
+    public function test_prevalida_classificacao_de_linha_manual_incluida_nas_tabelas_mestras(): void
+    {
+        $empresa = Empresa::create([
+            'nome_comercial' => 'Empresa SAF-T',
+            'nome_legal' => 'Empresa SAF-T, Lda.',
+            'nif' => '4000000001',
+            'morada' => 'Rua de teste, 10',
+            'municipio' => 'Luanda',
+            'provincia' => 'Luanda',
+        ]);
+        $cliente = Cliente::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Cliente SAF-T',
+            'nif' => '4000000002',
+            'morada' => 'Rua do cliente, 20',
+            'municipio' => 'Luanda',
+            'provincia' => 'Luanda',
+        ]);
+
+        // A linha pertence a um rascunho, mas o exportador inclui atualmente
+        // linhas manuais de todos os documentos nas tabelas mestras.
+        app(FaturaService::class)->criarRascunho($empresa, $cliente, [
+            ['descricao' => 'Linha sem classificação', 'quantidade' => 1, 'preco_unitario' => 5000, 'taxa_iva' => 14],
+        ]);
+
+        try {
+            app(SafTExportService::class)->gerarValidado(
+                $empresa,
+                now()->startOfMonth(),
+                now()->endOfMonth(),
+            );
+            $this->fail('A exportação deveria bloquear antes de construir o XML.');
+        } catch (\\RuntimeException $erro) {
+            $this->assertStringContainsString('não tem classificação SAF-T válida', $erro->getMessage());
+        }
+    }
+
 }
