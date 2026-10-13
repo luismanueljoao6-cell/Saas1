@@ -6,6 +6,7 @@ use Closure;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Notification;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
@@ -427,12 +428,12 @@ class SegurancaPagamentoTest extends TestCase
             })
         );
 
-        \Illuminate\Support\Facades\Notification::fake();
+        Notification::fake();
 
         $renovacao = app(SubscricaoService::class)->gerarRenovacao($subscricao->fresh());
 
         $this->assertSame('expirado', Pagamento::withoutGlobalScopes()->findOrFail($renovacao->id)->estado);
-        \Illuminate\Support\Facades\Notification::assertNothingSent();
+        Notification::assertNothingSent();
     }
 
     public function test_nao_permite_retomar_renovacao_de_subscricao_vencida(): void
