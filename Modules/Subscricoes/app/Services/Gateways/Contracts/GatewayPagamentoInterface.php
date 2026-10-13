@@ -35,6 +35,13 @@ interface GatewayPagamentoInterface
     public function gerarReferencia(Pagamento $pagamento): array;
 
     /**
+     * Invalida uma referência já criada no gateway, quando o fornecedor
+     * suporta cancelamento remoto. Deve ser idempotente para referências
+     * já eliminadas ou expiradas.
+     */
+    public function cancelarReferencia(Pagamento $pagamento): void;
+
+    /**
      * Confirma que o pedido HTTP recebido é mesmo do gateway (assinatura,
      * token partilhado, IP, etc. — conforme o mecanismo do fornecedor) e
      * não uma chamada forjada. Chamado pelo middleware
