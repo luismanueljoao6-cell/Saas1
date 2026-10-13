@@ -26,6 +26,8 @@
                 <input name="telefone" placeholder="Telefone" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
                 <input name="email" type="email" placeholder="E-mail" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
                 <input name="morada" placeholder="Morada" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <input name="municipio" placeholder="Município" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <input name="provincia" placeholder="Província (opcional)" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
                 <button type="submit" class="sm:col-span-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
                     Guardar cliente
                 </button>
