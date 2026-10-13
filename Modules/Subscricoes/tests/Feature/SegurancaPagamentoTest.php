@@ -513,5 +513,4 @@ class SegurancaPagamentoTest extends TestCase
             'Uma subscrição vencida não deve manter os limites pagos só porque o job de expiração ainda não correu.'
         );
     }
-
 }
