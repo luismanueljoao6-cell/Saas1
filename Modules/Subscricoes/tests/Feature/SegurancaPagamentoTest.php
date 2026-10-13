@@ -476,9 +476,9 @@ class SegurancaPagamentoTest extends TestCase
         $subscricao->update(['termina_em' => now()->addDays(2)]);
 
         $referenciaRemovida = false;
-        $this->app->singleton(
+        $this->app->instance(
             GatewayPagamentoInterface::class,
-            fn () => new GatewayPagamentoTeste(
+            new GatewayPagamentoTeste(
                 false,
                 function (Pagamento $pagamento) use ($subscricao): void {
                     app(SubscricaoService::class)->cancelarRenovacao($subscricao->fresh());
@@ -488,9 +488,7 @@ class SegurancaPagamentoTest extends TestCase
                 }
             )
         );
-        // O gateway e o serviço já foram resolvidos durante a compra inicial.
-        // Limpar ambas as instâncias para usar o gateway de teste desta corrida.
-        $this->app->forgetInstance(GatewayPagamentoInterface::class);
+        // Resolver novamente o serviço para injetar o gateway configurado acima.
         $this->app->forgetInstance(SubscricaoService::class);
 
         Notification::fake();
@@ -515,9 +513,9 @@ class SegurancaPagamentoTest extends TestCase
         $subscricao->update(['termina_em' => now()->addSecond()]);
 
         $referenciaRemovida = false;
-        $this->app->singleton(
+        $this->app->instance(
             GatewayPagamentoInterface::class,
-            fn () => new GatewayPagamentoTeste(
+            new GatewayPagamentoTeste(
                 false,
                 function (Pagamento $pagamento) use ($subscricao): void {
                     $subscricao->update(['termina_em' => now()->subSecond()]);
@@ -527,7 +525,6 @@ class SegurancaPagamentoTest extends TestCase
                 }
             )
         );
-        $this->app->forgetInstance(GatewayPagamentoInterface::class);
         $this->app->forgetInstance(SubscricaoService::class);
 
         Notification::fake();
