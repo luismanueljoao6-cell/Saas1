@@ -478,24 +478,24 @@ class SegurancaPagamentoTest extends TestCase
         $subscricao->update(['termina_em' => now()->addDays(2)]);
 
         $referenciaRemovida = false;
-        $this->app->instance(
-            GatewayPagamentoInterface::class,
-            new GatewayPagamentoTeste(
-                false,
-                function (Pagamento $pagamento) use ($subscricao): void {
-                    app(SubscricaoService::class)->cancelarRenovacao($subscricao->fresh());
-                },
-                function (Pagamento $pagamento) use (&$referenciaRemovida): void {
-                    $referenciaRemovida = true;
-                }
-            )
+        $gateway = new GatewayPagamentoTeste(
+            false,
+            function (Pagamento $pagamento) use ($subscricao): void {
+                app(SubscricaoService::class)->cancelarRenovacao($subscricao->fresh());
+            },
+            function (Pagamento $pagamento) use (&$referenciaRemovida): void {
+                $referenciaRemovida = true;
+            }
         );
-        // Resolver novamente o serviço para injetar o gateway configurado acima.
-        $this->app->forgetInstance(SubscricaoService::class);
+        $servico = new SubscricaoService(
+            $gateway,
+            app(TenantService::class),
+            app(TenantManager::class),
+        );
 
         Notification::fake();
 
-        $renovacao = app(SubscricaoService::class)->gerarRenovacao($subscricao->fresh());
+        $renovacao = $servico->gerarRenovacao($subscricao->fresh());
 
         $this->assertSame('expirado', Pagamento::withoutGlobalScopes()->findOrFail($renovacao->id)->estado);
         $this->assertTrue($referenciaRemovida, 'A referência criada após o cancelamento deve ser removida no gateway.');
@@ -515,23 +515,24 @@ class SegurancaPagamentoTest extends TestCase
         $subscricao->update(['termina_em' => now()->addSecond()]);
 
         $referenciaRemovida = false;
-        $this->app->instance(
-            GatewayPagamentoInterface::class,
-            new GatewayPagamentoTeste(
-                false,
-                function (Pagamento $pagamento) use ($subscricao): void {
-                    $subscricao->update(['termina_em' => now()->subSecond()]);
-                },
-                function (Pagamento $pagamento) use (&$referenciaRemovida): void {
-                    $referenciaRemovida = true;
-                }
-            )
+        $gateway = new GatewayPagamentoTeste(
+            false,
+            function (Pagamento $pagamento) use ($subscricao): void {
+                $subscricao->update(['termina_em' => now()->subSecond()]);
+            },
+            function (Pagamento $pagamento) use (&$referenciaRemovida): void {
+                $referenciaRemovida = true;
+            }
         );
-        $this->app->forgetInstance(SubscricaoService::class);
+        $servico = new SubscricaoService(
+            $gateway,
+            app(TenantService::class),
+            app(TenantManager::class),
+        );
 
         Notification::fake();
 
-        $renovacao = app(SubscricaoService::class)->gerarRenovacao($subscricao->fresh());
+        $renovacao = $servico->gerarRenovacao($subscricao->fresh());
 
         $this->assertSame('expirado', Pagamento::withoutGlobalScopes()->findOrFail($renovacao->id)->estado);
         $this->assertTrue($referenciaRemovida, 'A referência de uma subscrição vencida durante a chamada deve ser removida.');
