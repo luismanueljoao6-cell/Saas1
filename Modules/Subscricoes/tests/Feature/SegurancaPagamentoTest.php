@@ -6,6 +6,7 @@ use Closure;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Models\Empresa;
@@ -321,6 +322,26 @@ class SegurancaPagamentoTest extends TestCase
         }
 
         $this->assertSame('pendente', Pagamento::withoutGlobalScopes()->find($pagamento->id)->estado);
+    }
+
+
+    public function test_gateway_proxypay_remove_referencia_externa(): void
+    {
+        config([
+            'subscricoes.gateways.proxypay.api_key' => 'chave-de-teste',
+            'subscricoes.gateways.proxypay.base_url' => 'https://api.proxypay.co.ao',
+        ]);
+
+        Http::fake([
+            'https://api.proxypay.co.ao/references/123456789' => Http::response('', 204),
+        ]);
+
+        $pagamento = new Pagamento(['referencia_externa' => '123456789']);
+        app(ProxyPayGateway::class)->cancelarReferencia($pagamento);
+
+        Http::assertSent(fn (\Illuminate\Http\Client\Request $request): bool => $request->method() === 'DELETE'
+            && $request->url() === 'https://api.proxypay.co.ao/references/123456789'
+            && $request->hasHeader('Authorization', 'Token chave-de-teste'));
     }
 
     public function test_webhook_proxypay_valida_hmac_sha256_do_corpo_original(): void
