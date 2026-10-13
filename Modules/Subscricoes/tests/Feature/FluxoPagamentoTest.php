@@ -43,6 +43,8 @@ class FluxoPagamentoTest extends TestCase
                 return ['referencia_externa' => 'REF-'.$this->contador, 'payload' => ['ok' => true]];
             }
 
+            public function cancelarReferencia(Pagamento $pagamento): void {}
+
             public function validarPedidoWebhook(Request $request): bool
             {
                 return true;
