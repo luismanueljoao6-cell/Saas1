@@ -137,11 +137,8 @@ grace period, consegues consultar faturas antigas mas não criar novas
 
 - **Certificação AGT do software** — é um processo administrativo, não
   técnico; ver aviso no topo.
-- **Recibos e notas de crédito/débito não têm UI própria** — os models e
-  services existem e estão testados (`NotaCreditoDebitoService`), falta o
-  controller/views equivalentes aos de Fatura.
-- **Validação do SAF-T contra o XSD oficial** — o `SafTExportService`
-  gera uma estrutura plausível, não validada campo a campo.
+- **Recibos e notas de crédito/débito ainda não têm UI própria.** Os modelos e serviços existem. O exportador SAF-T inclui recibos na secção `Payments`, mas bloqueia recibos sem fatura de origem.
+- **SAF-T ainda não está certificado nem confirmado como aceite pela AGT.** O exportador foi corrigido estruturalmente para emitir `BillingAddress`, `TaxTable`, `DocumentStatus`, `SpecialRegimes`, linhas com `Tax`, `DocumentTotals` e pagamentos. O job de fila usa `gerarValidado()`, que bloqueia a gravação se faltarem dados fiscais ou se o XML falhar o XSD versionado. `gerar()` permanece apenas para compatibilidade e diagnóstico. O XSD em `resources/saft/SAFTAO1.01_01.xsd` é uma referência em estado Development e precisa de confirmação contra a versão aplicável da AGT. A suite de testes ainda tem de ser executada antes de integrar na `main`.
 - **Faturas de outros módulos** (ex.: a subscrição SaaS da própria
   plataforma) não passam por aqui — este módulo fatura AS EMPRESAS
   clientes da plataforma aos SEUS PRÓPRIOS clientes, não a relação entre
@@ -154,10 +151,12 @@ grace period, consegues consultar faturas antigas mas não criar novas
 2. **Gerar o par de chaves RSA** (nunca committer a privada):
    ```bash
    mkdir -p storage/app/faturacao
-   openssl genrsa -out storage/app/faturacao/chave-privada.pem 2048
+   openssl genrsa -out storage/app/faturacao/chave-privada.pem 1024
    openssl rsa -in storage/app/faturacao/chave-privada.pem -pubout -out storage/app/faturacao/chave-publica.pem
    echo "storage/app/faturacao/" >> .gitignore
    ```
+
+   **Atenção:** o XSD de referência limita a assinatura (`Hash`) a 172 caracteres, incompatível com RSA-2048. RSA-1024 é um requisito legado e criptograficamente mais fraco; confirma o tamanho de chave exigido na especificação oficial atual da AGT antes de produção. Se já emitiste documentos com uma chave, não a substituas sem o procedimento oficial de rotação e sem preservar a cadeia fiscal.
 
 3. **Variáveis de ambiente**:
    ```
@@ -165,9 +164,17 @@ grace period, consegues consultar faturas antigas mas não criar novas
    FATURACAO_CHAVE_VERSAO=1
    FATURACAO_TAXA_IVA_GERAL=14.0
    FATURACAO_SAFT_NUMERO_CERTIFICADO=0
+   FATURACAO_SAFT_NIF_PRODUTOR=
+   FATURACAO_SAFT_NUMERO_VALIDACAO=0
+   FATURACAO_SAFT_PRODUCT_ID=
+   FATURACAO_SAFT_PRODUCT_VERSION=1.0.0
+   FATURACAO_SAFT_CONTA_CLIENTES=
+   FATURACAO_SAFT_SOURCE_ID=Sistema
+   FATURACAO_SAFT_TIPO_PRODUTO_PADRAO=
+   FATURACAO_SAFT_CODIGOS_TAXA={"14.00":"NOR"}
    ```
 
-4. **Migrar**
+Os campos SAF-T adicionais são explícitos: classifica cada produto como P/S/O/E/I na página Produtos; completa a morada e o município de cada cliente; configura o NIF do produtor, o ProductID no formato Nome da aplicação/Nome do produtor e a conta contabilística real de clientes. `FATURACAO_SAFT_TIPO_PRODUTO_PADRAO` só se aplica a linhas manuais sem produto associado. O mapeamento de taxas tem de refletir o regime fiscal aplicável; o exemplo de 14% não substitui confirmação fiscal. As notas de crédito exigem referência válida à fatura original; a exportação falha em vez de produzir referências fictícias.\n\n4. **Migrar**
    ```bash
    php artisan migrate
    ```
@@ -177,7 +184,10 @@ grace period, consegues consultar faturas antigas mas não criar novas
 5. **Correr os testes** (geram e descartam a sua própria chave RSA de teste,
    não usam a chave de produção):
    ```bash
+   php artisan test --filter=ExportacaoSafTTest
+   php artisan test --filter=SafTRegrasEValidacaoTest
    php artisan test --filter=CadeiaFiscalTest
+   php artisan test
    ```
 
 ## Rotas principais
