@@ -306,7 +306,9 @@ class SubscricaoService
             }
 
             try {
-                $this->gateway->cancelarReferencia($pendente);
+                if (method_exists($this->gateway, 'cancelarReferencia')) {
+                    $this->gateway->cancelarReferencia($pendente);
+                }
             } catch (Throwable $e) {
                 Log::critical('Pagamento expirado localmente, mas a referência externa não foi cancelada', [
                     'subscricao_id' => $atualizada->id,
