@@ -195,4 +195,38 @@ class PacotesTest extends TestCase
             ->assertSee('Atelier de Costura')
             ->assertSee('Estúdio de Música');
     }
+    public function test_pagina_de_planos_nao_apresenta_como_atual_uma_subscricao_vencida(): void
+    {
+        $this->seed(PlanosSeeder::class);
+        $empresa = $this->criarEmpresa('800000006', ['faturacao']);
+
+        $utilizador = User::create([
+            'empresa_id' => $empresa->id,
+            'name' => 'Administrador',
+            'email' => 'admin800000006@teste.test',
+            'password' => 'Senha-Forte-123!',
+            'ativo' => true,
+        ]);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($empresa->id);
+        $utilizador->assignRole(Role::firstOrCreate([
+            'name' => 'Administrador',
+            'guard_name' => 'web',
+            'empresa_id' => $empresa->id,
+        ]));
+
+        Subscricao::create([
+            'empresa_id' => $empresa->id,
+            'plano_id' => Plano::where('slug', 'faturacao')->value('id'),
+            'estado' => 'ativa',
+            'inicio_em' => now()->subDays(31),
+            'termina_em' => now()->subDay(),
+            'renovacao_automatica' => true,
+        ]);
+
+        $this->actingAs($utilizador)
+            ->get('/planos')
+            ->assertOk()
+            ->assertViewHas('subscricaoAtual', null);
+    }
+
 }
