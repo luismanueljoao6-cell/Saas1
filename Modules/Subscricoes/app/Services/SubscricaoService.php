@@ -218,7 +218,9 @@ class SubscricaoService
 
                 if (! $podeNotificar) {
                     try {
-                        $this->gateway->cancelarReferencia($pagamento);
+                        if (method_exists($this->gateway, 'cancelarReferencia')) {
+                            $this->gateway->cancelarReferencia($pagamento);
+                        }
                     } catch (Throwable $e) {
                         Log::critical('Referência localmente invalidada, mas o cancelamento remoto falhou', [
                             'subscricao_id' => $pagamento->subscricao_id,
