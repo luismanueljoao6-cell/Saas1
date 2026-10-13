@@ -325,6 +325,30 @@ class SegurancaPagamentoTest extends TestCase
         $this->assertSame('pendente', Pagamento::withoutGlobalScopes()->find($pagamento->id)->estado);
     }
 
+    public function test_gateway_proxypay_envia_montante_como_string_decimal(): void
+    {
+        config([
+            'subscricoes.gateways.proxypay.api_key' => 'chave-de-teste',
+            'subscricoes.gateways.proxypay.base_url' => 'https://api.proxypay.co.ao',
+        ]);
+
+        Http::fake([
+            'https://api.proxypay.co.ao/reference_ids' => Http::response('123456789', 200),
+            'https://api.proxypay.co.ao/references/123456789' => Http::response('', 204),
+        ]);
+
+        $pagamento = new Pagamento([
+            'valor' => '9900.00',
+            'expira_em' => now()->addDays(3),
+        ]);
+
+        app(ProxyPayGateway::class)->gerarReferencia($pagamento);
+
+        Http::assertSent(fn (HttpClientRequest $request): bool => $request->method() === 'PUT'
+            && $request->url() === 'https://api.proxypay.co.ao/references/123456789'
+            && ($request->data()['amount'] ?? null) === '9900.00');
+    }
+
     public function test_gateway_proxypay_remove_referencia_externa(): void
     {
         config([
