@@ -70,7 +70,9 @@ class ProxyPayGateway implements GatewayPagamentoInterface
             $dados = [
                 // A API ProxyPay define amount como string decimal, não float JSON.
                 'amount' => (string) $pagamento->valor,
-                'end_datetime' => $pagamento->expira_em?->toDateString(),
+                // Enviar a hora exacta evita que a referência continue válida
+                // até ao fim do dia depois de expirar localmente.
+                'end_datetime' => $pagamento->expira_em?->toIso8601String(),
                 'custom_fields' => [
                     'pagamento_id' => (string) $pagamento->id,
                     'empresa_id' => (string) $pagamento->empresa_id,
