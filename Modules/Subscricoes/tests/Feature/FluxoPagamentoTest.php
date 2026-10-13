@@ -188,4 +188,64 @@ class FluxoPagamentoTest extends TestCase
         $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
         $this->assertTrue($empresa->fresh()->temAcesso());
     }
+
+    public function test_cancelar_renovacao_durante_resposta_do_gateway_expira_pagamento_e_omite_aviso(): void
+    {
+        $empresa = $this->criarEmpresa('200000008');
+        $plano = $this->criarPlano('renovacao-corrida');
+
+        $pagamentoInicial = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        app(PagamentoService::class)->confirmar($pagamentoInicial);
+
+        $subscricao = $pagamentoInicial->subscricao->fresh();
+        $this->assertSame('ativa', $subscricao->estado);
+        $this->assertTrue($subscricao->renovacao_automatica);
+        $this->assertNotNull($subscricao->termina_em);
+        $this->assertTrue($subscricao->termina_em->isFuture());
+
+        // Simula o administrador a cancelar a renovação enquanto a chamada
+        // externa está em curso e antes de o gateway devolver a referência.
+        $gatewayComCorrida = new class($subscricao) implements GatewayPagamentoInterface
+        {
+            public function __construct(private Subscricao $subscricao) {}
+
+            public function identificador(): string
+            {
+                return 'gateway-teste-corrida';
+            }
+
+            public function gerarReferencia(Pagamento $pagamento): array
+            {
+                app(SubscricaoService::class)->cancelarRenovacao($this->subscricao);
+
+                return [
+                    'referencia_externa' => 'REF-CANCELADA-DURANTE-CRIACAO',
+                    'payload' => ['ok' => true],
+                ];
+            }
+
+            public function validarPedidoWebhook(Request $request): bool
+            {
+                return true;
+            }
+
+            public function interpretarNotificacao(Request $request): array
+            {
+                return [
+                    'referencia_externa' => $request->input('reference'),
+                    'estado' => 'confirmado',
+                    'payload' => [],
+                ];
+            }
+        };
+
+        $this->app->instance(GatewayPagamentoInterface::class, $gatewayComCorrida);
+        $this->app->forgetInstance(SubscricaoService::class);
+
+        $pagamentoRenovacao = app(SubscricaoService::class)->gerarRenovacao($subscricao);
+
+        $this->assertSame('expirado', $pagamentoRenovacao->estado);
+        $this->assertSame('REF-CANCELADA-DURANTE-CRIACAO', $pagamentoRenovacao->referencia_externa);
+        $this->assertFalse($subscricao->fresh()->renovacao_automatica);
+    }
 }
