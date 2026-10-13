@@ -13,6 +13,8 @@ class Pagamento extends Model
     use BelongsToTenant;
     use HasFactory;
 
+    protected $table = 'pagamentos';
+
     protected $fillable = [
         'empresa_id',
         'subscricao_id',
@@ -39,7 +41,12 @@ class Pagamento extends Model
 
     public function subscricao(): BelongsTo
     {
-        return $this->belongsTo(Subscricao::class);
+        return $this->belongsTo(Subscricao::class, 'subscricao_id');
+    }
+
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(\\Modules\\Core\\Models\\Empresa::class, 'empresa_id');
     }
 
     public function confirmadoPor(): BelongsTo
