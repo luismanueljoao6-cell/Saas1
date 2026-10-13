@@ -34,9 +34,6 @@ interface GatewayPagamentoInterface
      */
     public function gerarReferencia(Pagamento $pagamento): array;
 
-    /** Invalida uma referência externa; a operação deve ser idempotente. */
-    public function cancelarReferencia(Pagamento $pagamento): void;
-
     /**
      * Confirma que o pedido HTTP recebido é mesmo do gateway (assinatura,
      * token partilhado, IP, etc. — conforme o mecanismo do fornecedor) e
