@@ -58,9 +58,12 @@ class NotaCreditoDebitoService
 
         $linhas = $fatura->linhas()->get()->map(fn ($linha) => [
             'descricao' => $linha->descricao,
+            'tipo_saft' => $linha->produto?->tipo_saft ?: $linha->tipo_saft,
             'quantidade' => $linha->quantidade,
             'preco_unitario' => $linha->preco_unitario,
             'taxa_iva' => $linha->taxa_iva,
+            'codigo_isencao_iva' => $linha->codigo_isencao_iva,
+            'motivo_isencao_iva' => $linha->motivo_isencao_iva,
         ])->all();
 
         return $this->criarRascunho($fatura->empresa_id, $fatura->cliente_id, 'credito', $motivo, $linhas, $fatura->id);
@@ -88,6 +91,8 @@ class NotaCreditoDebitoService
         if (empty($linhas)) {
             throw new \InvalidArgumentException('Uma nota de crédito/débito precisa de pelo menos uma linha.');
         }
+
+        $this->validarLinhasFiscais($linhas);
 
         $cliente = Cliente::withoutGlobalScopes()->where('empresa_id', $empresaId)->find($clienteId);
 
@@ -125,9 +130,12 @@ class NotaCreditoDebitoService
                 (new NotaCreditoDebitoLinha([
                     'nota_credito_debito_id' => $nota->id,
                     'descricao' => $dadosLinha['descricao'],
+                    'tipo_saft' => $dadosLinha['tipo_saft'] ?? config('faturacao.saft_tipo_produto_padrao') ?: null,
                     'quantidade' => $dadosLinha['quantidade'],
                     'preco_unitario' => $dadosLinha['preco_unitario'],
                     'taxa_iva' => $dadosLinha['taxa_iva'],
+                    'codigo_isencao_iva' => $dadosLinha['codigo_isencao_iva'] ?? null,
+                    'motivo_isencao_iva' => $dadosLinha['motivo_isencao_iva'] ?? null,
                     'ordem' => $indice,
                 ]))->calcularValores()->save();
             }
@@ -197,6 +205,31 @@ class NotaCreditoDebitoService
             ]);
 
             throw $e;
+        }
+    }
+
+    protected function validarLinhasFiscais(array $linhas): void
+    {
+        $permitidas = array_map('floatval', (array) config('faturacao.taxas_iva_permitidas', []));
+        foreach ($linhas as $indice => $linha) {
+            $taxa = (float) ($linha['taxa_iva'] ?? -1);
+            if (! in_array($taxa, $permitidas, true)) {
+                throw new \InvalidArgumentException('A taxa de IVA da linha '.($indice + 1).' não está autorizada na configuração fiscal.');
+            }
+            $tipo = strtoupper(trim((string) ($linha['tipo_saft'] ?? '')));
+            if ($tipo !== '' && ! in_array($tipo, ['P', 'S', 'O', 'E', 'I'], true)) {
+                throw new \InvalidArgumentException('O tipo fiscal SAF-T da linha '.($indice + 1).' é inválido.');
+            }
+            if ((float) ($linha['quantidade'] ?? 0) <= 0 || (float) ($linha['preco_unitario'] ?? -1) < 0) {
+                throw new \InvalidArgumentException('Quantidade e preço da linha '.($indice + 1).' são inválidos.');
+            }
+            if ($taxa == 0.0) {
+                $codigo = trim((string) ($linha['codigo_isencao_iva'] ?? ''));
+                $motivo = trim((string) ($linha['motivo_isencao_iva'] ?? ''));
+                if (! preg_match('/^M[0-9]{2}$/', $codigo) || mb_strlen($motivo) < 6 || mb_strlen($motivo) > 60) {
+                    throw new \InvalidArgumentException('A linha '.($indice + 1).' com IVA 0% exige código de isenção Mnn e motivo legal entre 6 e 60 caracteres.');
+                }
+            }
         }
     }
 
