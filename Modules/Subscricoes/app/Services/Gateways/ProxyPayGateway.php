@@ -68,7 +68,8 @@ class ProxyPayGateway implements GatewayPagamentoInterface
 
             // 2) Registo da referência (idempotente para o mesmo ID).
             $dados = [
-                'amount' => round((float) $pagamento->valor, 2),
+                // A API ProxyPay define amount como string decimal, não float JSON.
+                'amount' => (string) $pagamento->valor,
                 'end_datetime' => $pagamento->expira_em?->toDateString(),
                 'custom_fields' => [
                     'pagamento_id' => (string) $pagamento->id,
