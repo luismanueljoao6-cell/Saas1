@@ -16,6 +16,8 @@ class Cliente extends Model
         'nome',
         'nif',
         'morada',
+        'municipio',
+        'provincia',
         'email',
         'telefone',
     ];
