@@ -2,7 +2,7 @@
 
 namespace Modules\Subscricoes\Tests\Feature;
 
-use DomainException;
+use Closure;\nuse DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Modules\Core\Contracts\LimitesDaEmpresa;
@@ -23,7 +23,7 @@ use Tests\TestCase;
 
 class GatewayPagamentoTeste implements GatewayPagamentoInterface
 {
-    public function __construct(private bool $falha = false) {}
+    public function __construct(private bool $falha = false, private ?Closure $duranteGeracao = null) {}
 
     public function identificador(): string
     {
@@ -32,7 +32,8 @@ class GatewayPagamentoTeste implements GatewayPagamentoInterface
 
     public function gerarReferencia(Pagamento $pagamento): array
     {
-        if ($this->falha) {
+        $this->duranteGeracao?->__invoke($pagamento);
+\n        if ($this->falha) {
             throw new RuntimeException('gateway em baixo');
         }
 
@@ -403,6 +404,34 @@ class SegurancaPagamentoTest extends TestCase
             $expiracaoOriginal->toDateTimeString(),
             $empresa->fresh()->subscricao_expira_em->toDateTimeString()
         );
+    }
+
+
+    public function test_cancelamento_durante_chamada_ao_gateway_impede_envio_da_referencia(): void
+    {
+        $this->usarGateway();
+        [$empresa, $plano] = $this->cenario('810000020');
+        $pagamentoInicial = app(SubscricaoService::class)->iniciar($empresa, $plano);
+        app(PagamentoService::class)->confirmar($pagamentoInicial, [], null, '9900.00');
+
+        $subscricao = Subscricao::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->firstOrFail();
+        $subscricao->update(['termina_em' => now()->addDays(2)]);
+
+        $this->app->singleton(
+            GatewayPagamentoInterface::class,
+            fn () => new GatewayPagamentoTeste(false, function (Pagamento $pagamento) use ($subscricao): void {
+                app(SubscricaoService::class)->cancelarRenovacao($subscricao->fresh());
+            })
+        );
+
+        \Illuminate\Support\Facades\Notification::fake();
+
+        $renovacao = app(SubscricaoService::class)->gerarRenovacao($subscricao->fresh());
+
+        $this->assertSame('expirado', Pagamento::withoutGlobalScopes()->findOrFail($renovacao->id)->estado);
+        \Illuminate\Support\Facades\Notification::assertNothingSent();
     }
 
     public function test_nao_permite_retomar_renovacao_de_subscricao_vencida(): void
