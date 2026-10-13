@@ -485,7 +485,6 @@ class SegurancaPagamentoTest extends TestCase
         );
     }
 
-
     public function test_subscricao_vencida_deixa_de_conceder_limites_do_plano_mesmo_antes_do_job(): void
     {
         $this->usarGateway();
