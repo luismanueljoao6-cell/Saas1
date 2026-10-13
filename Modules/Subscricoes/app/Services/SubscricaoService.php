@@ -190,10 +190,43 @@ class SubscricaoService
             }
 
             if (! $reutilizado) {
-                try {
-                    $pagamento = $this->pedirReferenciaAoGateway($pagamento);
-                } catch (Throwable $e) {
-                    throw $e;
+                $pagamento = $this->pedirReferenciaAoGateway($pagamento);
+
+                // A chamada ao gateway acontece fora da transação. Durante a
+                // espera, um administrador pode cancelar a renovação e expirar
+                // esta referência. Revalidar antes de enviar qualquer aviso:
+                // não apresentar ao cliente uma referência já invalidada.
+                $podeNotificar = $this->tenantManager->semTenant(fn () => DB::transaction(function () use ($pagamento) {
+                    $pagamentoAtual = Pagamento::query()
+                        ->lockForUpdate()
+                        ->findOrFail($pagamento->id);
+
+                    $subscricaoAtual = Subscricao::query()
+                        ->lockForUpdate()
+                        ->findOrFail($pagamentoAtual->subscricao_id);
+
+                    if (
+                        $pagamentoAtual->estado !== 'pendente'
+                        || $subscricaoAtual->estado !== 'ativa'
+                        || ! $subscricaoAtual->renovacao_automatica
+                    ) {
+                        if ($pagamentoAtual->estado === 'pendente') {
+                            $pagamentoAtual->update(['estado' => 'expirado']);
+                        }
+
+                        return false;
+                    }
+
+                    return true;
+                }));
+
+                if (! $podeNotificar) {
+                    Log::warning('Referência de renovação invalidada durante a chamada ao gateway; aviso não enviado', [
+                        'subscricao_id' => $subscricaoBloqueada->id,
+                        'pagamento_id' => $pagamento->id,
+                    ]);
+
+                    return $pagamento->fresh(['subscricao.plano']);
                 }
             }
 
