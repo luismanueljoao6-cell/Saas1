@@ -28,6 +28,44 @@ class SafTRegrasEValidacaoTest extends TestCase
         $this->assertNotNull(app(SafTExportService::class)->validarPeriodo(Carbon::parse('2026-05-10'), Carbon::parse('2026-05-01')));
     }
 
+    public function test_gerar_recusa_periodo_com_fim_anterior_ao_inicio(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('A data de fim não pode ser anterior à data de início.');
+
+        app(SafTExportService::class)->gerar(
+            new Empresa,
+            Carbon::parse('2026-05-10'),
+            Carbon::parse('2026-05-01'),
+        );
+    }
+
+    public function test_gerar_recusa_periodo_que_atravessa_anos_fiscais(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('O período tem de estar contido no mesmo ano fiscal.');
+
+        app(SafTExportService::class)->gerar(
+            new Empresa,
+            Carbon::parse('2025-12-15'),
+            Carbon::parse('2026-01-15'),
+        );
+    }
+
+    public function test_validador_xsd_identifica_xml_saft_invalido(): void
+    {
+        $erros = app(SafTExportService::class)->validarXmlContraXsd('<?xml version="1.0" encoding="UTF-8"?><AuditFile/>');
+
+        $this->assertNotEmpty($erros);
+    }
+
+    public function test_validador_xsd_identifica_xml_malformado(): void
+    {
+        $erros = app(SafTExportService::class)->validarXmlContraXsd('<AuditFile><Header></AuditFile>');
+
+        $this->assertNotEmpty($erros);
+    }
+
     public function test_saft_bloqueado_em_producao_sem_certificado(): void
     {
         $this->app['env'] = 'production';
