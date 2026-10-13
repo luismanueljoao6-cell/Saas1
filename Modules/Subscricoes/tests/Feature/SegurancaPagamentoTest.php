@@ -48,10 +48,10 @@ class GatewayPagamentoTeste implements GatewayPagamentoInterface
         return ['referencia_externa' => 'REF-'.$pagamento->id, 'payload' => ['ok' => true]];
     }
 
-            public function cancelarReferencia(Pagamento $pagamento): void
-            {
-                $this->aoCancelar?->__invoke($pagamento);
-            }
+    public function cancelarReferencia(Pagamento $pagamento): void
+    {
+        $this->aoCancelar?->__invoke($pagamento);
+    }
 
     public function validarPedidoWebhook(Request $request): bool
     {
