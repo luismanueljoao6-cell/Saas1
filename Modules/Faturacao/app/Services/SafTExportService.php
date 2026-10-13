@@ -20,9 +20,10 @@ use Modules\Faturacao\Support\Dinheiro;
 use RuntimeException;
 
 /**
- * ESTRUTURA PROVISÓRIA do SAF-T (AO): ainda NÃO validada contra o XSD oficial
- * da AGT (faltam namespace, TaxTable, DocumentTotals, etc.). Não submeter à AGT
- * sem validação XSD e software certificado — ver README.
+ * Exportador SAF-T (AO) validado estruturalmente contra o XSD versionado no módulo.
+ * Esse XSD está marcado como Development e NÃO comprova conformidade com a versão
+ * oficial aplicável nem certificação AGT. Não submeter ficheiros à AGT sem confirmar
+ * a especificação oficial, regras fiscais e certificação do software — ver README.
  *
  * Todas as queries filtram explicitamente por empresa_id e ignoram a
  * TenantScope, por isso não dependem de tenant ambiente (jobs/comandos).
@@ -194,10 +195,10 @@ class SafTExportService
     /**
      * Valida um XML SAF-T contra o XSD versionado no módulo.
      *
-     * Devolve uma lista vazia quando o XML é válido; caso contrário, devolve
-     * os erros de parsing/validação para diagnóstico. Este método ainda não
-     * é aplicado automaticamente a gerar(), porque o exportador está em
-     * migração e a estrutura atual não cumpre o XSD.
+     * Devolve uma lista vazia quando o XML passa este XSD, ou os erros de
+     * parsing/validação. Um resultado vazio não comprova aceitação pela AGT,
+     * pois o esquema versionado está marcado como Development. Os fluxos de
+     * exportação validada devem chamar gerarValidado().
      *
      * @return list<string>
      */
