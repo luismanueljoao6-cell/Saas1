@@ -74,7 +74,7 @@ class SafTExportService
             throw new InvalidArgumentException($erroPeriodo);
         }
 
-        $problemas = $this->validarConfiguracaoObrigatoria($empresa, $inicio, $fim);
+        $problemas = $this->validarConfiguracaoObrigatoria($empresa);
         if ($problemas !== []) {
             throw new RuntimeException("Exportação SAF-T bloqueada por falta de dados fiscais obrigatórios:\n- ".implode("\n- ", $problemas));
         }
@@ -99,7 +99,7 @@ class SafTExportService
      *
      * @return list<string>
      */
-    protected function validarConfiguracaoObrigatoria(Empresa $empresa, Carbon $inicio, Carbon $fim): array
+    protected function validarConfiguracaoObrigatoria(Empresa $empresa): array
     {
         $problemas = [];
         $obrigatorios = [
@@ -151,15 +151,14 @@ class SafTExportService
             }
         }
 
-        // Só documentos emitidos dentro do período entram no ficheiro.
-        // Rascunhos e documentos de outros períodos não devem bloquear a exportação.
-        $de = $inicio->toDateString();
-        $ate = $fim->toDateString();
+        // MasterFiles inclui atualmente as linhas manuais de todos os documentos
+        // da empresa, não apenas as do período exportado. A validação tem de
+        // cobrir exatamente o mesmo conjunto para evitar falhas tardias durante
+        // a construção do XML. O padrão só é usado quando foi configurado com
+        // uma classificação fiscal confirmada.
         $tipoPadrao = strtoupper(trim((string) config('faturacao.saft_tipo_produto_padrao', '')));
         $idsFaturas = Fatura::withoutGlobalScopes()
             ->where('empresa_id', $empresa->id)
-            ->where('estado', 'emitida')
-            ->whereBetween('data_emissao', [$de, $ate])
             ->select('id');
         $linhasManuais = FaturaLinha::whereIn('fatura_id', $idsFaturas)
             ->whereNull('produto_id')->get(['id', 'tipo_saft']);
@@ -172,8 +171,6 @@ class SafTExportService
 
         $idsNotas = NotaCreditoDebito::withoutGlobalScopes()
             ->where('empresa_id', $empresa->id)
-            ->where('estado', 'emitida')
-            ->whereBetween('data_emissao', [$de, $ate])
             ->select('id');
         $linhasNotas = NotaCreditoDebitoLinha::whereIn('nota_credito_debito_id', $idsNotas)->get(['id', 'tipo_saft']);
         foreach ($linhasNotas as $linha) {
