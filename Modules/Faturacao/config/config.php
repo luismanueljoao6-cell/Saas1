@@ -16,9 +16,13 @@ return [
     | antes de qualquer documento assinado com ela ser válido.
     |
     | NUNCA committes a chave privada para o Git. Gera-a com:
-    |   openssl genrsa -out storage/app/faturacao/chave-privada.pem 2048
+    |   openssl genrsa -out storage/app/faturacao/chave-privada.pem 1024
     |   openssl rsa -in storage/app/faturacao/chave-privada.pem -pubout -out storage/app/faturacao/chave-publica.pem
     | e acrescenta storage/app/faturacao/ ao .gitignore.
+    | O XSD SAF-T AO versionado limita Hash a 172 caracteres; uma assinatura RSA
+    | de 2048 bits excede esse limite. RSA-1024 é legado e mais fraco: confirma
+    | o requisito com a AGT antes de produção e nunca troques a chave depois de
+    | emitir documentos sem seguir o processo oficial de rotação.
     |
     */
     // `?:` e não o 2.º argumento de env(): uma variável presente mas vazia
@@ -77,6 +81,28 @@ return [
     | '0' é o valor de desenvolvimento/antes-de-certificado.
     */
     'saft_numero_certificado' => env('FATURACAO_SAFT_NUMERO_CERTIFICADO', '0'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Metadados SAF-T do produtor do software
+    |--------------------------------------------------------------------------
+    | Estes valores pertencem ao produtor da aplicação, nunca à empresa cliente.
+    | Não preencher o NIF do produtor até existir um valor real e confirmado.
+    | O número de validação usa "0" quando não aplicável, conforme o XSD de
+    | referência; isso não afirma nem substitui certificação AGT.
+    */
+    'saft_nif_produtor' => env('FATURACAO_SAFT_NIF_PRODUTOR', ''),
+    'saft_numero_validacao' => env('FATURACAO_SAFT_NUMERO_VALIDACAO', '0'),
+    'saft_product_id' => env('FATURACAO_SAFT_PRODUCT_ID', ''),
+    'saft_product_version' => env('FATURACAO_SAFT_PRODUCT_VERSION', '1.0.0'),
+
+    // Campos exigidos pelo SAF-T que não existem no modelo atual da empresa.
+    // Configurar com dados reais antes de usar gerarValidado().
+    'saft_conta_clientes' => env('FATURACAO_SAFT_CONTA_CLIENTES', ''),
+    'saft_tipo_produto_padrao' => env('FATURACAO_SAFT_TIPO_PRODUTO_PADRAO', ''),
+    'saft_source_id' => env('FATURACAO_SAFT_SOURCE_ID', 'Sistema'),
+    // Mapeamento explícito opcional: ex. {"14.00":"NOR","7.00":"RED"} após validação fiscal.
+    'saft_codigos_taxa' => json_decode((string) env('FATURACAO_SAFT_CODIGOS_TAXA', '{}'), true) ?: [],
 
     /*
     | Taxas de IVA aceites na emissão (percentagens, separadas por vírgula no .env).
