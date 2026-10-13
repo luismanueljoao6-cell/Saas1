@@ -5,6 +5,7 @@ namespace Modules\Subscricoes\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Traits\BelongsToTenant;
 
@@ -46,7 +47,7 @@ class Pagamento extends Model
 
     public function empresa(): BelongsTo
     {
-        return $this->belongsTo(\\Modules\\Core\\Models\\Empresa::class, 'empresa_id');
+        return $this->belongsTo(Empresa::class, 'empresa_id');
     }
 
     public function confirmadoPor(): BelongsTo
