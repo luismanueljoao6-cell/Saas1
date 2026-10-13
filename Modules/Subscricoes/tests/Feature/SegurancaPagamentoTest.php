@@ -406,7 +406,6 @@ class SegurancaPagamentoTest extends TestCase
         );
     }
 
-
     public function test_cancelamento_durante_chamada_ao_gateway_impede_envio_da_referencia(): void
     {
         $this->usarGateway();
