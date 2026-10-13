@@ -209,6 +209,8 @@ class SubscricaoService
                         $pagamentoAtual->estado !== 'pendente'
                         || $subscricaoAtual->estado !== 'ativa'
                         || ! $subscricaoAtual->renovacao_automatica
+                        || $subscricaoAtual->termina_em === null
+                        || $subscricaoAtual->termina_em->isPast()
                     ) {
                         if ($pagamentoAtual->estado === 'pendente') {
                             $pagamentoAtual->update(['estado' => 'expirado']);
