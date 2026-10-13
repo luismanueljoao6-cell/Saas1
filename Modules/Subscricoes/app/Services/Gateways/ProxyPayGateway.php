@@ -107,6 +107,40 @@ class ProxyPayGateway implements GatewayPagamentoInterface
         }
     }
 
+    public function cancelarReferencia(Pagamento $pagamento): void
+    {
+        if (! $pagamento->referencia_externa) {
+            return;
+        }
+
+        $this->garantirCredenciaisConfiguradas();
+
+        try {
+            $resposta = $this->http()->delete(
+                "{$this->baseUrl}/references/{$pagamento->referencia_externa}"
+            );
+
+            // Uma referência já removida equivale a cancelamento concluído.
+            if ($resposta->status() === 404) {
+                return;
+            }
+
+            $resposta->throw();
+        } catch (RequestException $e) {
+            Log::error('ProxyPay: falha ao cancelar referência de pagamento', [
+                'pagamento_id' => $pagamento->id,
+                'referencia_externa' => $pagamento->referencia_externa,
+                'status' => $e->response?->status(),
+                'erro' => $e->getMessage(),
+            ]);
+
+            throw GatewayPagamentoException::falhaAoGerarReferencia(
+                $this->identificador(),
+                'não foi possível cancelar a referência externa: '.$e->getMessage()
+            );
+        }
+    }
+
     public function validarPedidoWebhook(Request $request): bool
     {
         if (! $this->apiKey) {
