@@ -512,7 +512,7 @@ class SegurancaPagamentoTest extends TestCase
         $subscricao = Subscricao::withoutGlobalScopes()
             ->where('empresa_id', $empresa->id)
             ->firstOrFail();
-        $subscricao->update(['termina_em' => now()->addSecond()]);
+        $subscricao->update(['termina_em' => now()->addDays(2)]);
 
         $referenciaRemovida = false;
         $gateway = new GatewayPagamentoTeste(
