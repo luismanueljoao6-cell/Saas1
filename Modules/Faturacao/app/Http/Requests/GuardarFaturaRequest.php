@@ -23,6 +23,7 @@ class GuardarFaturaRequest extends FormRequest
             'linhas' => ['required', 'array', 'min:1', 'max:100'],
             'linhas.*.produto_id' => ['nullable', 'integer', Rule::exists('produtos', 'id')->where('empresa_id', $empresaId)],
             'linhas.*.descricao' => ['required', 'string', 'max:255'],
+            'linhas.*.tipo_saft' => ['required', 'string', 'in:P,S,O,E,I'],
             'linhas.*.quantidade' => ['required', 'numeric', 'decimal:0,3', 'min:0.001', 'max:10000'],
             'linhas.*.preco_unitario' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
             'linhas.*.taxa_iva' => [
@@ -34,6 +35,8 @@ class GuardarFaturaRequest extends FormRequest
                     }
                 },
             ],
+            'linhas.*.codigo_isencao_iva' => ['required_if:linhas.*.taxa_iva,0', 'nullable', 'regex:/^M[0-9]{2}$/'],
+            'linhas.*.motivo_isencao_iva' => ['required_if:linhas.*.taxa_iva,0', 'nullable', 'string', 'min:6', 'max:60'],
         ];
     }
 }
