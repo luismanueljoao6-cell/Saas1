@@ -337,16 +337,18 @@ class SegurancaPagamentoTest extends TestCase
             'https://api.proxypay.co.ao/references/123456789' => Http::response('', 204),
         ]);
 
+        $expiraEm = now()->addDays(3);
         $pagamento = new Pagamento([
             'valor' => '9900.00',
-            'expira_em' => now()->addDays(3),
+            'expira_em' => $expiraEm,
         ]);
 
         app(ProxyPayGateway::class)->gerarReferencia($pagamento);
 
         Http::assertSent(fn (HttpClientRequest $request): bool => $request->method() === 'PUT'
             && $request->url() === 'https://api.proxypay.co.ao/references/123456789'
-            && ($request->data()['amount'] ?? null) === '9900.00');
+            && ($request->data()['amount'] ?? null) === '9900.00'
+            && ($request->data()['end_datetime'] ?? null) === $expiraEm->toIso8601String());
     }
 
     public function test_gateway_proxypay_remove_referencia_externa(): void
