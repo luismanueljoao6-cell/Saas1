@@ -6,7 +6,6 @@ use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Modules\Core\Contracts\LimitesDaEmpresa;
-use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantService;
