@@ -2,7 +2,8 @@
 
 namespace Modules\Subscricoes\Tests\Feature;
 
-use Closure;\nuse DomainException;
+use Closure;
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Modules\Core\Contracts\LimitesDaEmpresa;
@@ -33,7 +34,8 @@ class GatewayPagamentoTeste implements GatewayPagamentoInterface
     public function gerarReferencia(Pagamento $pagamento): array
     {
         $this->duranteGeracao?->__invoke($pagamento);
-\n        if ($this->falha) {
+
+        if ($this->falha) {
             throw new RuntimeException('gateway em baixo');
         }
 
