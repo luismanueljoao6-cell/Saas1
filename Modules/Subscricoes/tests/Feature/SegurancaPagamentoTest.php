@@ -325,7 +325,6 @@ class SegurancaPagamentoTest extends TestCase
         $this->assertSame('pendente', Pagamento::withoutGlobalScopes()->find($pagamento->id)->estado);
     }
 
-
     public function test_gateway_proxypay_remove_referencia_externa(): void
     {
         config([
@@ -465,6 +464,9 @@ class SegurancaPagamentoTest extends TestCase
                 }
             )
         );
+        // O serviço já foi resolvido durante a compra inicial; resolver de novo
+        // para que receba o gateway de teste configurado para esta corrida.
+        $this->app->forgetInstance(SubscricaoService::class);
 
         Notification::fake();
 
