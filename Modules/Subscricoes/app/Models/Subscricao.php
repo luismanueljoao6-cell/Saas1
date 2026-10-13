@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Core\Models\Empresa;
 use Modules\Core\Traits\BelongsToTenant;
 
 /**
@@ -52,14 +53,19 @@ class Subscricao extends Model
         ];
     }
 
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_id');
+    }
+
     public function plano(): BelongsTo
     {
-        return $this->belongsTo(Plano::class);
+        return $this->belongsTo(Plano::class, 'plano_id');
     }
 
     public function pagamentos(): HasMany
     {
-        return $this->hasMany(Pagamento::class);
+        return $this->hasMany(Pagamento::class, 'subscricao_id');
     }
 
     public function estaAtiva(): bool
