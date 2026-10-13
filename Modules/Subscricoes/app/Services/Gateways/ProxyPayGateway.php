@@ -68,8 +68,8 @@ class ProxyPayGateway implements GatewayPagamentoInterface
 
             // 2) Registo da referência (idempotente para o mesmo ID).
             $dados = [
-                'amount' => round((float) $pagamento->valor, 2),
-                'end_datetime' => $pagamento->expira_em?->toDateString(),
+                'amount' => (string) $pagamento->valor,
+                'end_datetime' => $pagamento->expira_em?->toIso8601String(),
                 'custom_fields' => [
                     'pagamento_id' => (string) $pagamento->id,
                     'empresa_id' => (string) $pagamento->empresa_id,
@@ -104,6 +104,39 @@ class ProxyPayGateway implements GatewayPagamentoInterface
             ]);
 
             throw GatewayPagamentoException::falhaAoGerarReferencia($this->identificador(), $e->getMessage());
+        }
+    }
+
+    public function cancelarReferencia(Pagamento $pagamento): void
+    {
+        if (! $pagamento->referencia_externa) {
+            return;
+        }
+
+        $this->garantirCredenciaisConfiguradas();
+
+        try {
+            $resposta = $this->http()->delete(
+                "{$this->baseUrl}/references/{$pagamento->referencia_externa}"
+            );
+
+            if ($resposta->status() === 404) {
+                return;
+            }
+
+            $resposta->throw();
+        } catch (RequestException $e) {
+            Log::error('ProxyPay: falha ao cancelar referência de pagamento', [
+                'pagamento_id' => $pagamento->id,
+                'referencia_externa' => $pagamento->referencia_externa,
+                'status' => $e->response?->status(),
+                'erro' => $e->getMessage(),
+            ]);
+
+            throw GatewayPagamentoException::falhaAoGerarReferencia(
+                $this->identificador(),
+                'não foi possível cancelar a referência externa: '.$e->getMessage()
+            );
         }
     }
 

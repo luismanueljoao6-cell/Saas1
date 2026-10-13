@@ -5,6 +5,7 @@ namespace Modules\Subscricoes\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Traits\BelongsToTenant;
 
@@ -12,6 +13,8 @@ class Pagamento extends Model
 {
     use BelongsToTenant;
     use HasFactory;
+
+    protected $table = 'pagamentos';
 
     protected $fillable = [
         'empresa_id',
@@ -39,7 +42,12 @@ class Pagamento extends Model
 
     public function subscricao(): BelongsTo
     {
-        return $this->belongsTo(Subscricao::class);
+        return $this->belongsTo(Subscricao::class, 'subscricao_id');
+    }
+
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_id');
     }
 
     public function confirmadoPor(): BelongsTo

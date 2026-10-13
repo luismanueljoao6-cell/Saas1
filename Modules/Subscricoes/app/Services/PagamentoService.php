@@ -66,7 +66,7 @@ class PagamentoService
                     // transferência real, a reconciliação deve ser explícita
                     // por um administrador, após confirmar o recebimento.
                     $reconciliacaoManual = $confirmadoPor !== null
-                        && in_array($pagamento->estado, ['expirado', 'cancelado'], true);
+                        && in_array($pagamento->estado, ['expirado', 'falhado'], true);
 
                     if (
                         $pagamento->estado !== 'pendente'
