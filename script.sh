@@ -1,13 +1,5 @@
-#!/bin/bash
-
-echo "Iniciando processo..."
-php -v
-git status
-echo "Tudo pronto!"
-
-
 (
-# Fase 1 — Facturação Electrónica AGT: assinatura JWS RS256, payload oficial, IVA por excesso.
+# Fase 2a — Facturação Electrónica AGT: séries autorizadas, cliente HTTP e assinatura do software.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -17,349 +9,283 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "ERRO: tens alterações por commitar. Faz commit ou 'git stash' primeiro."; exit 1
 fi
 git pull --ff-only origin main
-mkdir -p Modules/Faturacao/app/Support
-cat > Modules/Faturacao/app/Support/NumeroJson.php <<'EOF_FASE1_0'
+[ -f Modules/Faturacao/app/Support/Jws.php ] || { echo "ERRO: a Fase 1 (assinatura JWS) ainda não está na main. Corre primeiro o comando da Fase 1."; exit 1; }
+mkdir -p Modules/Faturacao/app/Exceptions
+cat > Modules/Faturacao/app/Exceptions/AgtException.php <<'EOF_F2A_0'
 <?php
 
-namespace Modules\Faturacao\Support;
+namespace Modules\Faturacao\Exceptions;
+
+use Exception;
 
 /**
- * Número já formatado para JSON canónico (sem aspas, sem zeros à direita
- * desnecessários). Existe para nunca passar valores monetários por float.
+ * Erros na comunicação com a AGT (Facturação Electrónica) e na gestão das
+ * séries autorizadas. `$erros` normaliza a errorList devolvida pela AGT.
  */
-final class NumeroJson
+class AgtException extends Exception
 {
-    private function __construct(public readonly string $literal) {}
-
-    /** @param  int  $centimos  valor em cêntimos (ex.: 57000 => 570) */
-    public static function deCentimos(int $centimos): self
+    /** @param  array<int, array{codigo: string, descricao: string}>  $erros */
+    public function __construct(string $message, public readonly array $erros = [])
     {
-        $sinal = $centimos < 0 ? '-' : '';
-        $abs = abs($centimos);
-        $inteiro = intdiv($abs, 100);
-        $fracao = $abs % 100;
+        parent::__construct($message);
+    }
 
-        if ($fracao === 0) {
-            return new self($sinal.$inteiro);
-        }
+    public static function semCredenciais(): self
+    {
+        return new self('Credenciais da AGT em falta: define FATURACAO_AGT_UTILIZADOR e FATURACAO_AGT_PALAVRA_PASSE (pedido por e-mail a produtores.dfe.dcrr.agt@minfin.gov.ao).');
+    }
 
-        return new self($sinal.$inteiro.'.'.rtrim(sprintf('%02d', $fracao), '0'));
+    public static function configuracaoInvalida(string $motivo): self
+    {
+        return new self('Configuração AGT inválida: '.$motivo);
+    }
+
+    public static function transporte(string $motivo): self
+    {
+        return new self('Falha de comunicação com a AGT: '.$motivo);
+    }
+
+    public static function respostaInesperada(int $http): self
+    {
+        return new self("Resposta inesperada da AGT (HTTP {$http}).");
+    }
+
+    /** @param  array<int, array{codigo: string, descricao: string}>  $erros */
+    public static function rejeitado(array $erros): self
+    {
+        $texto = implode('; ', array_map(fn (array $e) => "{$e['codigo']}: {$e['descricao']}", $erros));
+
+        return new self('A AGT rejeitou o pedido — '.$texto, $erros);
+    }
+
+    public static function serieIndisponivel(string $tipoDocumento, int $ano): self
+    {
+        return new self("Não existe série autorizada pela AGT para {$tipoDocumento}/{$ano}. Pede-a com: php artisan faturacao:agt-solicitar-serie <empresa> {$tipoDocumento}");
+    }
+
+    public static function serieEsgotada(string $codigo, int $ultimoAutorizado): self
+    {
+        return new self("A série AGT {$codigo} esgotou a numeração autorizada (até {$ultimoAutorizado}). Pede uma extensão da série à AGT.");
     }
 }
-EOF_FASE1_0
-mkdir -p Modules/Faturacao/app/Support
-cat > Modules/Faturacao/app/Support/Jws.php <<'EOF_FASE1_1'
+EOF_F2A_0
+mkdir -p Modules/Faturacao/database/migrations
+cat > Modules/Faturacao/database/migrations/2026_10_13_000012_add_campos_agt_to_series_table.php <<'EOF_F2A_1'
 <?php
 
-namespace Modules\Faturacao\Support;
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 
-use InvalidArgumentException;
-use OpenSSLAsymmetricKey;
-
-/**
- * JSON Web Signature (compact) com RS256 (RSA + SHA-256), como exige a API de
- * Facturação Electrónica da AGT: cabeçalho {"alg":"RS256","typ":"JWT"},
- * payload = objecto JSON completo (não campos concatenados), Base64URL sem
- * padding e chave RSA com pelo menos 2048 bits.
- *
- * Classe sem dependências do framework, para poder ser testada isoladamente.
- */
-final class Jws
+return new class extends Migration
 {
-    public const CABECALHO = '{"alg":"RS256","typ":"JWT"}';
-
-    public static function base64url(string $binario): string
-    {
-        return rtrim(strtr(base64_encode($binario), '+/', '-_'), '=');
-    }
-
-    public static function deBase64url(string $texto): ?string
-    {
-        if ($texto === '' || preg_match('/^[A-Za-z0-9_-]+$/', $texto) !== 1) {
-            return null;
-        }
-
-        $decodificado = base64_decode(strtr($texto, '-_', '+/'), true);
-
-        return $decodificado === false ? null : $decodificado;
-    }
-
     /**
-     * JSON canónico: sem espaços nem quebras de linha, aspas duplas, números
-     * sem formatação adicional e a ordem das chaves exactamente como recebida.
-     *
-     * @param  array<string|int, mixed>  $dados
+     * Séries autorizadas pela AGT (serviço "Solicitar Criação de Série"):
+     * código atribuído pela AGT, estabelecimento, indicador de contingência e
+     * intervalo de numeração autorizado. Fase 2a da adequação à AGT.
      */
-    public static function canonico(array $dados): string
+    public function up(): void
     {
-        return self::codificar($dados);
+        if (Schema::hasColumn('series', 'agt_codigo')) {
+            return;
+        }
+
+        Schema::table('series', function (Blueprint $table) {
+            $table->string('agt_codigo', 60)->nullable()->after('prefixo');
+            $table->string('estabelecimento', 200)->nullable()->after('agt_codigo');
+            $table->string('contingencia', 1)->default('N')->after('estabelecimento');
+            $table->unsignedBigInteger('quantidade_autorizada')->nullable()->after('ultimo_numero');
+            $table->unsignedBigInteger('ultimo_numero_autorizado')->nullable()->after('quantidade_autorizada');
+            $table->timestamp('agt_criada_em')->nullable()->after('ultimo_numero_autorizado');
+
+            // O código de série é único por contribuinte (regra E31 da AGT).
+            $table->unique(['empresa_id', 'agt_codigo']);
+        });
     }
 
-    /** Assina um payload JSON (já canónico) e devolve o JWS compacto. */
-    public static function assinar(string $payloadJson, OpenSSLAsymmetricKey $chavePrivada): string
+    public function down(): void
     {
-        $entrada = self::base64url(self::CABECALHO).'.'.self::base64url($payloadJson);
-        $assinatura = '';
-
-        if (! openssl_sign($entrada, $assinatura, $chavePrivada, OPENSSL_ALGO_SHA256)) {
-            throw new InvalidArgumentException('Falha OpenSSL ao assinar: '.(openssl_error_string() ?: 'erro desconhecido'));
+        if (! Schema::hasColumn('series', 'agt_codigo')) {
+            return;
         }
 
-        return $entrada.'.'.self::base64url($assinatura);
+        Schema::table('series', function (Blueprint $table) {
+            $table->dropUnique(['empresa_id', 'agt_codigo']);
+            $table->dropColumn([
+                'agt_codigo', 'estabelecimento', 'contingencia',
+                'quantidade_autorizada', 'ultimo_numero_autorizado', 'agt_criada_em',
+            ]);
+        });
     }
-
-    /** Verifica a assinatura RS256 de um JWS compacto. */
-    public static function verificar(string $jws, OpenSSLAsymmetricKey $chavePublica): bool
-    {
-        $partes = explode('.', $jws);
-
-        if (count($partes) !== 3) {
-            return false;
-        }
-
-        if (self::deBase64url($partes[0]) !== self::CABECALHO) {
-            return false;
-        }
-
-        $assinatura = self::deBase64url($partes[2]);
-
-        if ($assinatura === null) {
-            return false;
-        }
-
-        return openssl_verify($partes[0].'.'.$partes[1], $assinatura, $chavePublica, OPENSSL_ALGO_SHA256) === 1;
-    }
-
-    /** Devolve o payload (JSON) de um JWS compacto, sem validar a assinatura. */
-    public static function payload(string $jws): ?string
-    {
-        $partes = explode('.', $jws);
-
-        return count($partes) === 3 ? self::deBase64url($partes[1]) : null;
-    }
-
-    private static function codificar(mixed $valor): string
-    {
-        return match (true) {
-            $valor instanceof NumeroJson => $valor->literal,
-            is_array($valor) => self::codificarArray($valor),
-            is_int($valor) => (string) $valor,
-            is_bool($valor) => $valor ? 'true' : 'false',
-            $valor === null => 'null',
-            is_float($valor) => throw new InvalidArgumentException('Usa NumeroJson para valores decimais (nunca float).'),
-            default => json_encode((string) $valor, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
-        };
-    }
-
-    /** @param  array<string|int, mixed>  $dados */
-    private static function codificarArray(array $dados): string
-    {
-        if (array_is_list($dados)) {
-            return '['.implode(',', array_map(self::codificar(...), $dados)).']';
-        }
-
-        $itens = [];
-        foreach ($dados as $chave => $valor) {
-            $itens[] = json_encode((string) $chave, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR).':'.self::codificar($valor);
-        }
-
-        return '{'.implode(',', $itens).'}';
-    }
-}
-EOF_FASE1_1
-mkdir -p Modules/Faturacao/app/Support
-cat > Modules/Faturacao/app/Support/PayloadAssinaturaAgt.php <<'EOF_FASE1_2'
-<?php
-
-namespace Modules\Faturacao\Support;
-
-/**
- * Objecto assinado em jwsDocumentSignature, segundo a especificação da API de
- * Facturação Electrónica da AGT (serviço "Registar Factura"): documentNo,
- * taxRegistrationNumber, documentType, documentDate, customerTaxID,
- * customerCountry, companyName e documentTotals {taxPayable, netTotal,
- * grossTotal}. Assina-se o objecto inteiro, em JSON canónico.
- */
-final class PayloadAssinaturaAgt
-{
-    /** NIF genérico previsto pela AGT para compradores domésticos sem identificação. */
-    public const NIF_CONSUMIDOR_FINAL = '999999999';
-
-    /**
-     * @param  int  $impostoCentimos  taxPayable
-     * @param  int  $liquidoCentimos  netTotal
-     * @param  int  $brutoCentimos  grossTotal
-     */
-    public static function json(
-        string $numeroDocumento,
-        string $nifEmissor,
-        string $tipoDocumento,
-        string $dataDocumento,
-        ?string $nifCliente,
-        ?string $paisCliente,
-        string $nomeCliente,
-        int $impostoCentimos,
-        int $liquidoCentimos,
-        int $brutoCentimos,
-    ): string {
-        $nif = trim((string) $nifCliente);
-        $pais = strtoupper(trim((string) $paisCliente)) ?: 'AO';
-
-        return Jws::canonico([
-            'documentNo' => $numeroDocumento,
-            'taxRegistrationNumber' => $nifEmissor,
-            'documentType' => $tipoDocumento,
-            'documentDate' => $dataDocumento,
-            'customerTaxID' => $nif !== '' ? $nif : self::NIF_CONSUMIDOR_FINAL,
-            'customerCountry' => $pais,
-            'companyName' => trim($nomeCliente) !== '' ? trim($nomeCliente) : 'Consumidor final',
-            'documentTotals' => [
-                'taxPayable' => NumeroJson::deCentimos($impostoCentimos),
-                'netTotal' => NumeroJson::deCentimos($liquidoCentimos),
-                'grossTotal' => NumeroJson::deCentimos($brutoCentimos),
-            ],
-        ]);
-    }
-}
-EOF_FASE1_2
-mkdir -p Modules/Faturacao/app/Traits
-cat > Modules/Faturacao/app/Traits/AssinavelAgt.php <<'EOF_FASE1_3'
-<?php
-
-namespace Modules\Faturacao\Traits;
-
-use Modules\Core\Models\Empresa;
-use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
-use Modules\Faturacao\Models\Cliente;
-use Modules\Faturacao\Support\PayloadAssinaturaAgt;
-
-/**
- * Constrói o objecto JSON canónico assinado em jwsDocumentSignature para os
- * documentos fiscais (Fatura, NotaCreditoDebito, Recibo). Lê empresa e cliente
- * sem depender do tenant ambiente (emissão corre em jobs, comandos e testes).
- */
-trait AssinavelAgt
-{
-    protected function payloadAgtJson(int $impostoCentimos, int $liquidoCentimos, int $brutoCentimos): string
-    {
-        $empresa = Empresa::query()->find($this->empresa_id);
-        $cliente = Cliente::withoutGlobalScopes()
-            ->where('empresa_id', $this->empresa_id)
-            ->find($this->cliente_id);
-
-        if (! $empresa || trim((string) $empresa->nif) === '') {
-            throw AssinaturaFiscalException::dadosEmFalta('A empresa emissora não tem NIF configurado.');
-        }
-
-        if (! $cliente) {
-            throw AssinaturaFiscalException::dadosEmFalta('O cliente do documento não pertence a esta empresa.');
-        }
-
-        return PayloadAssinaturaAgt::json(
-            numeroDocumento: (string) $this->numero_documento,
-            nifEmissor: (string) $empresa->nif,
-            tipoDocumento: $this->tipoDocumentoFiscal(),
-            dataDocumento: $this->data_emissao->format('Y-m-d'),
-            nifCliente: $cliente->nif,
-            paisCliente: $cliente->pais,
-            nomeCliente: (string) $cliente->nome,
-            impostoCentimos: $impostoCentimos,
-            liquidoCentimos: $liquidoCentimos,
-            brutoCentimos: $brutoCentimos,
-        );
-    }
-}
-EOF_FASE1_3
+};
+EOF_F2A_1
 mkdir -p Modules/Faturacao/app/Services
-cat > Modules/Faturacao/app/Services/AssinaturaFiscalService.php <<'EOF_FASE1_4'
+cat > Modules/Faturacao/app/Services/AgtClient.php <<'EOF_F2A_2'
 <?php
 
 namespace Modules\Faturacao\Services;
 
-use DateTimeInterface;
-use Modules\Core\Models\Empresa;
-use Modules\Faturacao\Contracts\DocumentoFiscalInterface;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
+use Modules\Faturacao\Exceptions\AgtException;
+
+/**
+ * Cliente HTTP da API de Facturação Electrónica da AGT: Basic Authentication
+ * com as credenciais emitidas ao produtor do software, corpo JSON já
+ * canónico e assinado por quem chama.
+ */
+class AgtClient
+{
+    /**
+     * @return array{http: int, corpo: array<string, mixed>}
+     */
+    public function enviar(string $servico, string $corpoJson): array
+    {
+        $utilizador = (string) config('faturacao.agt.utilizador');
+        $palavraPasse = (string) config('faturacao.agt.palavra_passe');
+
+        if ($utilizador === '' || $palavraPasse === '') {
+            throw AgtException::semCredenciais();
+        }
+
+        $url = $this->url($servico);
+
+        try {
+            $resposta = Http::withBasicAuth($utilizador, $palavraPasse)
+                ->acceptJson()
+                ->timeout((int) config('faturacao.agt.timeout', 20))
+                ->withBody($corpoJson, 'application/json')
+                ->post($url);
+        } catch (ConnectionException $e) {
+            throw AgtException::transporte($e->getMessage());
+        }
+
+        $corpo = $resposta->json();
+
+        return ['http' => $resposta->status(), 'corpo' => is_array($corpo) ? $corpo : []];
+    }
+
+    /**
+     * @return array{http: int, corpo: array<string, mixed>}
+     */
+    public function solicitarSerie(string $corpoJson): array
+    {
+        return $this->enviar('solicitar_serie', $corpoJson);
+    }
+
+    /**
+     * Normaliza a errorList da AGT (objectos {idError, descriptionError} ou
+     * textos soltos; entradas vazias são ignoradas).
+     *
+     * @return array<int, array{codigo: string, descricao: string}>
+     */
+    public static function normalizarErros(mixed $lista): array
+    {
+        $erros = [];
+
+        foreach (is_array($lista) ? $lista : [] as $item) {
+            if (is_array($item)) {
+                $codigo = (string) ($item['idError'] ?? $item['errorCode'] ?? 'E99');
+                $descricao = (string) ($item['descriptionError'] ?? $item['errorDescription'] ?? '');
+                $erros[] = ['codigo' => $codigo, 'descricao' => $descricao];
+            } elseif (is_string($item) && trim($item) !== '') {
+                $erros[] = ['codigo' => 'E99', 'descricao' => trim($item)];
+            }
+        }
+
+        return $erros;
+    }
+
+    protected function url(string $servico): string
+    {
+        $ambiente = (string) config('faturacao.agt.ambiente', 'homologacao');
+
+        if (! in_array($ambiente, ['homologacao', 'producao'], true)) {
+            throw AgtException::configuracaoInvalida("ambiente '{$ambiente}' (usa homologacao ou producao).");
+        }
+
+        if ($ambiente === 'producao' && (string) config('faturacao.saft_numero_certificado', '0') === '0') {
+            throw AgtException::configuracaoInvalida('produção exige o número de certificação do software (FATURACAO_SAFT_NUMERO_CERTIFICADO).');
+        }
+
+        $base = rtrim((string) config("faturacao.agt.urls.{$ambiente}"), '/');
+        $caminho = (string) config("faturacao.agt.caminhos.{$servico}");
+
+        if ($base === '' || $caminho === '') {
+            throw AgtException::configuracaoInvalida("endereço do serviço '{$servico}' não configurado.");
+        }
+
+        return $base.'/'.ltrim($caminho, '/');
+    }
+}
+EOF_F2A_2
+mkdir -p Modules/Faturacao/app/Services
+cat > Modules/Faturacao/app/Services/AgtAssinaturaService.php <<'EOF_F2A_3'
+<?php
+
+namespace Modules\Faturacao\Services;
+
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Support\Jws;
 use OpenSSLAsymmetricKey;
 
 /**
- * Assina cada documento como JWS compacto RS256 (RSA + SHA-256), segundo a
- * especificação da API de Facturação Electrónica da AGT: o conteúdo assinado
- * é o objecto JSON canónico do documento (ver Support/PayloadAssinaturaAgt) e
- * a chave RSA tem pelo menos 2048 bits.
- *
- * Esta classe não sabe nada sobre Fatura, NotaCreditoDebito ou Recibo — só
- * fala com DocumentoFiscalInterface. O JWS completo é guardado na coluna
- * `hash` do documento; `hash_anterior` é só cadeia interna (deteção de
- * lacunas) e não faz parte do objecto assinado.
+ * Assinaturas JWS dos pedidos à AGT: jwsSoftwareSignature (chave do SOFTWARE,
+ * gerada pelo produtor) e jwsSignature das requisições (chave do EMISSOR,
+ * emitida pela AGT — reutiliza AssinaturaFiscalService, que resolve a chave
+ * por empresa).
  */
-class AssinaturaFiscalService
+class AgtAssinaturaService
 {
-    /** @var array<string, OpenSSLAsymmetricKey> */
-    protected array $chaves = [];
+    protected ?OpenSSLAsymmetricKey $chaveSoftware = null;
+
+    public function __construct(protected AssinaturaFiscalService $assinaturaFiscal) {}
 
     /**
-     * Orquestra as duas fases do model: prepara os campos de emissão,
-     * constrói o objecto a assinar, assina, e só então confirma a emissão.
+     * Bloco softwareInfo de todos os pedidos. Assina-se o objecto
+     * softwareInfoDetail inteiro, em JSON canónico.
+     *
+     * @return array{softwareInfoDetail: array<string, mixed>, jwsSoftwareSignature: string}
      */
-    public function assinarEEmitir(
-        DocumentoFiscalInterface $documento,
-        int $numeroSequencial,
-        string $numeroDocumento,
-        DateTimeInterface $dataHoraSistema,
-        ?string $hashAnterior,
-    ): void {
-        $documento->prepararParaEmissao($numeroSequencial, $numeroDocumento, $dataHoraSistema, $hashAnterior);
+    public function softwareInfo(): array
+    {
+        $detalhe = [
+            'productId' => (string) config('faturacao.agt.software.product_id'),
+            'productVersion' => (string) config('faturacao.agt.software.product_version'),
+            'softwareValidationNumber' => (string) config('faturacao.saft_numero_certificado'),
+        ];
 
-        $jws = $this->assinar($documento->construirStringParaAssinar(), $documento->getEmpresaId());
+        // A tabela da AGT lista signatureVersion, mas os exemplos oficiais não o
+        // incluem: só entra se for configurado (confirmar na homologação).
+        $versao = config('faturacao.agt.software.signature_version');
 
-        $documento->confirmarEmissao($jws, (int) config('faturacao.chave_versao'));
+        if ($versao !== null && $versao !== '') {
+            $detalhe['signatureVersion'] = (int) $versao;
+        }
+
+        return [
+            'softwareInfoDetail' => $detalhe,
+            'jwsSoftwareSignature' => Jws::assinar(Jws::canonico($detalhe), $this->carregarChaveSoftware()),
+        ];
     }
 
     /**
-     * Assina um payload JSON (já canónico) e devolve o JWS compacto. Usa a
-     * chave da empresa (`{chaves_dir}/{NIF}.pem`) se existir; senão, a chave
-     * por omissão. Público para poderes testar/depurar isoladamente.
+     * jwsSignature de uma requisição, com a chave do emissor (empresa).
+     *
+     * @param  array<string, mixed>  $objeto  objecto exacto a assinar (ordem das chaves incluída)
      */
-    public function assinar(string $payloadJson, ?int $empresaId = null): string
+    public function assinarRequisicao(int $empresaId, array $objeto): string
     {
-        $chave = $this->carregarChavePrivada($empresaId);
-
-        try {
-            return Jws::assinar($payloadJson, $chave);
-        } catch (\InvalidArgumentException $e) {
-            throw AssinaturaFiscalException::falhaAoAssinar($e->getMessage());
-        }
+        return $this->assinaturaFiscal->assinar(Jws::canonico($objeto), $empresaId);
     }
 
-    /**
-     * Verifica um JWS contra a chave pública e confirma que o objecto
-     * assinado é exactamente o esperado — útil em testes e na auditoria
-     * independente (faturacao:verificar-cadeia).
-     */
-    public function verificar(string $conteudo, string $jws, string $caminhoChavePublica): bool
+    protected function carregarChaveSoftware(): OpenSSLAsymmetricKey
     {
-        if (! is_file($caminhoChavePublica)) {
-            throw AssinaturaFiscalException::chavePublicaNaoEncontrada();
+        if ($this->chaveSoftware !== null) {
+            return $this->chaveSoftware;
         }
 
-        $chavePublica = openssl_pkey_get_public((string) file_get_contents($caminhoChavePublica));
-
-        if (! $chavePublica) {
-            throw AssinaturaFiscalException::chavePublicaInvalida();
-        }
-
-        return Jws::verificar($jws, $chavePublica) && Jws::payload($jws) === $conteudo;
-    }
-
-    protected function carregarChavePrivada(?int $empresaId): OpenSSLAsymmetricKey
-    {
-        $caminho = $this->caminhoDaChave($empresaId);
-
-        if (isset($this->chaves[$caminho])) {
-            return $this->chaves[$caminho];
-        }
+        $caminho = (string) config('faturacao.agt.software.chave_privada_path');
 
         if (! is_file($caminho)) {
             throw AssinaturaFiscalException::chavePrivadaNaoEncontrada($caminho);
@@ -382,212 +308,274 @@ class AssinaturaFiscalService
             throw AssinaturaFiscalException::chaveFraca((int) ($detalhes['bits'] ?? 0), $minimo);
         }
 
-        return $this->chaves[$caminho] = $chave;
-    }
-
-    protected function caminhoDaChave(?int $empresaId): string
-    {
-        if ($empresaId !== null) {
-            $nif = (string) Empresa::query()->whereKey($empresaId)->value('nif');
-            // Só caracteres seguros no nome do ficheiro (sem '/', '..' etc.).
-            $nif = preg_replace('/[^A-Za-z0-9]/', '', $nif) ?? '';
-
-            if ($nif !== '') {
-                $porEmpresa = rtrim((string) config('faturacao.chaves_dir'), '/\\').DIRECTORY_SEPARATOR.$nif.'.pem';
-
-                if (is_file($porEmpresa)) {
-                    return $porEmpresa;
-                }
-            }
-        }
-
-        return (string) config('faturacao.chave_privada_path');
+        return $this->chaveSoftware = $chave;
     }
 }
-EOF_FASE1_4
-mkdir -p Modules/Faturacao/database/migrations
-cat > Modules/Faturacao/database/migrations/2026_10_13_000011_add_pais_to_clientes_table.php <<'EOF_FASE1_5'
+EOF_F2A_3
+mkdir -p Modules/Faturacao/app/Services
+cat > Modules/Faturacao/app/Services/AgtSerieService.php <<'EOF_F2A_4'
 <?php
 
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+namespace Modules\Faturacao\Services;
 
-return new class extends Migration
-{
-    /**
-     * customerCountry (assinado em cada documento): código ISO 3166-1 alpha-2
-     * do país do cliente; "AO" por omissão. Fase 1 da adequação à AGT.
-     */
-    public function up(): void
-    {
-        if (Schema::hasColumn('clientes', 'pais')) {
-            return;
-        }
-
-        Schema::table('clientes', function (Blueprint $table) {
-            $table->string('pais', 2)->default('AO')->after('nif');
-        });
-    }
-
-    public function down(): void
-    {
-        if (Schema::hasColumn('clientes', 'pais')) {
-            Schema::table('clientes', function (Blueprint $table) {
-                $table->dropColumn('pais');
-            });
-        }
-    }
-};
-EOF_FASE1_5
-mkdir -p Modules/Faturacao/tests/Unit
-cat > Modules/Faturacao/tests/Unit/JwsTest.php <<'EOF_FASE1_6'
-<?php
-
-namespace Modules\Faturacao\Tests\Unit;
-
-use Modules\Faturacao\Support\Dinheiro;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use InvalidArgumentException;
+use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
+use Modules\Faturacao\Exceptions\AgtException;
+use Modules\Faturacao\Models\Serie;
 use Modules\Faturacao\Support\Jws;
-use Modules\Faturacao\Support\NumeroJson;
-use Modules\Faturacao\Support\PayloadAssinaturaAgt;
-use PHPUnit\Framework\TestCase;
 
-class JwsTest extends TestCase
+/**
+ * Pede à AGT a criação (ou extensão) de uma série de numeração de facturas
+ * electrónicas e guarda o código e o intervalo autorizados. O documentNo
+ * passa a ser "{tipo} {seriesCode}/{n}", dentro do intervalo autorizado.
+ */
+class AgtSerieService
 {
-    protected function chave(int $bits = 2048): \OpenSSLAsymmetricKey
-    {
-        return openssl_pkey_new(['private_key_bits' => $bits, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+    public function __construct(
+        protected AgtClient $cliente,
+        protected AgtAssinaturaService $assinaturas,
+        protected TenantManager $tenantManager,
+    ) {}
+
+    public function solicitar(
+        Empresa $empresa,
+        string $tipoDocumento,
+        ?int $ano = null,
+        ?string $estabelecimento = null,
+        string $contingencia = 'N',
+    ): Serie {
+        if (! array_key_exists($tipoDocumento, (array) config('faturacao.tipos_documento'))) {
+            throw new InvalidArgumentException("Tipo de documento '{$tipoDocumento}' não suportado.");
+        }
+
+        if (! in_array($contingencia, ['N', 'C'], true)) {
+            throw new InvalidArgumentException("Indicador de contingência '{$contingencia}' inválido (N ou C).");
+        }
+
+        $nif = trim((string) $empresa->nif);
+
+        if ($nif === '') {
+            throw new InvalidArgumentException('A empresa não tem NIF configurado.');
+        }
+
+        $ano ??= now()->year;
+        $estabelecimento = trim((string) $estabelecimento) !== ''
+            ? trim((string) $estabelecimento)
+            : (string) config('faturacao.agt.estabelecimento_padrao', 'SEDE');
+
+        // Objecto assinado em jwsSignature, na ordem indicada pela AGT.
+        $assinado = [
+            'taxRegistrationNumber' => $nif,
+            'seriesYear' => $ano,
+            'documentType' => $tipoDocumento,
+            'establishmentNumber' => $estabelecimento,
+            'seriesContingencyIndicator' => $contingencia,
+        ];
+
+        $corpo = Jws::canonico([
+            'schemaVersion' => '2.0',
+            'submissionUUID' => (string) Str::uuid(),
+            'taxRegistrationNumber' => $nif,
+            'submissionTimeStamp' => now()->utc()->format('Y-m-d\TH:i:s\Z'),
+            'softwareInfo' => $this->assinaturas->softwareInfo(),
+            'seriesYear' => $ano,
+            'documentType' => $tipoDocumento,
+            'establishmentNumber' => $estabelecimento,
+            'jwsSignature' => $this->assinaturas->assinarRequisicao((int) $empresa->id, $assinado),
+            'seriesContingencyIndicator' => $contingencia,
+        ]);
+
+        $resposta = $this->cliente->solicitarSerie($corpo);
+        $resultado = $resposta['corpo']['seriesFEResult'] ?? null;
+
+        if ($resposta['http'] !== 200 || ! is_array($resultado) || empty($resultado['seriesCode'])) {
+            $erros = AgtClient::normalizarErros($resposta['corpo']['errorList'] ?? []);
+
+            throw $erros !== []
+                ? AgtException::rejeitado($erros)
+                : AgtException::respostaInesperada($resposta['http']);
+        }
+
+        return $this->guardar($empresa, $tipoDocumento, $ano, $estabelecimento, $contingencia, $resultado);
     }
 
-    public function test_payload_segue_a_especificacao_da_agt_com_numeros_sem_formatacao(): void
+    /** @param  array<string, mixed>  $resultado  seriesFEResult */
+    protected function guardar(Empresa $empresa, string $tipoDocumento, int $ano, string $estabelecimento, string $contingencia, array $resultado): Serie
     {
-        $json = PayloadAssinaturaAgt::json(
-            'FT FT6325S2C/10006', '5001636863', 'FT', '2025-11-04', 'PT987654321', 'PT', 'Cliente Exemplo Lda', 7000, 50000, 57000,
-        );
+        $codigo = (string) $resultado['seriesCode'];
+        $primeiro = $this->numeroDe($resultado['firstDocumentNo'] ?? null);
+        $ultimo = $this->numeroDe($resultado['lastDocumentNo'] ?? null);
+        $quantidade = $this->numeroDe($resultado['authorizedQuantity'] ?? null, obrigatorio: false) ?? max(0, $ultimo - $primeiro + 1);
 
-        $this->assertSame(
-            '{"documentNo":"FT FT6325S2C/10006","taxRegistrationNumber":"5001636863","documentType":"FT","documentDate":"2025-11-04",'
-            .'"customerTaxID":"PT987654321","customerCountry":"PT","companyName":"Cliente Exemplo Lda",'
-            .'"documentTotals":{"taxPayable":70,"netTotal":500,"grossTotal":570}}',
-            $json,
-        );
+        return $this->tenantManager->semTenant(fn () => DB::transaction(function () use ($empresa, $tipoDocumento, $ano, $estabelecimento, $contingencia, $codigo, $primeiro, $ultimo, $quantidade) {
+            $serie = Serie::query()
+                ->where('empresa_id', $empresa->id)
+                ->where('agt_codigo', $codigo)
+                ->lockForUpdate()
+                ->first();
+
+            if ($serie) {
+                // Extensão de uma série existente: a numeração continua, só cresce o limite.
+                $serie->update([
+                    'quantidade_autorizada' => $quantidade,
+                    'ultimo_numero_autorizado' => max((int) $serie->ultimo_numero_autorizado, $ultimo),
+                ]);
+
+                return $serie;
+            }
+
+            return Serie::create([
+                'empresa_id' => $empresa->id,
+                'tipo_documento' => $tipoDocumento,
+                'ano' => $ano,
+                'prefixo' => $codigo,
+                'agt_codigo' => $codigo,
+                'estabelecimento' => $estabelecimento,
+                'contingencia' => $contingencia,
+                'quantidade_autorizada' => $quantidade,
+                // A primeira factura emitida terá o número "primeiro".
+                'ultimo_numero' => max(0, $primeiro - 1),
+                'ultimo_numero_autorizado' => $ultimo,
+                'agt_criada_em' => now(),
+            ]);
+        }));
     }
 
-    public function test_comprador_sem_nif_usa_999999999_e_pais_por_omissao_ao(): void
+    /** Aceita "1000" ou um identificador completo terminado em número ("FT X/1000"). */
+    protected function numeroDe(mixed $valor, bool $obrigatorio = true): ?int
     {
-        $dados = json_decode(PayloadAssinaturaAgt::json('FT A2026/1', '300000001', 'FT', '2026-10-13', null, null, '', 0, 0, 0), true);
+        if (is_int($valor)) {
+            return $valor;
+        }
 
-        $this->assertSame('999999999', $dados['customerTaxID']);
-        $this->assertSame('AO', $dados['customerCountry']);
-        $this->assertSame('Consumidor final', $dados['companyName']);
-    }
+        if (is_string($valor) && preg_match('/(\d+)$/', trim($valor), $m) === 1) {
+            return (int) $m[1];
+        }
 
-    public function test_numero_json_de_centimos(): void
-    {
-        $this->assertSame('0', NumeroJson::deCentimos(0)->literal);
-        $this->assertSame('0.05', NumeroJson::deCentimos(5)->literal);
-        $this->assertSame('0.1', NumeroJson::deCentimos(10)->literal);
-        $this->assertSame('16.5', NumeroJson::deCentimos(1650)->literal);
-        $this->assertSame('570', NumeroJson::deCentimos(57000)->literal);
-        $this->assertSame('1140.01', NumeroJson::deCentimos(114001)->literal);
-    }
+        if ($obrigatorio) {
+            throw AgtException::configuracaoInvalida('a AGT devolveu um intervalo de numeração inválido para a série.');
+        }
 
-    public function test_jws_rs256_assina_e_verifica(): void
-    {
-        $chave = $this->chave();
-        $publica = openssl_pkey_get_public(openssl_pkey_get_details($chave)['key']);
-        $json = PayloadAssinaturaAgt::json('FT A2026/1', '300000001', 'FT', '2026-10-13', null, null, 'X', 140, 1000, 1140);
-
-        $jws = Jws::assinar($json, $chave);
-        $partes = explode('.', $jws);
-
-        $this->assertCount(3, $partes);
-        $this->assertSame('{"alg":"RS256","typ":"JWT"}', Jws::deBase64url($partes[0]));
-        $this->assertSame($json, Jws::payload($jws));
-        $this->assertDoesNotMatchRegularExpression('/[+\/=]/', $jws, 'Base64URL: sem +, / nem padding.');
-        $this->assertTrue(Jws::verificar($jws, $publica));
-    }
-
-    public function test_jws_adulterado_ou_com_outra_chave_nao_verifica(): void
-    {
-        $chave = $this->chave();
-        $publica = openssl_pkey_get_public(openssl_pkey_get_details($chave)['key']);
-        $outraPublica = openssl_pkey_get_public(openssl_pkey_get_details($this->chave())['key']);
-        $jws = Jws::assinar('{"documentNo":"FT A2026/1"}', $chave);
-
-        $partes = explode('.', $jws);
-        $partes[1] = Jws::base64url('{"documentNo":"FT A2026/2"}');
-
-        $this->assertFalse(Jws::verificar(implode('.', $partes), $publica));
-        $this->assertFalse(Jws::verificar($jws, $outraPublica));
-        $this->assertFalse(Jws::verificar('lixo', $publica));
-    }
-
-    public function test_iva_e_arredondado_por_excesso(): void
-    {
-        $this->assertSame('0.15', Dinheiro::calcularLinha(1, '1.01', 14)['iva']); // 0.1414 => 0.15
-        $this->assertSame('0.05', Dinheiro::calcularLinha(3, '0.10', 14)['iva']); // 0.042  => 0.05
-        $this->assertSame('14.00', Dinheiro::calcularLinha(1, '100.00', 14)['iva']); // exato, não sobe
-        $this->assertSame('8.40', Dinheiro::calcularLinha(3, '19.99', 14)['iva']); // 8.3958 => 8.40
-        $this->assertSame('68.37', Dinheiro::calcularLinha(3, '19.99', 14)['total']);
+        return null;
     }
 }
-EOF_FASE1_6
+EOF_F2A_4
+mkdir -p Modules/Faturacao/app/Console
+cat > Modules/Faturacao/app/Console/SolicitarSerieAgtCommand.php <<'EOF_F2A_5'
+<?php
+
+namespace Modules\Faturacao\Console;
+
+use Illuminate\Console\Command;
+use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Exceptions\AgtException;
+use Modules\Faturacao\Services\AgtSerieService;
+use Throwable;
+
+/**
+ * Pede à AGT uma série de numeração (ou a sua extensão) para uma empresa.
+ */
+class SolicitarSerieAgtCommand extends Command
+{
+    protected $signature = 'faturacao:agt-solicitar-serie
+        {empresa : ID da empresa}
+        {tipo : Tipo de documento (FT, NC, ND, RC)}
+        {--ano= : Ano da série (por omissão, o ano atual)}
+        {--estabelecimento= : Código do estabelecimento (por omissão, SEDE)}
+        {--contingencia=N : N (regime normal) ou C (contingência)}';
+
+    protected $description = 'Solicita à AGT uma série de numeração de facturas electrónicas e guarda o intervalo autorizado';
+
+    public function handle(AgtSerieService $servico): int
+    {
+        $empresa = Empresa::query()->find((int) $this->argument('empresa'));
+
+        if (! $empresa) {
+            $this->error('Empresa inexistente.');
+
+            return self::FAILURE;
+        }
+
+        try {
+            $serie = $servico->solicitar(
+                $empresa,
+                strtoupper((string) $this->argument('tipo')),
+                $this->option('ano') !== null ? (int) $this->option('ano') : null,
+                $this->option('estabelecimento') ?: null,
+                strtoupper((string) $this->option('contingencia')),
+            );
+        } catch (AgtException $e) {
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        } catch (Throwable $e) {
+            $this->error('Falha ao solicitar a série: '.$e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $this->info("Série {$serie->agt_codigo} ({$serie->tipo_documento}/{$serie->ano}) autorizada até ao nº {$serie->ultimo_numero_autorizado}.");
+
+        return self::SUCCESS;
+    }
+}
+EOF_F2A_5
 mkdir -p Modules/Faturacao/tests/Feature
-cat > Modules/Faturacao/tests/Feature/AssinaturaJwsTest.php <<'EOF_FASE1_7'
+cat > Modules/Faturacao/tests/Feature/AgtSerieTest.php <<'EOF_F2A_6'
 <?php
 
 namespace Modules\Faturacao\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Modules\Core\Models\Empresa;
-use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
-use Modules\Faturacao\Models\Cliente;
-use Modules\Faturacao\Models\Fatura;
-use Modules\Faturacao\Services\AssinaturaFiscalService;
-use Modules\Faturacao\Services\FaturaService;
-use Modules\Faturacao\Services\ReciboService;
+use Modules\Faturacao\Exceptions\AgtException;
+use Modules\Faturacao\Services\AgtClient;
+use Modules\Faturacao\Services\AgtSerieService;
+use Modules\Faturacao\Services\NumeracaoService;
 use Modules\Faturacao\Support\Jws;
 use Tests\TestCase;
 
-class AssinaturaJwsTest extends TestCase
+class AgtSerieTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected string $privada;
+    protected string $publicaEmpresa;
 
-    protected string $publica;
-
-    protected string $dirChaves;
+    protected string $publicaSoftware;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        [$this->privada, $this->publica] = $this->gerarPar(2048);
-        $this->dirChaves = sys_get_temp_dir().'/faturacao-chaves-'.uniqid();
+        [$privadaEmpresa, $this->publicaEmpresa] = $this->gerarPar();
+        [$privadaSoftware, $this->publicaSoftware] = $this->gerarPar();
 
         config([
-            'faturacao.chave_privada_path' => $this->privada,
-            'faturacao.chaves_dir' => $this->dirChaves,
+            'faturacao.chave_privada_path' => $privadaEmpresa,
+            'faturacao.chaves_dir' => sys_get_temp_dir().'/agt-sem-chaves-'.uniqid(),
+            'faturacao.agt.software.chave_privada_path' => $privadaSoftware,
+            'faturacao.agt.software.product_id' => 'Saas1 Teste',
+            'faturacao.agt.software.product_version' => '1.0.0',
+            'faturacao.agt.software.signature_version' => null,
+            'faturacao.agt.utilizador' => 'produtor',
+            'faturacao.agt.palavra_passe' => 's3nh@',
+            'faturacao.agt.ambiente' => 'homologacao',
+            'faturacao.saft_numero_certificado' => 'C_134',
         ]);
-
-        $this->beforeApplicationDestroyed(function () {
-            foreach (glob($this->dirChaves.'/*') ?: [] as $f) {
-                @unlink($f);
-            }
-            @rmdir($this->dirChaves);
-        });
     }
 
     /** @return array{0: string, 1: string} caminhos [privada, publica] */
-    protected function gerarPar(int $bits): array
+    protected function gerarPar(): array
     {
-        $recurso = openssl_pkey_new(['private_key_bits' => $bits, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        $recurso = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
         openssl_pkey_export($recurso, $privadaPem);
 
-        $privada = sys_get_temp_dir().'/faturacao-jws-'.uniqid().'.pem';
-        $publica = sys_get_temp_dir().'/faturacao-jws-pub-'.uniqid().'.pem';
+        $privada = sys_get_temp_dir().'/agt-priv-'.uniqid().'.pem';
+        $publica = sys_get_temp_dir().'/agt-pub-'.uniqid().'.pem';
         file_put_contents($privada, $privadaPem);
         file_put_contents($publica, openssl_pkey_get_details($recurso)['key']);
 
@@ -599,344 +587,313 @@ class AssinaturaJwsTest extends TestCase
         return [$privada, $publica];
     }
 
-    protected function cenario(string $nif): array
+    protected function empresa(): Empresa
     {
-        $empresa = Empresa::create(['nome_comercial' => 'Loja JWS '.$nif, 'nif' => $nif]);
-        $cliente = Cliente::create(['empresa_id' => $empresa->id, 'nome' => 'Cliente Teste', 'nif' => null]);
-
-        return [$empresa, $cliente];
+        return Empresa::create(['nome_comercial' => 'Loja AGT', 'nif' => '5001636863']);
     }
 
-    protected function emitir(Empresa $empresa, Cliente $cliente): Fatura
+    protected function respostaSerie(string $ultimo = '1000'): void
     {
-        $servico = app(FaturaService::class);
-        $linhas = [['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => 1000, 'taxa_iva' => 14]];
-
-        return $servico->emitir($servico->criarRascunho($empresa, $cliente, $linhas));
+        Http::fake(['*' => Http::response([
+            'resultCode' => 1,
+            'errorList' => [''],
+            'seriesFEResult' => [
+                'seriesCode' => 'FT6325S2C',
+                'authorizedQuantity' => $ultimo,
+                'firstDocumentNo' => '1',
+                'lastDocumentNo' => $ultimo,
+            ],
+        ], 200)]);
     }
 
-    public function test_fatura_emitida_guarda_jws_rs256_com_o_objecto_da_agt(): void
+    public function test_solicitar_serie_envia_pedido_assinado_e_guarda_o_intervalo_autorizado(): void
     {
-        [$empresa, $cliente] = $this->cenario('320000001');
-        $fatura = $this->emitir($empresa, $cliente);
+        $this->respostaSerie();
+        $serie = app(AgtSerieService::class)->solicitar($this->empresa(), 'FT', 2026);
 
-        $partes = explode('.', $fatura->hash);
-        $this->assertCount(3, $partes);
-        $this->assertSame('{"alg":"RS256","typ":"JWT"}', Jws::deBase64url($partes[0]));
+        $this->assertSame('FT6325S2C', $serie->agt_codigo);
+        $this->assertSame('SEDE', $serie->estabelecimento);
+        $this->assertSame(0, $serie->ultimo_numero);
+        $this->assertSame(1000, $serie->ultimo_numero_autorizado);
 
-        $payload = json_decode(Jws::payload($fatura->hash), true);
-        $this->assertSame($fatura->numero_documento, $payload['documentNo']);
-        $this->assertSame('320000001', $payload['taxRegistrationNumber']);
-        $this->assertSame('FT', $payload['documentType']);
-        $this->assertSame('999999999', $payload['customerTaxID']);
-        $this->assertSame('AO', $payload['customerCountry']);
-        $this->assertSame('Cliente Teste', $payload['companyName']);
-        $this->assertSame(['taxPayable' => 140, 'netTotal' => 1000, 'grossTotal' => 1140], $payload['documentTotals']);
+        [$pedido] = Http::recorded()[0];
+        $dados = $pedido->data();
+
+        $this->assertSame('https://sifphml.minfin.gov.ao/sigt/fe/v1/solicitarSerie', $pedido->url());
+        $this->assertSame('Basic '.base64_encode('produtor:s3nh@'), $pedido->header('Authorization')[0]);
+        $this->assertSame('2.0', $dados['schemaVersion']);
+        $this->assertSame('5001636863', $dados['taxRegistrationNumber']);
+        $this->assertSame('FT', $dados['documentType']);
+        $this->assertSame('N', $dados['seriesContingencyIndicator']);
+
+        // jwsSignature (chave do emissor): objecto exacto indicado pela AGT.
+        $this->assertSame(
+            '{"taxRegistrationNumber":"5001636863","seriesYear":2026,"documentType":"FT","establishmentNumber":"SEDE","seriesContingencyIndicator":"N"}',
+            Jws::payload($dados['jwsSignature']),
+        );
+        $this->assertTrue(Jws::verificar($dados['jwsSignature'], openssl_pkey_get_public((string) file_get_contents($this->publicaEmpresa))));
+
+        // jwsSoftwareSignature (chave do software): softwareInfoDetail inteiro.
+        $assinaturaSoftware = $dados['softwareInfo']['jwsSoftwareSignature'];
+        $this->assertSame('{"productId":"Saas1 Teste","productVersion":"1.0.0","softwareValidationNumber":"C_134"}', Jws::payload($assinaturaSoftware));
+        $this->assertTrue(Jws::verificar($assinaturaSoftware, openssl_pkey_get_public((string) file_get_contents($this->publicaSoftware))));
     }
 
-    public function test_assinatura_verifica_com_a_chave_publica_e_falha_se_adulterada(): void
+    public function test_numeracao_com_serie_agt_usa_o_codigo_da_serie_e_respeita_o_limite(): void
     {
-        [$empresa, $cliente] = $this->cenario('320000002');
-        $fatura = $this->emitir($empresa, $cliente);
-        $servico = app(AssinaturaFiscalService::class);
+        config(['faturacao.agt.ativo' => true]);
+        $empresa = $this->empresa();
+        $this->respostaSerie('2');
+        app(AgtSerieService::class)->solicitar($empresa, 'FT', now()->year);
 
-        $this->assertTrue($servico->verificar($fatura->construirStringParaAssinar(), $fatura->hash, $this->publica));
+        $numeracao = app(NumeracaoService::class);
 
-        $adulterado = str_replace('1140', '1141', Jws::payload($fatura->hash));
-        $this->assertFalse($servico->verificar($adulterado, $fatura->hash, $this->publica));
+        $this->assertSame('FT FT6325S2C/1', $numeracao->proximoNumero($empresa->id, 'FT')['numero_documento']);
+        $this->assertSame('FT FT6325S2C/2', $numeracao->proximoNumero($empresa->id, 'FT')['numero_documento']);
+
+        $this->expectException(AgtException::class);
+        $this->expectExceptionMessage('esgotou');
+
+        $numeracao->proximoNumero($empresa->id, 'FT');
     }
 
-    public function test_chave_com_menos_de_2048_bits_e_recusada(): void
+    public function test_extensao_de_serie_aumenta_o_limite_sem_reiniciar_a_numeracao(): void
     {
-        [$empresa, $cliente] = $this->cenario('320000003');
-        [$fraca] = $this->gerarPar(1024);
-        config(['faturacao.chave_privada_path' => $fraca]);
+        config(['faturacao.agt.ativo' => true]);
+        $empresa = $this->empresa();
+        $this->respostaSerie('1');
+        app(AgtSerieService::class)->solicitar($empresa, 'FT', now()->year);
+        app(NumeracaoService::class)->proximoNumero($empresa->id, 'FT');
 
-        $this->expectException(AssinaturaFiscalException::class);
-        $this->expectExceptionMessage('2048');
+        $this->respostaSerie('5');
+        $serie = app(AgtSerieService::class)->solicitar($empresa, 'FT', now()->year);
 
-        $this->emitir($empresa, $cliente);
+        $this->assertSame(1, $serie->ultimo_numero);
+        $this->assertSame(5, $serie->ultimo_numero_autorizado);
+        $this->assertSame('FT FT6325S2C/2', app(NumeracaoService::class)->proximoNumero($empresa->id, 'FT')['numero_documento']);
     }
 
-    public function test_cada_empresa_assina_com_a_sua_propria_chave_quando_existe(): void
+    public function test_com_agt_ativa_nao_se_inventa_serie_local(): void
     {
-        [$empresa, $cliente] = $this->cenario('320000004');
-        [$privadaEmpresa, $publicaEmpresa] = $this->gerarPar(2048);
+        config(['faturacao.agt.ativo' => true]);
+        $empresa = $this->empresa();
 
-        mkdir($this->dirChaves, 0777, true);
-        copy($privadaEmpresa, $this->dirChaves.'/320000004.pem');
+        $this->expectException(AgtException::class);
+        $this->expectExceptionMessage('faturacao:agt-solicitar-serie');
 
-        $fatura = $this->emitir($empresa, $cliente);
-        $servico = app(AssinaturaFiscalService::class);
-
-        $this->assertTrue($servico->verificar($fatura->construirStringParaAssinar(), $fatura->hash, $publicaEmpresa));
-        $this->assertFalse($servico->verificar($fatura->construirStringParaAssinar(), $fatura->hash, $this->publica));
+        app(NumeracaoService::class)->obterOuCriarSerie($empresa->id, 'FT');
     }
 
-    public function test_recibo_assina_imposto_proporcional_da_fatura_por_excesso(): void
+    public function test_rejeicao_da_agt_devolve_os_codigos_de_erro(): void
     {
-        [$empresa, $cliente] = $this->cenario('320000005');
-        $fatura = $this->emitir($empresa, $cliente); // 1000 + 140 = 1140
+        Http::fake(['*' => Http::response(['errorList' => [['idError' => 'E31', 'descriptionError' => 'Código de série já em utilização']]], 400)]);
 
-        $recibo = app(ReciboService::class)->emitir($empresa->id, $cliente->id, '500.00', 'dinheiro', $fatura->id);
-        $payload = json_decode(Jws::payload($recibo->hash), true);
+        try {
+            app(AgtSerieService::class)->solicitar($this->empresa(), 'FT', 2026);
+        } catch (AgtException $e) {
+            $this->assertSame('E31', $e->erros[0]['codigo']);
+            $this->assertStringContainsString('E31', $e->getMessage());
 
-        $this->assertSame('RC', $payload['documentType']);
-        $this->assertEqualsWithDelta(61.41, $payload['documentTotals']['taxPayable'], 0.0001);
-        $this->assertEqualsWithDelta(438.59, $payload['documentTotals']['netTotal'], 0.0001);
-        $this->assertSame(500, $payload['documentTotals']['grossTotal']);
+            return;
+        }
+
+        $this->fail('Era esperada uma AgtException.');
+    }
+
+    public function test_sem_credenciais_nada_e_enviado(): void
+    {
+        Http::fake();
+        config(['faturacao.agt.utilizador' => '', 'faturacao.agt.palavra_passe' => '']);
+
+        try {
+            app(AgtSerieService::class)->solicitar($this->empresa(), 'FT', 2026);
+            $this->fail('Era esperada uma AgtException.');
+        } catch (AgtException $e) {
+            $this->assertStringContainsString('FATURACAO_AGT_UTILIZADOR', $e->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_producao_exige_numero_de_certificacao_do_software(): void
+    {
+        Http::fake();
+        config(['faturacao.agt.ambiente' => 'producao', 'faturacao.saft_numero_certificado' => '0']);
+
+        $this->expectException(AgtException::class);
+        $this->expectExceptionMessage('certificação');
+
+        try {
+            app(AgtSerieService::class)->solicitar($this->empresa(), 'FT', 2026);
+        } finally {
+            Http::assertNothingSent();
+        }
+    }
+
+    public function test_normalizar_erros_aceita_objectos_e_textos_e_ignora_vazios(): void
+    {
+        $erros = AgtClient::normalizarErros([
+            '',
+            'falha solta',
+            ['idError' => 'E09', 'descriptionError' => 'Factura já consta no repositório'],
+        ]);
+
+        $this->assertSame([
+            ['codigo' => 'E99', 'descricao' => 'falha solta'],
+            ['codigo' => 'E09', 'descricao' => 'Factura já consta no repositório'],
+        ], $erros);
     }
 }
-EOF_FASE1_7
-python3 - <<'EOF_PATCH_MAIN'
-import re, sys, pathlib
+EOF_F2A_6
+python3 - <<'EOF_PATCH_2A'
+import sys, pathlib
 
 M = pathlib.Path('Modules/Faturacao')
 
 def ler(p): return p.read_text(encoding='utf-8')
 def gravar(p, t): p.write_text(t, encoding='utf-8')
 
-def substituir(texto, antigo, novo, ficheiro, obrigatorio=True):
+def substituir(texto, antigo, novo, ficheiro):
     if novo in texto and antigo not in texto:
-        return texto  # já aplicado (idempotente)
+        return texto  # já aplicado
     if antigo not in texto:
-        if obrigatorio:
-            sys.exit(f'ERRO: bloco esperado não encontrado em {ficheiro}. Aborta sem alterar mais nada.')
-        return texto
+        sys.exit(f'ERRO: bloco esperado não encontrado em {ficheiro}. Nada mais foi alterado por este passo.')
     return texto.replace(antigo, novo, 1)
 
-# ---------- Modelos: payload AGT em vez da string concatenada ----------
-alvos = {
-    'Fatura.php': ('valor_iva', 'valor_sem_iva', 'valor_total'),
-    'NotaCreditoDebito.php': ('valor_iva', 'valor_sem_iva', 'valor_total'),
-    'Recibo.php': None,
-}
-padrao = re.compile(r"    public function construirStringParaAssinar\(\): string\n    \{\n.*?\n    \}\n", re.S)
-
-corpo_doc = """    /**
-     * Objecto JSON canónico assinado em jwsDocumentSignature (API de Facturação
-     * Electrónica da AGT): documentNo, taxRegistrationNumber, documentType,
-     * documentDate, customerTaxID, customerCountry, companyName e
-     * documentTotals. Ver Support/PayloadAssinaturaAgt.
-     */
-    public function construirStringParaAssinar(): string
-    {
-        return $this->payloadAgtJson(
-            Dinheiro::centimos($this->valor_iva),
-            Dinheiro::centimos($this->valor_sem_iva),
-            Dinheiro::centimos($this->valor_total),
-        );
-    }
-"""
-corpo_recibo = """    /**
-     * Objecto JSON canónico assinado em jwsDocumentSignature (API de Facturação
-     * Electrónica da AGT). Num recibo, o imposto é o IVA proporcional da fatura
-     * regularizada (arredondado por excesso, como o resto do IVA); sem fatura
-     * (adiantamento), o valor é líquido e o imposto 0. A AGT apura este total
-     * a partir dos documentos de origem — confirmar na homologação.
-     */
-    public function construirStringParaAssinar(): string
-    {
-        $bruto = Dinheiro::centimos($this->valor);
-        $imposto = 0;
-
-        $fatura = $this->fatura_id
-            ? Fatura::withoutGlobalScopes()->where('empresa_id', $this->empresa_id)->find($this->fatura_id)
-            : null;
-
-        if ($fatura && Dinheiro::centimos($fatura->valor_total) > 0) {
-            $totalFatura = Dinheiro::centimos($fatura->valor_total);
-            $imposto = intdiv($bruto * Dinheiro::centimos($fatura->valor_iva) + $totalFatura - 1, $totalFatura);
-        }
-
-        return $this->payloadAgtJson($imposto, $bruto - $imposto, $bruto);
-    }
-"""
-
-for nome in alvos:
-    f = M / 'app/Models' / nome
-    t = ler(f)
-    if 'AssinavelAgt' not in t:
-        corpo = corpo_recibo if nome == 'Recibo.php' else corpo_doc
-        t, n = padrao.subn(lambda _m: corpo, t, count=1)
-        if n != 1:
-            sys.exit(f'ERRO: construirStringParaAssinar não encontrado em {nome}.')
-        t = substituir(t, 'use Modules\\Faturacao\\Contracts\\DocumentoFiscalInterface;\n',
-                       'use Modules\\Faturacao\\Contracts\\DocumentoFiscalInterface;\nuse Modules\\Faturacao\\Support\\Dinheiro;\nuse Modules\\Faturacao\\Traits\\AssinavelAgt;\n', nome)
-        t = substituir(t, '    use BelongsToTenant;\n    use Imutavel;\n', '    use AssinavelAgt;\n    use BelongsToTenant;\n    use Imutavel;\n', nome)
-        gravar(f, t)
-
-# ---------- Dinheiro: IVA arredondado por excesso ----------
-f = M / 'app/Support/Dinheiro.php'
+# ---------- Serie ----------
+f = M / 'app/Models/Serie.php'
 t = ler(f)
-t = substituir(t, 'sem passar por float na conversão (o texto decimal é lido dígito a\n * dígito). Valores NÃO negativos; arredondamento "half up".',
-               'sem passar por float na conversão (o texto decimal é lido dígito a\n * dígito). Valores NÃO negativos. Arredondamento "half up" nos valores base e\n * POR EXCESSO no imposto: a AGT exige que taxContribution seja arredondado\n * por excesso ao cêntimo (ex.: 23.144 => 23.15).', 'Dinheiro.php')
-t = substituir(t, '$iva = intdiv($semIva * $taxa + 5000, 10000);', '$iva = intdiv($semIva * $taxa + 9999, 10000); // por excesso (AGT)', 'Dinheiro.php')
-gravar(f, t)
+if 'agt_codigo' not in t:
+    t = substituir(t, "        'ultimo_numero',\n    ];", "        'ultimo_numero',\n        'agt_codigo',\n        'estabelecimento',\n        'contingencia',\n        'quantidade_autorizada',\n        'ultimo_numero_autorizado',\n        'agt_criada_em',\n    ];", 'Serie.php')
+    t = substituir(t, "            'ultimo_numero' => 'integer',\n        ];", "            'ultimo_numero' => 'integer',\n            'quantidade_autorizada' => 'integer',\n            'ultimo_numero_autorizado' => 'integer',\n            'agt_criada_em' => 'datetime',\n        ];", 'Serie.php')
+    t = substituir(t, 'return "{$this->tipo_documento} {$this->prefixo}{$this->ano}";', 'return $this->agt_codigo !== null\n            ? "{$this->tipo_documento} {$this->agt_codigo}"\n            : "{$this->tipo_documento} {$this->prefixo}{$this->ano}";', 'Serie.php')
+    gravar(f, t)
 
-# ---------- Teste existente que fixava o arredondamento antigo ----------
-f = M / 'tests/Feature/RegrasDeNegocioTest.php'
+# ---------- NumeracaoService ----------
+f = M / 'app/Services/NumeracaoService.php'
 t = ler(f)
-t = substituir(t, "['sem_iva' => '0.30', 'iva' => '0.04', 'total' => '0.34'], Dinheiro::calcularLinha(3, '0.10', 14));",
-               "['sem_iva' => '0.30', 'iva' => '0.05', 'total' => '0.35'], Dinheiro::calcularLinha(3, '0.10', 14)); // 0.042 => 0.05 (IVA por excesso, AGT)", 'RegrasDeNegocioTest.php')
-gravar(f, t)
-
-# ---------- Cliente: país (customerCountry) ----------
-f = M / 'app/Models/Cliente.php'
-t = ler(f)
-t = substituir(t, "        'nif',\n        'morada',", "        'nif',\n        'pais',\n        'morada',", 'Cliente.php')
-gravar(f, t)
+if 'serieAgtAtual' not in t:
+    t = substituir(t, "use Modules\\Faturacao\\Exceptions\\CadeiaFiscalInterrompidaException;\n",
+                   "use Modules\\Faturacao\\Exceptions\\AgtException;\nuse Modules\\Faturacao\\Exceptions\\CadeiaFiscalInterrompidaException;\n", 'NumeracaoService.php')
+    t = substituir(t, "                $novoNumero = $serie->ultimo_numero + 1;\n                $serie->update(['ultimo_numero' => $novoNumero]);\n",
+                   "                $novoNumero = $serie->ultimo_numero + 1;\n\n                if ($serie->agt_codigo !== null\n                    && $serie->ultimo_numero_autorizado !== null\n                    && $novoNumero > $serie->ultimo_numero_autorizado) {\n                    throw AgtException::serieEsgotada($serie->agt_codigo, (int) $serie->ultimo_numero_autorizado);\n                }\n\n                $serie->update(['ultimo_numero' => $novoNumero]);\n", 'NumeracaoService.php')
+    t = substituir(t, "                    'numero_documento' => \"{$tipoDocumento} {$prefixo}{$serie->ano}/{$novoNumero}\",\n",
+                   "                    'numero_documento' => $serie->agt_codigo !== null\n                        ? \"{$tipoDocumento} {$serie->agt_codigo}/{$novoNumero}\"\n                        : \"{$tipoDocumento} {$prefixo}{$serie->ano}/{$novoNumero}\",\n", 'NumeracaoService.php')
+    t = substituir(t, "            $ano = now()->year;\n\n            $query = Serie::query()",
+                   "            $ano = now()->year;\n\n            // Com a comunicação à AGT ativa, só se numera em séries autorizadas por ela.\n            if (config('faturacao.agt.ativo')) {\n                return $this->serieAgtAtual($empresaId, $tipoDocumento, $ano, $comLock);\n            }\n\n            $query = Serie::query()", 'NumeracaoService.php')
+    t = substituir(t, "    /**\n     * Duas transações podem chegar aqui em simultâneo",
+                   "    /**\n     * Série autorizada pela AGT para o ano corrente (regime normal). Já corre\n     * dentro do semTenant() de quem chamou.\n     */\n    protected function serieAgtAtual(int $empresaId, string $tipoDocumento, int $ano, bool $comLock): Serie\n    {\n        $query = Serie::query()\n            ->where('empresa_id', $empresaId)\n            ->where('tipo_documento', $tipoDocumento)\n            ->where('ano', $ano)\n            ->whereNotNull('agt_codigo')\n            ->where('contingencia', 'N')\n            ->orderByDesc('id');\n\n        $serie = $comLock ? $query->lockForUpdate()->first() : $query->first();\n\n        return $serie ?? throw AgtException::serieIndisponivel($tipoDocumento, $ano);\n    }\n\n    /**\n     * Duas transações podem chegar aqui em simultâneo", 'NumeracaoService.php')
+    gravar(f, t)
 
 # ---------- Config ----------
-NOVO_BLOCO_CONFIG = r"""    /*
-    |--------------------------------------------------------------------------
-    | Assinatura digital (JWS RS256) — Facturação Electrónica da AGT
-    |--------------------------------------------------------------------------
-    |
-    | Segundo a especificação oficial da AGT (quiosque AGT > Facturação
-    | Electrónica > Estrutura das Assinaturas Digitais), cada documento é
-    | assinado como JWS compacto, algoritmo RS256 (RSA + SHA-256), sobre o
-    | objecto JSON do documento, com chave RSA de pelo menos 2048 bits.
-    |
-    | As chaves do CONTRIBUINTE são emitidas pela AGT no Portal do Contribuinte
-    | ao aderir à faturação eletrónica (uma por NIF). Guarda a chave privada de
-    | cada empresa em:
-    |   {chaves_dir}/{NIF}.pem
-    | e só se não existir esse ficheiro é usada a chave por omissão abaixo
-    | (útil em desenvolvimento e testes). NUNCA committes chaves para o Git.
-    |
-    | A chave do SOFTWARE (jwsSoftwareSignature) é outra, gerada pelo produtor;
-    | entra na Fase 2 (comunicação com a AGT).
-    */
-    // `?:` e não o 2.º argumento de env(): uma variável presente mas vazia
-    // devolve '' e não usaria o valor por omissão.
-    'chave_privada_path' => env('FATURACAO_CHAVE_PRIVADA_PATH') ?: storage_path('app/faturacao/chave-privada.pem'),
-
-    'chaves_dir' => env('FATURACAO_CHAVES_DIR') ?: storage_path('app/faturacao/chaves'),
-
-    /*
-    | Tamanho mínimo aceite para chaves RSA de assinatura (bits). A AGT
-    | recomenda não usar chaves inferiores a 2048 bits.
-    */
-    'chave_minima_bits' => 2048,
-
-    /*
-    | Versão da chave em uso — nº inteiro sequencial registado em cada
-    | documento, para permitir rotação de chaves sem invalidar documentos
-    | antigos.
-    */
-    'chave_versao' => (int) env('FATURACAO_CHAVE_VERSAO', 1),
-
-"""
-
 f = M / 'config/config.php'
 t = ler(f)
-if 'chaves_dir' not in t:
-    ini = t.index("    /*\n    |--------------------------------------------------------------------------\n    | Chave RSA do produtor de software")
-    fim = t.index("    /*\n    |--------------------------------------------------------------------------\n    | Séries de documentos")
-    t = t[:ini] + NOVO_BLOCO_CONFIG + t[fim:]
+if "'agt' =>" not in t:
+    bloco = """
+    /*
+    |--------------------------------------------------------------------------
+    | Comunicação com a AGT (Facturação Electrónica)
+    |--------------------------------------------------------------------------
+    | `ativo` desligado: o módulo numera localmente (desenvolvimento). Ligado:
+    | só se numera em séries autorizadas pela AGT e os pedidos usam Basic Auth
+    | com as credenciais pedidas por e-mail a produtores.dfe.dcrr.agt@minfin.gov.ao
+    | (nome e NIF da empresa produtora). Os endereços e caminhos são os da
+    | documentação oficial da AGT e ficam configuráveis porque a documentação de
+    | homologação tem inconsistências — confirma-os na homologação.
+    */
+    'agt' => [
+        'ativo' => (bool) env('FATURACAO_AGT_ATIVO', false),
+        'ambiente' => env('FATURACAO_AGT_AMBIENTE', 'homologacao'), // homologacao | producao
+        'urls' => [
+            'homologacao' => env('FATURACAO_AGT_URL_HOMOLOGACAO', 'https://sifphml.minfin.gov.ao/sigt/fe/v1'),
+            'producao' => env('FATURACAO_AGT_URL_PRODUCAO', 'https://sifp.minfin.gov.ao/sigt/fe/v1'),
+        ],
+        'caminhos' => [
+            'solicitar_serie' => '/solicitarSerie',
+            'registar_factura' => '/registarFactura',
+            'obter_estado' => '/obterEstado',
+        ],
+        'utilizador' => env('FATURACAO_AGT_UTILIZADOR'),
+        'palavra_passe' => env('FATURACAO_AGT_PALAVRA_PASSE'),
+        'timeout' => (int) env('FATURACAO_AGT_TIMEOUT', 20),
+        'estabelecimento_padrao' => env('FATURACAO_AGT_ESTABELECIMENTO', 'SEDE'),
+        'software' => [
+            'product_id' => env('FATURACAO_AGT_PRODUCT_ID', 'Saas1'),
+            'product_version' => env('FATURACAO_AGT_PRODUCT_VERSION', '1.0.0'),
+            // O número de certificação é o 'saft_numero_certificado' (acima).
+            'signature_version' => env('FATURACAO_AGT_SIGNATURE_VERSION'),
+            'chave_privada_path' => env('FATURACAO_AGT_CHAVE_SOFTWARE') ?: storage_path('app/faturacao/chave-software.pem'),
+        ],
+    ],
+
+"""
+    idx = t.rstrip().rfind('];')
+    t = t[:idx].rstrip('\n') + '\n' + bloco + '];\n'
     gravar(f, t)
+
+# ---------- bootstrap/app.php: registar o comando ----------
+f = pathlib.Path('bootstrap/app.php')
+t = ler(f)
+if 'SolicitarSerieAgtCommand' not in t:
+    t = substituir(t, "use Modules\\Faturacao\\Console\\VerificarCadeiaFiscalCommand;\n",
+                   "use Modules\\Faturacao\\Console\\SolicitarSerieAgtCommand;\nuse Modules\\Faturacao\\Console\\VerificarCadeiaFiscalCommand;\n", 'bootstrap/app.php')
+    t = substituir(t, "        VerificarCadeiaFiscalCommand::class,\n",
+                   "        VerificarCadeiaFiscalCommand::class,\n        SolicitarSerieAgtCommand::class,\n", 'bootstrap/app.php')
+    gravar(f, t)
+
+# ---------- .env.example ----------
+f = pathlib.Path('.env.example')
+if f.exists():
+    t = ler(f)
+    if 'FATURACAO_AGT_ATIVO' not in t:
+        t = t.rstrip('\n') + """
+
+# --- Comunicação com a AGT (Facturação Electrónica) ---
+FATURACAO_AGT_ATIVO=false
+FATURACAO_AGT_AMBIENTE=homologacao
+# Credenciais Basic Auth pedidas à AGT (produtores.dfe.dcrr.agt@minfin.gov.ao)
+# FATURACAO_AGT_UTILIZADOR=
+# FATURACAO_AGT_PALAVRA_PASSE=
+FATURACAO_AGT_ESTABELECIMENTO=SEDE
+# FATURACAO_AGT_PRODUCT_ID=Saas1
+# FATURACAO_AGT_PRODUCT_VERSION=1.0.0
+# Chave privada RSA (>= 2048 bits) do SOFTWARE, registada na AGT
+# FATURACAO_AGT_CHAVE_SOFTWARE=
+"""
+        gravar(f, t)
 
 # ---------- README ----------
 f = M / 'README.md'
 t = ler(f)
-if 'Assinatura JWS (AGT)' not in t:
+if 'Séries da AGT' not in t:
     t += """
 
-## Assinatura JWS (AGT) — regime atual
+## Séries da AGT (Fase 2a)
 
-Desde a Fase 1 da adequação à Facturação Electrónica (Decreto Presidencial
-71/25 e Decreto Executivo 683/25), cada documento é assinado segundo a
-especificação oficial da AGT (quiosque AGT > Facturação Electrónica):
+Com `FATURACAO_AGT_ATIVO=true` o módulo deixa de numerar localmente: só emite em
+**séries autorizadas pela AGT**. O `documentNo` passa a ser `{tipo} {seriesCode}/{n}`
+(ex.: `FT FT6325S2C/10006`) e a numeração pára no último número autorizado.
 
-- **JWS compacto, RS256** (RSA + SHA-256), cabeçalho `{"alg":"RS256","typ":"JWT"}`,
-  Base64URL sem padding, **chave RSA de pelo menos 2048 bits** (chaves mais
-  fracas são recusadas).
-- O que se assina é o **objecto JSON do documento** (`documentNo`,
-  `taxRegistrationNumber`, `documentType`, `documentDate`, `customerTaxID`,
-  `customerCountry`, `companyName`, `documentTotals`), em JSON canónico — não
-  uma string concatenada. Comprador sem NIF => `999999999`.
-- O JWS completo fica na coluna `hash` de cada documento (a antiga assinatura
-  RSA-SHA1 de 172 caracteres, do Ofício Circulado 50001/2013, **já não se usa**).
-  `hash_anterior` mantém-se apenas como cadeia interna para deteção de lacunas;
-  não faz parte do objecto assinado.
-- **O IVA é arredondado por excesso** ao cêntimo (regra do campo `taxContribution`).
-- Chaves por empresa: `storage/app/faturacao/chaves/{NIF}.pem` (emitidas pela AGT
-  no Portal do Contribuinte); sem esse ficheiro usa-se a chave por omissão.
+1. Pede as credenciais de produtor à AGT (e-mail a `produtores.dfe.dcrr.agt@minfin.gov.ao`
+   com o nome e o NIF da empresa) e regista o software/chave pública do software.
+2. Cada empresa adere à faturação eletrónica no Portal do Contribuinte e a sua chave
+   privada vai para `storage/app/faturacao/chaves/{NIF}.pem`.
+3. Pede a série: `php artisan faturacao:agt-solicitar-serie <empresa> FT`
+   (repete para NC, ND e RC; repetir o pedido para uma série existente é uma extensão).
 
-Ainda **não** feito (fases seguintes): pedido de séries à AGT, envio
-`registarFactura`, QR Code, tipos de operação, códigos de isenção e SAF-T(AO).
-Este módulo continua a não substituir a certificação do software pela AGT.
+Ainda **não** feito (Fase 2b): envio `registarFactura`, consulta de estado, QR Code.
 """
     gravar(f, t)
 
+print('Fase 2a: patches aplicados com sucesso.')
 
-# ---------- Limpeza de comentários antigos ----------
-f = M / 'app/Models/Fatura.php'
-t = ler(f)
-antigo_doc = """    /**
-     * Formato reconstruído a partir da família de especificações SAF-T
-     * lusófona a que o mecanismo da AGT está alinhado (Portaria 363/2010):
-     * data;data-hora-sistema;identificador-documento;valor-total;hash-anterior.
-     * CONFIRMA isto contra a documentação técnica atual da AGT antes de
-     * assinares um único documento real com esta chave — ver README.
-     */
-"""
-t = t.replace(antigo_doc, '', 1)
-gravar(f, t)
-
-f = M / 'app/Contracts/DocumentoFiscalInterface.php'
-t = ler(f)
-t = substituir(t, """     * String canónica usada como entrada da assinatura RSA. Cada model
-     * decide os seus próprios campos (data, número, valores, hash
-     * anterior) — ver AssinaturaFiscalService::assinar() para a construção
-     * exata e o aviso sobre confirmar o formato contra a AGT.""",
-"""     * Objecto JSON canónico assinado como JWS RS256 (jwsDocumentSignature da
-     * API de Facturação Electrónica da AGT): documentNo, taxRegistrationNumber,
-     * documentType, documentDate, customerTaxID, customerCountry, companyName e
-     * documentTotals. Ver Support/PayloadAssinaturaAgt e AssinaturaFiscalService.""", 'DocumentoFiscalInterface.php')
-gravar(f, t)
-
-f = pathlib.Path('.env.example')
-if f.exists():
-    t = ler(f)
-    if 'FATURACAO_CHAVES_DIR' not in t:
-        t = substituir(t, '# FATURACAO_CHAVE_PRIVADA_PATH=\n', '# FATURACAO_CHAVE_PRIVADA_PATH=\n# Pasta com as chaves privadas emitidas pela AGT, uma por empresa: {NIF}.pem\n# FATURACAO_CHAVES_DIR=\n', '.env.example')
-        gravar(f, t)
-
-print('Patches aplicados com sucesso.')
-
-EOF_PATCH_MAIN
-python3 - <<'EOF_PATCH_EXC'
-import sys, pathlib
-f = pathlib.Path('Modules/Faturacao/app/Exceptions/AssinaturaFiscalException.php')
-t = f.read_text(encoding='utf-8')
-if 'chaveFraca' not in t:
-    novo = """
-    public static function chaveFraca(int $bits, int $minimo): self
-    {
-        return new self("A chave RSA de assinatura tem {$bits} bits; a AGT exige pelo menos {$minimo} bits.");
-    }
-
-    public static function dadosEmFalta(string $motivo): self
-    {
-        return new self('Não é possível assinar o documento: '.$motivo);
-    }
-}
-"""
-    idx = t.rstrip().rfind('}')
-    t = t[:idx].rstrip('\n') + '\n' + novo
-    f.write_text(t, encoding='utf-8')
-print('Excecoes OK')
-
-EOF_PATCH_EXC
+EOF_PATCH_2A
 
 echo "== Sintaxe PHP =="
 for f in $(git status --porcelain | awk '{print $2}' | grep '\.php$'); do php -l "$f" >/dev/null; done
-for f in Modules/Faturacao/tests/Unit/JwsTest.php; do php -l "$f" >/dev/null; done
 
 echo "== Estilo (Pint) =="
-vendor/bin/pint Modules/Faturacao
+vendor/bin/pint Modules/Faturacao bootstrap/app.php
 
 echo "== Migração (base de dados local) =="
 php artisan migrate --force || echo "AVISO: migrate falhou na BD local; os testes usam SQLite em memória e continuam."
@@ -946,8 +903,8 @@ php artisan test
 
 echo "== Commit e push direto para main =="
 git add -A
-git commit -m "feat(faturacao): assinatura JWS RS256 da AGT, payload oficial e IVA por excesso" \
-  -m "Fase 1 da adequação à Facturação Electrónica (DP 71/25, DE 683/25): JWS RS256 com chave RSA >= 2048 bits sobre o objecto JSON do documento, chave por empresa ({NIF}.pem), customerCountry, IVA arredondado por excesso. Substitui a assinatura RSA-SHA1 antiga."
+git commit -m "feat(faturacao): séries autorizadas pela AGT, cliente HTTP e assinatura do software" \
+  -m "Fase 2a: pedido de séries (solicitarSerie) com jwsSignature do emissor e jwsSoftwareSignature, documentNo {tipo} {seriesCode}/{n} limitado ao intervalo autorizado, Basic Auth, comando faturacao:agt-solicitar-serie. Desligado por omissão (FATURACAO_AGT_ATIVO=false)."
 git push origin main
-echo "FASE 1 CONCLUÍDA e enviada para main."
+echo "FASE 2a CONCLUÍDA e enviada para main."
 )
