@@ -28,7 +28,7 @@ class FaixaMusical extends Model
 
     public function versoes(): HasMany
     {
-        return $this->hasMany(VersaoAudio::class)->latest('enviada_em');
+        return $this->hasMany(VersaoAudio::class)->latest('enviada_em')->latest('id');
     }
 
     public function ultimaVersao(): ?VersaoAudio

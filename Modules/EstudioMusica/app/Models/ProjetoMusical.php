@@ -62,6 +62,45 @@ class ProjetoMusical extends Model
     }
 
     /**
+     * Como mostrar `link_publico` na landing, de forma segura: só https,
+     * só domínios conhecidos para incorporar (iframe) e qualquer outro
+     * endereço https vira uma ligação simples. Devolve null para
+     * qualquer coisa inválida (ex.: `javascript:`), que a landing ignora.
+     *
+     * @return array{tipo: 'spotify'|'youtube'|'link', url: string}|null
+     */
+    public function incorporacaoPublica(): ?array
+    {
+        $partes = parse_url(trim((string) $this->link_publico));
+
+        if (! is_array($partes) || ($partes['scheme'] ?? '') !== 'https' || empty($partes['host'])) {
+            return null;
+        }
+
+        $host = strtolower($partes['host']);
+        $caminho = $partes['path'] ?? '';
+
+        if ($host === 'open.spotify.com'
+            && preg_match('#^/(track|album|playlist|episode|show|artist)/([A-Za-z0-9]+)#', $caminho, $m)) {
+            return ['tipo' => 'spotify', 'url' => "https://open.spotify.com/embed/{$m[1]}/{$m[2]}"];
+        }
+
+        if (in_array($host, ['youtube.com', 'www.youtube.com', 'm.youtube.com'], true) && $caminho === '/watch') {
+            parse_str($partes['query'] ?? '', $query);
+
+            if (is_string($query['v'] ?? null) && preg_match('/^[A-Za-z0-9_-]{11}$/', $query['v'])) {
+                return ['tipo' => 'youtube', 'url' => 'https://www.youtube.com/embed/'.$query['v']];
+            }
+        }
+
+        if ($host === 'youtu.be' && preg_match('#^/([A-Za-z0-9_-]{11})$#', $caminho, $m)) {
+            return ['tipo' => 'youtube', 'url' => 'https://www.youtube.com/embed/'.$m[1]];
+        }
+
+        return ['tipo' => 'link', 'url' => trim((string) $this->link_publico)];
+    }
+
+    /**
      * Único ponto de escrita de `estado` — mantém concluido_em coerente com
      * o estado, para o follow-up de 30 dias (secção F) ter uma data de
      * referência fiável: é definido quando o projeto ENTRA em "concluido"
@@ -159,7 +198,7 @@ class ProjetoMusical extends Model
     }
 
     /**
-     * Valor total do projeto para efeitos de sinal/saldo: o pacote fechado,
+     * Valor total do projeto (SEM IVA) para efeitos de sinal/saldo: o pacote fechado,
      * quando aplicável, ou a soma do que já foi faturado por hora até
      * agora (que só cresce à medida que sessões são cobradas — ver
      * FaturacaoEstudioService::cobrarSessao()).
@@ -178,6 +217,19 @@ class ProjetoMusical extends Model
         return (float) $this->faturas()
             ->where('faturas.estado', 'emitida')
             ->sum('faturas.valor_total');
+    }
+
+    /**
+     * Soma do que já foi faturado SEM IVA. `valor_pacote` é sempre um valor
+     * sem IVA (é o preço unitário das faturas de sinal/saldo, onde o IVA é
+     * acrescentado), por isso o saldo a faturar tem de ser calculado nesta
+     * mesma base — nunca contra `valor_total` (que já inclui IVA).
+     */
+    public function valorTotalFaturadoSemIva(): float
+    {
+        return (float) $this->faturas()
+            ->where('faturas.estado', 'emitida')
+            ->sum('faturas.valor_sem_iva');
     }
 
     public function valorTotalRecebido(): float
@@ -199,7 +251,11 @@ class ProjetoMusical extends Model
     public function valorDevido(): float
     {
         if ($this->tipo_cobranca === 'pacote') {
-            return max((float) $this->valor_pacote, $this->valorTotalFaturado());
+            // O cliente paga o pacote COM IVA (valor_pacote é sem IVA).
+            $taxa = (float) config('faturacao.taxa_iva_geral');
+            $pacoteComIva = round((float) $this->valor_pacote * (1 + $taxa / 100), 2);
+
+            return max($pacoteComIva, $this->valorTotalFaturado());
         }
 
         return $this->valorTotalFaturado();

@@ -40,6 +40,8 @@ class LiberacaoDownloadAposQuitacaoTest extends TestCase
     {
         parent::setUp();
 
+        config(['faturacao.taxa_iva_geral' => 14.0]);
+
         $this->empresa = Empresa::create(['nome_comercial' => 'Estúdio Teste', 'nif' => '400000002']);
         app(TenantManager::class)->set($this->empresa->id);
 
@@ -50,11 +52,12 @@ class LiberacaoDownloadAposQuitacaoTest extends TestCase
             'cliente_id' => $this->cliente->id,
             'nome' => 'Projeto Teste',
             'tipo_cobranca' => 'pacote',
+            // valor_pacote é SEM IVA: o cliente paga 114.000 (100.000 + 14%).
             'valor_pacote' => 100000,
         ]);
     }
 
-    protected function criarFaturaEmitida(float $valor): Fatura
+    protected function criarFaturaEmitida(float $valor, ?float $semIva = null): Fatura
     {
         $serie = Serie::create([
             'empresa_id' => $this->empresa->id,
@@ -73,6 +76,7 @@ class LiberacaoDownloadAposQuitacaoTest extends TestCase
             'numero_documento' => 'FT A2026/1',
             'estado' => 'emitida',
             'valor_total' => $valor,
+            'valor_sem_iva' => $semIva ?? round($valor / 1.14, 2),
         ])->save();
 
         return $fatura;
@@ -103,19 +107,19 @@ class LiberacaoDownloadAposQuitacaoTest extends TestCase
 
     public function test_projeto_faturado_mas_ainda_nao_pago_nao_esta_quitado(): void
     {
-        $fatura = $this->criarFaturaEmitida(100000);
+        $fatura = $this->criarFaturaEmitida(114000, 100000);
         $this->projeto->faturas()->attach($fatura->id, ['tipo' => 'avulso']);
 
         $this->assertFalse($this->projeto->financeiramenteQuitado());
-        $this->assertSame(100000.0, $this->projeto->saldoDevedor());
+        $this->assertSame(114000.0, $this->projeto->saldoDevedor());
     }
 
     public function test_projeto_totalmente_pago_fica_quitado(): void
     {
-        $fatura = $this->criarFaturaEmitida(100000);
+        $fatura = $this->criarFaturaEmitida(114000, 100000);
         $this->projeto->faturas()->attach($fatura->id, ['tipo' => 'avulso']);
 
-        $recibo = $this->criarReciboEmitido($fatura, 100000);
+        $recibo = $this->criarReciboEmitido($fatura, 114000);
         $this->projeto->recibos()->attach($recibo->id);
 
         $this->assertTrue($this->projeto->financeiramenteQuitado());
@@ -124,14 +128,14 @@ class LiberacaoDownloadAposQuitacaoTest extends TestCase
 
     public function test_pagamento_parcial_nao_e_suficiente_para_quitar(): void
     {
-        $fatura = $this->criarFaturaEmitida(100000);
+        $fatura = $this->criarFaturaEmitida(114000, 100000);
         $this->projeto->faturas()->attach($fatura->id, ['tipo' => 'avulso']);
 
         $recibo = $this->criarReciboEmitido($fatura, 40000);
         $this->projeto->recibos()->attach($recibo->id);
 
         $this->assertFalse($this->projeto->financeiramenteQuitado());
-        $this->assertSame(60000.0, $this->projeto->saldoDevedor());
+        $this->assertSame(74000.0, $this->projeto->saldoDevedor());
     }
 
     /**
@@ -142,14 +146,30 @@ class LiberacaoDownloadAposQuitacaoTest extends TestCase
      */
     public function test_sinal_pago_de_um_pacote_nao_liberta_o_download(): void
     {
-        $sinal = $this->criarFaturaEmitida(40000);
+        // Sinal de 40% do pacote sem IVA: 40.000 + 14% = 45.600.
+        $sinal = $this->criarFaturaEmitida(45600, 40000);
         $this->projeto->faturas()->attach($sinal->id, ['tipo' => 'sinal']);
 
-        $recibo = $this->criarReciboEmitido($sinal, 40000);
+        $recibo = $this->criarReciboEmitido($sinal, 45600);
         $this->projeto->recibos()->attach($recibo->id);
 
         $this->assertFalse($this->projeto->financeiramenteQuitado());
-        $this->assertSame(60000.0, $this->projeto->saldoDevedor());
+        $this->assertSame(68400.0, $this->projeto->saldoDevedor());
+    }
+
+    /**
+     * Regressão: o saldo final era calculado como (pacote sem IVA) − (sinal
+     * COM IVA), o que dava 54.400 em vez de 60.000 e fazia sinal + saldo
+     * não bater certo com o pacote + IVA.
+     */
+    public function test_saldo_a_faturar_calcula_se_sem_iva(): void
+    {
+        $sinal = $this->criarFaturaEmitida(45600, 40000);
+        $this->projeto->faturas()->attach($sinal->id, ['tipo' => 'sinal']);
+
+        $restante = $this->projeto->valorTotalEstimado() - $this->projeto->valorTotalFaturadoSemIva();
+
+        $this->assertSame(60000.0, round($restante, 2));
     }
 
     public function test_projeto_por_hora_fica_quitado_quando_tudo_o_que_foi_faturado_esta_pago(): void

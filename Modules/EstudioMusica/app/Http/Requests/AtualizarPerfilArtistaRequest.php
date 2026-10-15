@@ -21,6 +21,8 @@ class AtualizarPerfilArtistaRequest extends FormRequest
             'links_redes_sociais' => ['nullable', 'array'],
             'links_redes_sociais.*' => ['nullable', 'string', 'max:255'],
             'data_nascimento' => ['nullable', 'date', 'before:today'],
+            // Consentimento para mensagens promocionais (Lei n.º 22/11 / 23/11).
+            'aceita_marketing' => ['sometimes', 'boolean'],
         ];
     }
 }

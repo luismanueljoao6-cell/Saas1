@@ -6,6 +6,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
+use Modules\EstudioMusica\Support\NumeroTelefone;
 use Throwable;
 
 /**
@@ -46,7 +47,17 @@ class WhatsAppCloudApiChannel implements CanalWhatsAppInterface
     {
         if (! $this->phoneNumberId || ! $this->tokenAcesso) {
             Log::warning('[EstudioMusica] WhatsApp Cloud API sem credenciais configuradas — mensagem não enviada.', [
-                'destino' => $destino,
+                'destino' => NumeroTelefone::mascarar($destino),
+            ]);
+
+            return false;
+        }
+
+        $numero = NumeroTelefone::internacional($destino);
+
+        if ($numero === null) {
+            Log::warning('[EstudioMusica] WhatsApp: número de telefone inválido — mensagem não enviada.', [
+                'destino' => NumeroTelefone::mascarar($destino),
             ]);
 
             return false;
@@ -58,7 +69,7 @@ class WhatsAppCloudApiChannel implements CanalWhatsAppInterface
                 ->timeout(10)
                 ->post("{$this->baseUrl}/{$this->phoneNumberId}/messages", [
                     'messaging_product' => 'whatsapp',
-                    'to' => $this->normalizarNumero($destino),
+                    'to' => $numero,
                     'type' => 'text',
                     'text' => ['body' => $mensagem],
                 ])
@@ -67,31 +78,19 @@ class WhatsAppCloudApiChannel implements CanalWhatsAppInterface
             return true;
         } catch (RequestException $e) {
             Log::error('WhatsApp Cloud API: falha HTTP ao enviar mensagem', [
-                'destino' => $destino,
+                'destino' => NumeroTelefone::mascarar($destino),
                 'status' => $e->response?->status(),
-                'corpo' => $e->response?->body(),
+                'corpo' => mb_substr((string) $e->response?->body(), 0, 300),
             ]);
 
             return false;
         } catch (Throwable $e) {
             Log::error('WhatsApp Cloud API: erro inesperado ao enviar mensagem', [
-                'destino' => $destino,
+                'destino' => NumeroTelefone::mascarar($destino),
                 'erro' => $e->getMessage(),
             ]);
 
             return false;
         }
-    }
-
-    /**
-     * A Cloud API espera o número em formato E.164 sem "+" (ex.:
-     * 244923000000). TODO: confirmar se os números guardados em
-     * clientes.telefone já vêm com o indicativo do país — este projeto é
-     * pensado para Angola (+244), mas a validação de formato fica fora do
-     * âmbito deste canal.
-     */
-    protected function normalizarNumero(string $numero): string
-    {
-        return ltrim(preg_replace('/\D/', '', $numero), '0');
     }
 }

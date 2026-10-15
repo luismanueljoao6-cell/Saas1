@@ -30,6 +30,11 @@ php artisan test                             # inclui os 2 testes do módulo
 - **Agendador + queue** (lembretes de sessão, aniversários, follow-up, envio de mensagens): precisa do
   cron `* * * * * php artisan schedule:run` e de um worker (`php artisan queue:work`) — o
   `.env.example` usa `QUEUE_CONNECTION=database`.
+- **Pré-visualização do portal**: enquanto o projeto não está quitado, o portal serve uma versão mono de baixa
+  qualidade gerada com **ffmpeg** (instala-o no servidor; `ESTUDIOMUSICA_FFMPEG_BIN`). O original só sai após quitação.
+- **Consentimento de marketing** (Lei 22/11 e 23/11): as campanhas só chegam a clientes com `aceita_marketing`
+  (ficha do artista) — por omissão ninguém. Cada mensagem promocional leva uma ligação assinada para sair.
+- **valor_pacote é SEM IVA**: o IVA é acrescentado nas faturas de sinal/saldo.
 - **Upload de áudio**: o limite do módulo é 50 MB, mas o PHP por omissão só aceita 2 MB — sobe
   `upload_max_filesize` e `post_max_size` no `php.ini`.
 - Ficheiros de áudio ficam no disco `local` (privado, **sem** `storage:link`); só são servidos por
@@ -63,9 +68,8 @@ php artisan test                             # inclui os 2 testes do módulo
 3. **Quitação** (`ProjetoMusical::financeiramenteQuitado()`): mede contra o **valor do pacote**, não só
    contra o faturado — pagar apenas o sinal não liberta o download. Projetos por hora: quitado quando
    tudo o que já foi faturado está recebido. A audição é livre; só o **download** é bloqueado.
-4. **Recibos**: o Faturação ainda não tem `ReciboService`, por isso `registrarRecibo()` reproduz o
-   `FaturaService::emitir()` (numeração + assinatura) para `Recibo`. Não há ecrã que o chame ainda
-   — regista-se hoje por código/tinker.
+4. **Recibos**: `registrarRecibo()` usa o `ReciboService` do Faturação (caminho único de emissão). Não há ecrã
+   que o chame ainda — regista-se hoje por código/tinker.
 5. **Jobs multi-empresa** usam `TenantManager::semTenant()` e passam sempre `empresa_id` explícito nos
    `create()` (o bypass desliga a atribuição automática).
 

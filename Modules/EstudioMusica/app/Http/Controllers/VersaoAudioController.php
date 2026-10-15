@@ -6,6 +6,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 use Modules\EstudioMusica\Models\FaixaMusical;
 use Modules\EstudioMusica\Models\VersaoAudio;
 use Modules\EstudioMusica\Services\NotificacaoEstudioService;
@@ -37,15 +38,24 @@ class VersaoAudioController extends Controller
             'ficheiro' => ['required', 'file', 'max:51200', 'mimetypes:audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/wave,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/flac,audio/x-flac'],
         ]);
 
-        $caminho = $request->file('ficheiro')->store('estudiomusica/versoes-audio', 'local');
+        // Uma pasta por empresa: separa os masters de cada estúdio no disco
+        // (backups, auditoria, eventual eliminação a pedido do titular).
+        $caminho = $request->file('ficheiro')->store("estudiomusica/versoes-audio/{$faixa->empresa_id}", 'local');
 
-        $versao = $faixa->versoes()->create([
-            'empresa_id' => $faixa->empresa_id,
-            'rotulo' => $dados['rotulo'],
-            'caminho_ficheiro' => $caminho,
-            'estado' => 'pendente_aprovacao',
-            'enviada_em' => now(),
-        ]);
+        try {
+            $versao = $faixa->versoes()->create([
+                'empresa_id' => $faixa->empresa_id,
+                'rotulo' => $dados['rotulo'],
+                'caminho_ficheiro' => $caminho,
+                'estado' => 'pendente_aprovacao',
+                'enviada_em' => now(),
+            ]);
+        } catch (Throwable $e) {
+            // Sem registo na base de dados o ficheiro ficaria órfão no disco.
+            Storage::disk('local')->delete($caminho);
+
+            throw $e;
+        }
 
         $notificacao->novaDemoDisponivel($versao);
 

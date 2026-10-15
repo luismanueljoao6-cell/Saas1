@@ -76,6 +76,12 @@ return [
     | Validade do token de acesso temporário (secção C). Gerado de novo
     | sempre que a Receção reenvia o link ao artista.
     */
+    // Quantas horas antes do início marcado já se pode fazer check-in.
+    'checkin_antecedencia_max_horas' => 12,
+
+    // Binário do ffmpeg, usado para gerar as pré-visualizações do portal.
+    'ffmpeg_bin' => env('ESTUDIOMUSICA_FFMPEG_BIN', 'ffmpeg'),
+
     'portal_token_validade_dias' => (int) env('ESTUDIOMUSICA_PORTAL_TOKEN_VALIDADE_DIAS', 30),
 
     /*

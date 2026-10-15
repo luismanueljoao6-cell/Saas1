@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
+use Modules\EstudioMusica\Models\CupomDesconto;
 use Modules\EstudioMusica\Models\ProjetoMusical;
 use Modules\EstudioMusica\Models\SessaoEstudio;
 use Modules\Faturacao\Models\Cliente;
@@ -97,7 +98,8 @@ class FaturacaoEstudioService
             // fatura do primeiro e acabar em "sem saldo por faturar".
             $projeto = ProjetoMusical::query()->lockForUpdate()->findOrFail($projeto->id);
 
-            $restante = max(0.0, round($projeto->valorTotalEstimado() - $projeto->valorTotalFaturado(), 2));
+            // Tudo sem IVA: o IVA é acrescentado pela fatura (sinal + saldo = pacote + IVA).
+            $restante = max(0.0, round($projeto->valorTotalEstimado() - $projeto->valorTotalFaturadoSemIva(), 2));
 
             if ($restante <= 0.0) {
                 throw new InvalidArgumentException('Este projeto já não tem saldo por faturar.');
@@ -131,6 +133,12 @@ class FaturacaoEstudioService
             return null;
         }
 
+        // Idempotência: uma sessão só gera UMA fatura por hora, mesmo que o
+        // check-out seja chamado duas vezes (ver também o lock no controller).
+        if ($sessao->fatura_id) {
+            return null;
+        }
+
         $sala = $sessao->salaEstudio;
         $horas = $sessao->duracaoHoras();
 
@@ -140,12 +148,36 @@ class FaturacaoEstudioService
             return null;
         }
 
+        $descricao = "Sessão de estúdio - {$sala->nome} - {$sessao->rotuloTipoServico()} ({$horas}h)";
+        $precoUnitario = (float) $sala->preco_hora;
+
+        // Cupão de aniversário (secção F): "X% de desconto em horas de
+        // estúdio" — aplicado aqui, na cobrança por hora, ao cupão válido
+        // que expira primeiro. Corre dentro da transação do check-out, por
+        // isso o lock impede o mesmo cupão de ser usado em duas faturas.
+        $cupom = CupomDesconto::query()
+            ->where('cliente_id', $sessao->cliente_id)
+            ->whereNull('usado_em')
+            ->whereDate('valido_ate', '>=', now()->toDateString())
+            ->orderBy('valido_ate')
+            ->lockForUpdate()
+            ->first();
+
+        if ($cupom) {
+            $percentual = (float) $cupom->percentual_desconto;
+            $precoUnitario = round($precoUnitario * (1 - $percentual / 100), 2);
+            $descricao .= " — desconto {$percentual}% (cupão {$cupom->codigo})";
+        }
+
         $fatura = $this->criarEEmitirFatura($sessao->empresa, $sessao->cliente, [[
-            'descricao' => "Sessão de estúdio - {$sala->nome} - {$sessao->rotuloTipoServico()} ({$horas}h)",
+            'descricao' => $descricao,
             'quantidade' => $horas,
-            'preco_unitario' => (float) $sala->preco_hora,
+            'preco_unitario' => $precoUnitario,
             'taxa_iva' => (float) config('faturacao.taxa_iva_geral'),
         ]]);
+
+        $cupom?->marcarComoUsado();
+        $sessao->forceFill(['fatura_id' => $fatura->id])->save();
 
         if ($projeto) {
             $projeto->faturas()->attach($fatura->id, ['tipo' => 'avulso']);

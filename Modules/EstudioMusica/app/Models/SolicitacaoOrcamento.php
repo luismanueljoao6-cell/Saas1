@@ -27,12 +27,16 @@ class SolicitacaoOrcamento extends Model
         'data_preferida',
         'mensagem',
         'estado',
+        'aceita_marketing',
+        'consentimento_dados_em',
     ];
 
     protected function casts(): array
     {
         return [
             'data_preferida' => 'date',
+            'aceita_marketing' => 'boolean',
+            'consentimento_dados_em' => 'datetime',
         ];
     }
 }

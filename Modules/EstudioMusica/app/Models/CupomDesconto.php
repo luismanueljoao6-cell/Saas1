@@ -39,7 +39,7 @@ class CupomDesconto extends Model
 
     public function valido(): bool
     {
-        return $this->usado_em === null && $this->valido_ate->isFuture();
+        return $this->usado_em === null && $this->valido_ate->copy()->endOfDay()->isFuture();
     }
 
     public function marcarComoUsado(): void

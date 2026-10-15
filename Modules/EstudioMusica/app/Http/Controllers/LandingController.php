@@ -4,6 +4,7 @@ namespace Modules\EstudioMusica\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -12,6 +13,7 @@ use Modules\Core\Services\TenantManager;
 use Modules\EstudioMusica\Models\ProjetoMusical;
 use Modules\EstudioMusica\Models\SalaEstudio;
 use Modules\EstudioMusica\Models\SolicitacaoOrcamento;
+use Modules\Faturacao\Models\Cliente;
 
 /**
  * Landing page institucional pública (secção G) — sem autenticação e sem
@@ -45,20 +47,60 @@ class LandingController extends Controller
 
     public function solicitarOrcamento(Request $request, Empresa $empresa): RedirectResponse
     {
+        // Armadilha para robôs: o campo "website" está escondido; um humano
+        // nunca o preenche. Respondemos como se tivesse corrido bem.
+        if ($request->filled('website')) {
+            return back()->with('sucesso', 'Pedido enviado! A nossa equipa entra em contacto em breve.');
+        }
+
         $dados = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'telefone' => ['nullable', 'string', 'max:30'],
+            // Sem um meio de contacto o pedido não serve para nada.
+            'email' => ['nullable', 'email', 'max:255', 'required_without:telefone'],
+            'telefone' => ['nullable', 'string', 'max:30', 'required_without:email'],
             'tipo_servico_desejado' => ['nullable', 'string', Rule::in(array_keys(config('estudiomusica.tipos_servico')))],
-            'data_preferida' => ['nullable', 'date'],
+            'data_preferida' => ['nullable', 'date', 'after_or_equal:today'],
             'mensagem' => ['nullable', 'string', 'max:2000'],
+            // Lei n.º 22/11: o tratamento só avança com consentimento expresso.
+            'aceita_politica' => ['accepted'],
+            'aceita_marketing' => ['nullable', 'boolean'],
+        ], [
+            'aceita_politica.accepted' => 'Tens de aceitar o tratamento dos teus dados para enviar o pedido.',
         ]);
 
         $this->tenantManager->semTenant(fn () => SolicitacaoOrcamento::create([
             'empresa_id' => $empresa->id,
-            ...$dados,
+            'nome' => $dados['nome'],
+            'email' => $dados['email'] ?? null,
+            'telefone' => $dados['telefone'] ?? null,
+            'tipo_servico_desejado' => $dados['tipo_servico_desejado'] ?? null,
+            'data_preferida' => $dados['data_preferida'] ?? null,
+            'mensagem' => $dados['mensagem'] ?? null,
+            'aceita_marketing' => (bool) ($dados['aceita_marketing'] ?? false),
+            'consentimento_dados_em' => now(),
         ]));
 
         return back()->with('sucesso', 'Pedido enviado! A nossa equipa entra em contacto em breve.');
+    }
+
+    /**
+     * Direito de oposição ao marketing direto: ligação assinada (middleware
+     * 'signed') incluída no rodapé de cada mensagem promocional. Não exige
+     * login e é idempotente.
+     */
+    public function cancelarMarketing(Empresa $empresa, int $cliente): Response
+    {
+        $this->tenantManager->semTenant(
+            fn () => Cliente::withTrashed()
+                ->where('empresa_id', $empresa->id)
+                ->whereKey($cliente)
+                ->update(['aceita_marketing' => false, 'aceita_marketing_em' => null])
+        );
+
+        return response(
+            'Pronto — já não vais receber mensagens promocionais deste estúdio.',
+            200,
+            ['Content-Type' => 'text/plain; charset=UTF-8'],
+        );
     }
 }

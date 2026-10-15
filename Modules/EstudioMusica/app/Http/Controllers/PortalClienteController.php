@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Modules\EstudioMusica\Models\ProjetoMusical;
 use Modules\EstudioMusica\Models\VersaoAudio;
+use Modules\EstudioMusica\Services\PreviewAudioService;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -26,6 +27,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class PortalClienteController extends Controller
 {
+    public function __construct(protected PreviewAudioService $previews) {}
+
     public function mostrar(Request $request): View
     {
         $cliente = $request->attributes->get('cliente_portal');
@@ -42,9 +45,9 @@ class PortalClienteController extends Controller
     }
 
     /**
-     * Reprodução inline no player — livre para o dono do projeto, SEM
-     * gate financeiro (o cliente tem de poder ouvir para poder aprovar
-     * ou pedir ajustes antes de pagar o saldo final).
+     * Reprodução inline no player — livre para o dono do projeto (o
+     * cliente tem de poder ouvir para aprovar ou pedir ajustes antes de
+     * pagar o saldo final), mas em PRÉ-VISUALIZAÇÃO até haver quitação.
      *
      * response()->file() (BinaryFileResponse) em vez de Storage::response():
      * só o primeiro suporta pedidos HTTP Range, que o <audio> do browser
@@ -54,8 +57,23 @@ class PortalClienteController extends Controller
     public function reproduzir(Request $request, int $versao): BinaryFileResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
+        $projeto = $versao->faixaMusical->projetoMusical;
 
-        return response()->file(Storage::disk('local')->path($versao->caminho_ficheiro));
+        // Projeto quitado: o cliente já tem direito ao original.
+        if ($projeto->financeiramenteQuitado()) {
+            return response()->file(Storage::disk('local')->path($versao->caminho_ficheiro));
+        }
+
+        // Ainda por pagar: só a pré-visualização (baixa qualidade). Servir o
+        // original aqui deixava o "download só após quitação" contornável —
+        // bastava guardar o áudio a partir do player.
+        $preview = $this->previews->garantir($versao);
+
+        if ($preview === null) {
+            abort(503, 'A pré-visualização desta versão ainda não está disponível. Tenta novamente dentro de instantes ou contacta o estúdio.');
+        }
+
+        return response()->file(Storage::disk('local')->path($preview), ['Cache-Control' => 'private, no-store']);
     }
 
     /**
@@ -82,7 +100,7 @@ class PortalClienteController extends Controller
         $versao = $this->autorizarVersao($request, $versao);
 
         $dados = $request->validate([
-            'tempo_segundos' => ['required', 'numeric', 'min:0'],
+            'tempo_segundos' => ['required', 'numeric', 'min:0', 'max:86400'],
             'comentario' => ['required', 'string', 'max:2000'],
         ]);
 
@@ -100,6 +118,10 @@ class PortalClienteController extends Controller
     {
         $versao = $this->autorizarVersao($request, $versao);
 
+        if ($erro = $this->motivoParaNaoDecidir($versao)) {
+            return back()->with('erro', $erro);
+        }
+
         $versao->update(['estado' => 'aprovada']);
 
         return back()->with('sucesso', 'Versão aprovada!');
@@ -109,9 +131,36 @@ class PortalClienteController extends Controller
     {
         $versao = $this->autorizarVersao($request, $versao);
 
+        if ($erro = $this->motivoParaNaoDecidir($versao)) {
+            return back()->with('erro', $erro);
+        }
+
         $versao->update(['estado' => 'ajustes_solicitados']);
 
         return back()->with('sucesso', 'Pedido de ajustes enviado à equipa.');
+    }
+
+    /**
+     * Só se decide (aprova / pede ajustes) sobre a versão MAIS RECENTE da
+     * faixa e enquanto ela ainda aguarda decisão: antes o cliente podia
+     * aprovar uma versão antiga, ou trocar uma aprovação já dada por um
+     * pedido de ajustes depois de o projeto estar concluído.
+     */
+    protected function motivoParaNaoDecidir(VersaoAudio $versao): ?string
+    {
+        if ($versao->faixaMusical->projetoMusical->estado === 'concluido') {
+            return 'Este projeto já foi concluído.';
+        }
+
+        if ($versao->faixaMusical->ultimaVersao()?->id !== $versao->id) {
+            return 'Existe uma versão mais recente desta faixa — decide sobre essa.';
+        }
+
+        if ($versao->estado !== 'pendente_aprovacao') {
+            return 'Esta versão já tem uma decisão registada.';
+        }
+
+        return null;
     }
 
     /**
@@ -124,7 +173,7 @@ class PortalClienteController extends Controller
         $versao = VersaoAudio::with('faixaMusical.projetoMusical')->findOrFail($versaoId);
         $cliente = $request->attributes->get('cliente_portal');
 
-        if ($versao->faixaMusical->projetoMusical->cliente_id !== $cliente->id) {
+        if ((int) $versao->faixaMusical->projetoMusical->cliente_id !== (int) $cliente->id) {
             abort(403);
         }
 

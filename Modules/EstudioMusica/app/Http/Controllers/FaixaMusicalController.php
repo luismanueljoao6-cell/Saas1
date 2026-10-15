@@ -46,7 +46,10 @@ class FaixaMusicalController extends Controller
         $faixa = FaixaMusical::findOrFail($faixa);
         $faixa->update(['estado' => $request->input('estado')]);
 
-        $notificacao->atualizacaoEstadoFaixa($faixa);
+        // Só notifica se o estado mudou de facto (ver ProjetoMusicalController::atualizarEstado()).
+        if ($faixa->wasChanged('estado')) {
+            $notificacao->atualizacaoEstadoFaixa($faixa);
+        }
 
         return back()->with('sucesso', 'Estado da faixa atualizado.');
     }

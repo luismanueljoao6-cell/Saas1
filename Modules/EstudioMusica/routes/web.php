@@ -11,6 +11,7 @@ use Modules\EstudioMusica\Http\Controllers\SalaEstudioController;
 use Modules\EstudioMusica\Http\Controllers\SessaoEstudioController;
 use Modules\EstudioMusica\Http\Controllers\SolicitacaoOrcamentoController;
 use Modules\EstudioMusica\Http\Controllers\VersaoAudioController;
+use Modules\EstudioMusica\Support\PapeisEstudio;
 
 /*
 |--------------------------------------------------------------------------
@@ -23,6 +24,9 @@ use Modules\EstudioMusica\Http\Controllers\VersaoAudioController;
 Route::prefix('estudio/{empresa}')->middleware('servico.empresa:estudio')->name('estudiomusica.landing.')->group(function () {
     Route::get('/', [LandingController::class, 'mostrar'])->name('mostrar');
     Route::post('/orcamento', [LandingController::class, 'solicitarOrcamento'])->middleware('throttle:10,1')->name('orcamento');
+    // Saída do marketing: ligação assinada enviada no rodapé das mensagens promocionais.
+    Route::get('/marketing/sair/{cliente}', [LandingController::class, 'cancelarMarketing'])
+        ->middleware(['signed', 'throttle:30,1'])->whereNumber('cliente')->name('marketing-sair');
 });
 
 /*
@@ -31,7 +35,8 @@ Route::prefix('estudio/{empresa}')->middleware('servico.empresa:estudio')->name(
 |--------------------------------------------------------------------------
 */
 Route::prefix('portal/{token}')
-    ->middleware('portal.cliente')
+    ->middleware(['throttle:120,1', 'portal.cliente'])
+    ->where(['versao' => '[0-9]+'])
     ->name('estudiomusica.portal.')
     ->group(function () {
         Route::get('/', [PortalClienteController::class, 'mostrar'])->name('mostrar');
@@ -55,6 +60,9 @@ Route::prefix('portal/{token}')
 Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:estudio'])
     ->prefix('estudiomusica')
     ->name('estudiomusica.')
+    // ids sempre numéricos: um {id} não numérico dava erro 500 (TypeError nos
+    // controllers que recebem `int`) em vez de 404.
+    ->where(['projeto' => '[0-9]+', 'versao' => '[0-9]+', 'sessao' => '[0-9]+', 'faixa' => '[0-9]+', 'sala' => '[0-9]+', 'cliente' => '[0-9]+', 'solicitacao' => '[0-9]+'])
     ->group(function () {
         // Equipa: só o Administrador atribui os papéis Receção/Engenheiro.
         Route::middleware('papel:Administrador')->prefix('equipa')->name('equipa.')->group(function () {
@@ -63,15 +71,21 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:estudio'])
             Route::post('/remover', [EquipaEstudioController::class, 'remover'])->name('remover');
         });
 
-        // Leitura: aberta a qualquer membro autenticado da empresa — os
-        // 3 papéis de staff precisam todos de ver isto.
+        // Leitura: qualquer membro da equipa DO ESTÚDIO (tem pelo menos uma
+        // permissão do módulo — os 3 papéis de staff precisam todos de ver
+        // isto). Antes bastava estar autenticado na empresa, o que expunha
+        // clientes, projetos e masters de áudio a utilizadores de outros
+        // serviços (ex.: um caixa do Faturação) — princípio da necessidade
+        // de acesso (Lei n.º 22/11, medidas de segurança).
         // (whereNumber em projetos.show: sem isto '/projetos/criar', declarada mais
         // abaixo, seria apanhada por este wildcard com {projeto} = 'criar'.)
-        Route::get('/salas', [SalaEstudioController::class, 'index'])->name('salas.index');
-        Route::get('/projetos', [ProjetoMusicalController::class, 'index'])->name('projetos.index');
-        Route::get('/projetos/{projeto}', [ProjetoMusicalController::class, 'show'])->whereNumber('projeto')->name('projetos.show');
-        Route::get('/sessoes', [SessaoEstudioController::class, 'index'])->name('sessoes.index');
-        Route::get('/versoes/{versao}/reproduzir', [VersaoAudioController::class, 'reproduzir'])->name('versoes.reproduzir');
+        Route::middleware('permission:'.implode('|', PapeisEstudio::PERMISSOES))->group(function () {
+            Route::get('/salas', [SalaEstudioController::class, 'index'])->name('salas.index');
+            Route::get('/projetos', [ProjetoMusicalController::class, 'index'])->name('projetos.index');
+            Route::get('/projetos/{projeto}', [ProjetoMusicalController::class, 'show'])->whereNumber('projeto')->name('projetos.show');
+            Route::get('/sessoes', [SessaoEstudioController::class, 'index'])->name('sessoes.index');
+            Route::get('/versoes/{versao}/reproduzir', [VersaoAudioController::class, 'reproduzir'])->name('versoes.reproduzir');
+        });
 
         // Salas: só Administrador ("configuração de preços", secção H).
         Route::middleware('permission:estudiomusica.gerir-salas')->group(function () {

@@ -33,7 +33,7 @@ class ProjetoMusicalController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
         return view('estudiomusica::projetos.criar', [
             'clientes' => Cliente::orderBy('nome')->get(),
@@ -75,6 +75,12 @@ class ProjetoMusicalController extends Controller
 
         if ($novoEstado === 'concluido' && ! $projeto->todasAsFaixasAprovadas()) {
             return back()->with('erro', 'Ainda há faixas sem versão aprovada pelo cliente — o projeto não pode ser marcado como concluído.');
+        }
+
+        // Mesmo estado: nada a fazer (e nada a notificar — um duplo clique ou
+        // reenvio do formulário reenviava "entrou em fase de X" ao artista).
+        if ($projeto->estado === $novoEstado) {
+            return back()->with('sucesso', 'O projeto já está neste estado.');
         }
 
         $projeto->atualizarEstado($novoEstado);

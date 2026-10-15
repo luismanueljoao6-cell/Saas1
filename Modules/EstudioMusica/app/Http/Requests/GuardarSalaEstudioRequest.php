@@ -15,8 +15,8 @@ class GuardarSalaEstudioRequest extends FormRequest
     {
         return [
             'nome' => ['required', 'string', 'max:255'],
-            'descricao' => ['nullable', 'string'],
-            'preco_hora' => ['required', 'numeric', 'min:0'],
+            'descricao' => ['nullable', 'string', 'max:2000'],
+            'preco_hora' => ['required', 'numeric', 'min:0', 'max:999999999999'],
             'ativa' => ['boolean'],
         ];
     }

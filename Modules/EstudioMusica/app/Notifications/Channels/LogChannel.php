@@ -5,6 +5,7 @@ namespace Modules\EstudioMusica\Notifications\Channels;
 use Illuminate\Support\Facades\Log;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
+use Modules\EstudioMusica\Support\NumeroTelefone;
 
 /**
  * Canal por omissão (config('estudiomusica.canal_whatsapp'/'canal_sms') =
@@ -30,7 +31,7 @@ class LogChannel implements CanalSmsInterface, CanalWhatsAppInterface
         ) ?? '[mensagem não disponível]';
 
         Log::info('[EstudioMusica] Mensagem (canal log, não enviada de verdade)', [
-            'destino' => $destino,
+            'destino' => NumeroTelefone::mascarar($destino),
             'mensagem' => $mensagemSemTokens,
         ]);
 

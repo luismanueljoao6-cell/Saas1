@@ -90,6 +90,6 @@ class SessaoEstudio extends Model
         $inicio = $this->inicio_real ?? $this->inicio_previsto;
         $fim = $this->fim_real ?? $this->fim_previsto;
 
-        return round(abs($inicio->diffInMinutes($fim)) / 60, 2);
+        return round(abs($inicio->diffInMinutes($fim)) / 60, 3);
     }
 }

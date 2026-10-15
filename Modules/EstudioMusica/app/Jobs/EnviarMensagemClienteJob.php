@@ -10,23 +10,24 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use RuntimeException;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
 use Throwable;
 
 /**
- * Faz o envio propriamente dito (WhatsApp + SMS + e-mail) fora do pedido
- * HTTP: uma chamada lenta ou em baixo a um fornecedor externo (cada canal
- * tem timeout de 10s) nunca deve prender o utilizador que acabou de, por
- * exemplo, carregar uma demo ou fazer check-out. Ver
+ * Faz o envio propriamente dito fora do pedido HTTP. Ver
  * Services\NotificacaoEstudioService.
  *
+ * Estratégia de entrega (cada mensagem chega UMA vez por pessoa, não três):
+ *  - telefone: WhatsApp; só se falhar, SMS (que é pago);
+ *  - e-mail: enviado sempre que existir.
+ * Se NENHUM canal entregar, o job lança exceção e a queue repete (3
+ * tentativas com espera crescente) — antes, os canais devolviam `false` em
+ * silêncio e a mensagem perdia-se sem retry.
+ *
  * Recebe só escalares (telefone, e-mail, texto) e NÃO o model Cliente, de
- * propósito: um worker de queue não tem tenant identificado, e a
- * TenantScope do Core (fail-closed) devolveria vazio ao tentar recarregar
- * o Cliente por id. Cada canal já apanha as suas próprias exceções e
- * devolve false em vez de lançar, por isso a falha de um nunca impede os
- * outros dois.
+ * propósito: um worker de queue não tem tenant identificado.
  */
 class EnviarMensagemClienteJob implements ShouldBeEncrypted, ShouldQueue
 {
@@ -35,6 +36,8 @@ class EnviarMensagemClienteJob implements ShouldBeEncrypted, ShouldQueue
     use Queueable;
     use SerializesModels;
 
+    public int $tries = 3;
+
     public function __construct(
         public ?string $telefone,
         public ?string $email,
@@ -42,24 +45,40 @@ class EnviarMensagemClienteJob implements ShouldBeEncrypted, ShouldQueue
         public string $mensagem,
     ) {}
 
+    /** @return array<int, int> segundos entre tentativas */
+    public function backoff(): array
+    {
+        return [60, 300];
+    }
+
     public function handle(CanalWhatsAppInterface $canalWhatsapp, CanalSmsInterface $canalSms): void
     {
+        $tentou = false;
+        $entregue = false;
+
         if ($this->telefone) {
-            $canalWhatsapp->enviar($this->telefone, $this->mensagem);
-            $canalSms->enviar($this->telefone, $this->mensagem);
+            $tentou = true;
+            $entregue = $canalWhatsapp->enviar($this->telefone, $this->mensagem)
+                || $canalSms->enviar($this->telefone, $this->mensagem);
         }
 
         if ($this->email) {
+            $tentou = true;
+
             try {
                 Mail::raw($this->mensagem, function ($mail): void {
                     $mail->to($this->email)->subject($this->assunto);
                 });
+                $entregue = true;
             } catch (Throwable $e) {
                 Log::error('EstudioMusica: falha ao enviar e-mail de notificação', [
-                    'email' => $this->email,
                     'erro' => $e->getMessage(),
                 ]);
             }
+        }
+
+        if ($tentou && ! $entregue) {
+            throw new RuntimeException('Nenhum canal conseguiu entregar a mensagem ao cliente.');
         }
     }
 }

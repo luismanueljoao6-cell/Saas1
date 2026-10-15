@@ -37,7 +37,7 @@ class SessaoEstudioController extends Controller
     {
         try {
             $this->agendamento->criarSessao($request->validated());
-        } catch (ConflitoAgendamentoException $e) {
+        } catch (ConflitoAgendamentoException|InvalidArgumentException $e) {
             return back()->withInput()->with('erro', $e->getMessage());
         }
 
@@ -54,7 +54,9 @@ class SessaoEstudioController extends Controller
     public function checkIn(int $sessao): RedirectResponse
     {
         try {
-            $this->agendamento->registrarCheckIn(SessaoEstudio::findOrFail($sessao));
+            DB::transaction(fn () => $this->agendamento->registrarCheckIn(
+                SessaoEstudio::query()->lockForUpdate()->findOrFail($sessao)
+            ));
         } catch (InvalidArgumentException $e) {
             return back()->with('erro', $e->getMessage());
         }
@@ -75,7 +77,9 @@ class SessaoEstudioController extends Controller
     {
         try {
             $fatura = DB::transaction(function () use ($sessao) {
-                $sessao = SessaoEstudio::findOrFail($sessao);
+                // lockForUpdate: dois check-outs em simultâneo não passam ambos
+                // pela guarda de estado (e não geram duas faturas por hora).
+                $sessao = SessaoEstudio::query()->lockForUpdate()->findOrFail($sessao);
                 $this->agendamento->registrarCheckOut($sessao);
 
                 return $this->faturacaoEstudio->cobrarSessao($sessao);
@@ -94,7 +98,9 @@ class SessaoEstudioController extends Controller
     public function cancelar(int $sessao): RedirectResponse
     {
         try {
-            $this->agendamento->cancelar(SessaoEstudio::findOrFail($sessao));
+            DB::transaction(fn () => $this->agendamento->cancelar(
+                SessaoEstudio::query()->lockForUpdate()->findOrFail($sessao)
+            ));
         } catch (InvalidArgumentException $e) {
             return back()->with('erro', $e->getMessage());
         }

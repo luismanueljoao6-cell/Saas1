@@ -3,6 +3,7 @@
 namespace Modules\EstudioMusica\Services;
 
 use Carbon\Carbon;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Modules\Core\Services\TenantManager;
 use Modules\EstudioMusica\Models\CampanhaEnviada;
@@ -45,6 +46,7 @@ class CampanhaMarketingService
         $tenantManager->semTenant(function () use ($hoje, &$enviados): void {
             Cliente::query()
                 ->whereNotNull('data_nascimento')
+                ->where('aceita_marketing', true)
                 ->chunkById(100, function ($clientes) use ($hoje, &$enviados): void {
                     foreach ($clientes as $cliente) {
                         if (! Carbon::parse($cliente->data_nascimento)->isBirthday($hoje)) {
@@ -55,13 +57,13 @@ class CampanhaMarketingService
                             continue;
                         }
 
-                        $cupom = $this->gerarCupomAniversario($cliente);
+                        $cupom = $this->cupomAniversarioDoAno($cliente) ?? $this->gerarCupomAniversario($cliente);
                         $nome = $cliente->nome_artistico ?: $cliente->nome;
 
                         $this->notificacao->enviar(
                             $cliente,
                             'Parabéns!',
-                            "Parabéns pelo teu dia, {$nome}! Ganhaste {$cupom->percentual_desconto}% de desconto em horas de estúdio, válido até {$cupom->valido_ate->format('d/m/Y')} — código {$cupom->codigo}."
+                            "Parabéns pelo teu dia, {$nome}! Ganhaste {$cupom->percentual_desconto}% de desconto em horas de estúdio, válido até {$cupom->valido_ate->format('d/m/Y')} — aplicado automaticamente na tua próxima sessão (cupão {$cupom->codigo}).".$this->rodapeSaida($cliente)
                         );
 
                         $this->registarEnvio($cliente, 'aniversario', (string) $hoje->year);
@@ -80,16 +82,25 @@ class CampanhaMarketingService
     public function enviarFollowUpsPosLancamento(TenantManager $tenantManager): int
     {
         $enviados = 0;
+        // Janela de recuperação: se o agendador falhar no dia exato, o follow-up
+        // sai no dia seguinte (a idempotência vem de CampanhaEnviada).
         $dataAlvo = now()->subDays(30)->toDateString();
+        $dataLimite = now()->subDays(60)->toDateString();
 
-        $tenantManager->semTenant(function () use ($dataAlvo, &$enviados): void {
+        $tenantManager->semTenant(function () use ($dataAlvo, $dataLimite, &$enviados): void {
             ProjetoMusical::query()
                 ->where('estado', 'concluido')
-                ->whereDate('concluido_em', $dataAlvo)
+                ->whereDate('concluido_em', '<=', $dataAlvo)
+                ->whereDate('concluido_em', '>=', $dataLimite)
                 ->with('cliente')
                 ->chunkById(100, function ($projetos) use (&$enviados): void {
                     foreach ($projetos as $projeto) {
                         if ($projeto->cliente === null || $projeto->cliente->trashed()) {
+                            continue;
+                        }
+
+                        // Mensagem promocional: só com consentimento (Lei n.º 22/11 / 23/11).
+                        if (! $projeto->cliente->aceita_marketing) {
                             continue;
                         }
 
@@ -100,7 +111,7 @@ class CampanhaMarketingService
                         $this->notificacao->enviar(
                             $projeto->cliente,
                             'Como foi o lançamento?',
-                            "Como foi o lançamento de \"{$projeto->nome}\"? Que tal gravar o próximo?"
+                            "Como foi o lançamento de \"{$projeto->nome}\"? Que tal gravar o próximo?".$this->rodapeSaida($projeto->cliente)
                         );
 
                         $this->registarEnvio($projeto->cliente, 'follow_up_lancamento', (string) $projeto->id);
@@ -120,19 +131,50 @@ class CampanhaMarketingService
     {
         $enviados = 0;
 
-        Cliente::query()->chunkById(100, function ($clientes) use ($identificadorCampanha, $assunto, $mensagem, &$enviados): void {
-            foreach ($clientes as $cliente) {
-                if ($this->jaEnviadaEsteAno($cliente, 'data_comemorativa', $identificadorCampanha)) {
-                    continue;
-                }
+        // O ano faz parte da referência: a mesma campanha (ex.: "natal") volta
+        // a poder ser enviada no ano seguinte, mas nunca duas vezes no mesmo ano.
+        $referencia = $identificadorCampanha.'-'.now()->year;
 
-                $this->notificacao->enviar($cliente, $assunto, $mensagem);
-                $this->registarEnvio($cliente, 'data_comemorativa', $identificadorCampanha);
-                $enviados++;
-            }
-        });
+        // Só clientes que consentiram mensagens promocionais (Lei n.º 22/11 / 23/11).
+        Cliente::query()
+            ->where('aceita_marketing', true)
+            ->chunkById(100, function ($clientes) use ($referencia, $assunto, $mensagem, &$enviados): void {
+                foreach ($clientes as $cliente) {
+                    if ($this->jaEnviadaEsteAno($cliente, 'data_comemorativa', $referencia)) {
+                        continue;
+                    }
+
+                    $this->notificacao->enviar($cliente, $assunto, $mensagem.$this->rodapeSaida($cliente));
+                    $this->registarEnvio($cliente, 'data_comemorativa', $referencia);
+                    $enviados++;
+                }
+            });
 
         return $enviados;
+    }
+
+    /**
+     * Ligação assinada (sem login) para o cliente deixar de receber
+     * mensagens promocionais — direito de oposição ao marketing direto.
+     * Ver LandingController::cancelarMarketing().
+     */
+    protected function rodapeSaida(Cliente $cliente): string
+    {
+        $url = URL::signedRoute('estudiomusica.landing.marketing-sair', [
+            'empresa' => $cliente->empresa_id,
+            'cliente' => $cliente->id,
+        ]);
+
+        return "\n\nPara deixares de receber mensagens promocionais: {$url}";
+    }
+
+    protected function cupomAniversarioDoAno(Cliente $cliente): ?CupomDesconto
+    {
+        return CupomDesconto::query()
+            ->where('cliente_id', $cliente->id)
+            ->where('motivo', 'aniversario')
+            ->whereYear('created_at', now()->year)
+            ->first();
     }
 
     protected function gerarCupomAniversario(Cliente $cliente): CupomDesconto
@@ -147,6 +189,10 @@ class CampanhaMarketingService
         ]);
     }
 
+    /**
+     * `referencia` já identifica o ciclo (ano do aniversário, id do projeto,
+     * campanha-ano), por isso basta procurar por ela.
+     */
     protected function jaEnviadaEsteAno(Cliente $cliente, string $tipo, string $referencia): bool
     {
         return CampanhaEnviada::query()

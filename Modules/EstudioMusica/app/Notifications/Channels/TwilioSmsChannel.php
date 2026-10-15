@@ -6,6 +6,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
+use Modules\EstudioMusica\Support\NumeroTelefone;
 use Throwable;
 
 /**
@@ -39,7 +40,17 @@ class TwilioSmsChannel implements CanalSmsInterface
     {
         if (! $this->accountSid || ! $this->authToken || ! $this->numeroRemetente) {
             Log::warning('[EstudioMusica] Twilio SMS sem credenciais configuradas — mensagem não enviada.', [
-                'destino' => $destino,
+                'destino' => NumeroTelefone::mascarar($destino),
+            ]);
+
+            return false;
+        }
+
+        $numero = NumeroTelefone::internacional($destino);
+
+        if ($numero === null) {
+            Log::warning('[EstudioMusica] Twilio SMS: número de telefone inválido — mensagem não enviada.', [
+                'destino' => NumeroTelefone::mascarar($destino),
             ]);
 
             return false;
@@ -50,7 +61,7 @@ class TwilioSmsChannel implements CanalSmsInterface
                 ->withBasicAuth($this->accountSid, $this->authToken)
                 ->timeout(10)
                 ->post("https://api.twilio.com/2010-04-01/Accounts/{$this->accountSid}/Messages.json", [
-                    'To' => $destino,
+                    'To' => '+'.$numero,
                     'From' => $this->numeroRemetente,
                     'Body' => $mensagem,
                 ])
@@ -59,15 +70,15 @@ class TwilioSmsChannel implements CanalSmsInterface
             return true;
         } catch (RequestException $e) {
             Log::error('Twilio: falha HTTP ao enviar SMS', [
-                'destino' => $destino,
+                'destino' => NumeroTelefone::mascarar($destino),
                 'status' => $e->response?->status(),
-                'corpo' => $e->response?->body(),
+                'corpo' => mb_substr((string) $e->response?->body(), 0, 300),
             ]);
 
             return false;
         } catch (Throwable $e) {
             Log::error('Twilio: erro inesperado ao enviar SMS', [
-                'destino' => $destino,
+                'destino' => NumeroTelefone::mascarar($destino),
                 'erro' => $e->getMessage(),
             ]);
 

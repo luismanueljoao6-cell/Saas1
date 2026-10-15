@@ -18,21 +18,37 @@ use Modules\Faturacao\Models\Cliente;
 class PerfilArtistaService
 {
     /**
-     * @param  array{nome_artistico?: ?string, genero_musical?: ?string, integrantes_banda?: ?array<int, string>, links_redes_sociais?: ?array<string, string>, data_nascimento?: ?string}  $dados
+     * @param  array{nome_artistico?: ?string, genero_musical?: ?string, integrantes_banda?: ?array<int, string>, links_redes_sociais?: ?array<string, string>, data_nascimento?: ?string, aceita_marketing?: bool}  $dados
      */
     public function atualizar(Cliente $cliente, array $dados): Cliente
     {
+        // array_key_exists (e não `??`): um campo presente e vazio LIMPA o
+        // valor (direito de retificação/eliminação — Lei n.º 22/11); um
+        // campo ausente deixa o valor como está.
         $cliente->forceFill([
-            'nome_artistico' => $dados['nome_artistico'] ?? $cliente->nome_artistico,
-            'genero_musical' => $dados['genero_musical'] ?? $cliente->genero_musical,
+            'nome_artistico' => array_key_exists('nome_artistico', $dados) ? $dados['nome_artistico'] : $cliente->nome_artistico,
+            'genero_musical' => array_key_exists('genero_musical', $dados) ? $dados['genero_musical'] : $cliente->genero_musical,
             'integrantes_banda' => array_key_exists('integrantes_banda', $dados)
                 ? json_encode(array_values($dados['integrantes_banda'] ?? []))
                 : $cliente->getRawOriginal('integrantes_banda'),
             'links_redes_sociais' => array_key_exists('links_redes_sociais', $dados)
                 ? json_encode($dados['links_redes_sociais'] ?? [])
                 : $cliente->getRawOriginal('links_redes_sociais'),
-            'data_nascimento' => $dados['data_nascimento'] ?? $cliente->data_nascimento,
-        ])->save();
+            'data_nascimento' => array_key_exists('data_nascimento', $dados) ? $dados['data_nascimento'] : $cliente->data_nascimento,
+        ]);
+
+        if (array_key_exists('aceita_marketing', $dados)) {
+            $aceita = (bool) $dados['aceita_marketing'];
+
+            if ($aceita !== (bool) $cliente->aceita_marketing) {
+                $cliente->forceFill([
+                    'aceita_marketing' => $aceita,
+                    'aceita_marketing_em' => $aceita ? now() : null,
+                ]);
+            }
+        }
+
+        $cliente->save();
 
         return $cliente->refresh();
     }
@@ -48,6 +64,7 @@ class PerfilArtistaService
             'integrantes_banda' => $this->descodificar($cliente->getRawOriginal('integrantes_banda')),
             'links_redes_sociais' => $this->descodificar($cliente->getRawOriginal('links_redes_sociais')),
             'data_nascimento' => $cliente->data_nascimento,
+            'aceita_marketing' => (bool) $cliente->aceita_marketing,
         ];
     }
 

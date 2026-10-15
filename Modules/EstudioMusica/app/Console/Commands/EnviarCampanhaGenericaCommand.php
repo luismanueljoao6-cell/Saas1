@@ -12,18 +12,18 @@ use Modules\EstudioMusica\Services\CampanhaMarketingService;
  * Administrador, de propósito não agendado sozinho (ver
  * CampanhaMarketingService::enviarCampanhaGenerica() para o porquê).
  *
- *   php artisan estudiomusica:campanha-generica 1 dia-da-musica-2026 \
+ *   php artisan estudiomusica:campanha-generica 1 dia-da-musica \
  *     "Feliz Dia da Música!" "Este mês, 20% de desconto em horas de estúdio."
  */
 class EnviarCampanhaGenericaCommand extends Command
 {
     protected $signature = 'estudiomusica:campanha-generica
         {empresa : ID da empresa}
-        {identificador : Identifica esta edição da campanha (ex.: dia-da-musica-2026) — evita reenvio duplicado}
+        {identificador : Identifica a campanha (ex.: dia-da-musica); o ano é acrescentado automaticamente — evita reenvio duplicado no mesmo ano}
         {assunto : Assunto do e-mail}
         {mensagem : Corpo da mensagem, enviado por WhatsApp/SMS/e-mail}';
 
-    protected $description = 'Envia manualmente uma campanha de datas comemorativas a todos os clientes de uma empresa.';
+    protected $description = 'Envia manualmente uma campanha de datas comemorativas aos clientes de uma empresa que aceitaram marketing.';
 
     public function handle(TenantManager $tenantManager, CampanhaMarketingService $campanhas): int
     {

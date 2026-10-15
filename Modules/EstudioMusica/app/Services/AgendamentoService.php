@@ -26,15 +26,23 @@ class AgendamentoService
     /**
      * @param  array<string, mixed>  $dados  Atributos de SessaoEstudio (ver $fillable no model)
      *
-     * @throws ConflitoAgendamentoException
+     * @throws ConflitoAgendamentoException|InvalidArgumentException
      */
     public function criarSessao(array $dados): SessaoEstudio
     {
         return DB::transaction(function () use ($dados) {
             $sala = SalaEstudio::query()->lockForUpdate()->findOrFail($dados['sala_estudio_id']);
 
+            if (! $sala->ativa) {
+                throw new InvalidArgumentException("A sala \"{$sala->nome}\" está inativa e não aceita novas sessões.");
+            }
+
             $inicio = Carbon::parse($dados['inicio_previsto']);
             $fim = Carbon::parse($dados['fim_previsto']);
+
+            if ($fim->lte($inicio)) {
+                throw new InvalidArgumentException('O fim da sessão tem de ser posterior ao início.');
+            }
 
             if ($this->verificarConflito($sala, $inicio, $fim)) {
                 throw ConflitoAgendamentoException::paraSala($sala, $inicio->format('d/m H:i'), $fim->format('d/m H:i'));
@@ -45,11 +53,22 @@ class AgendamentoService
     }
 
     /**
-     * @throws ConflitoAgendamentoException
+     * @throws ConflitoAgendamentoException|InvalidArgumentException
      */
     public function reagendar(SessaoEstudio $sessao, Carbon $novoInicio, Carbon $novoFim): SessaoEstudio
     {
+        if ($novoFim->lte($novoInicio)) {
+            throw new InvalidArgumentException('O fim da sessão tem de ser posterior ao início.');
+        }
+
         return DB::transaction(function () use ($sessao, $novoInicio, $novoFim) {
+            // Estado lido com lock: não se reagenda uma sessão cancelada, em curso ou concluída.
+            $sessao = SessaoEstudio::query()->lockForUpdate()->findOrFail($sessao->id);
+
+            if (! in_array($sessao->estado, ['agendada', 'confirmada'], true)) {
+                throw new InvalidArgumentException('Só é possível reagendar uma sessão agendada ou confirmada.');
+            }
+
             $sala = SalaEstudio::query()->lockForUpdate()->findOrFail($sessao->sala_estudio_id);
 
             if ($this->verificarConflito($sala, $novoInicio, $novoFim, ignorarSessaoId: $sessao->id)) {
@@ -98,6 +117,14 @@ class AgendamentoService
             throw new InvalidArgumentException('Só é possível fazer check-in de uma sessão agendada ou confirmada.');
         }
 
+        // Um check-in feito semanas antes da hora marcada faria a cobrança por
+        // hora contar desde esse momento (inicio_real → fim_real).
+        $antecedencia = (int) config('estudiomusica.checkin_antecedencia_max_horas', 12);
+
+        if ($sessao->inicio_previsto->gt(now()->addHours($antecedencia))) {
+            throw new InvalidArgumentException("Ainda é cedo para o check-in: só é possível até {$antecedencia}h antes do início marcado.");
+        }
+
         $sessao->update([
             'inicio_real' => now(),
             'estado' => 'em_curso',
@@ -135,6 +162,12 @@ class AgendamentoService
     {
         if (in_array($sessao->estado, ['concluida', 'cancelada'], true)) {
             throw new InvalidArgumentException('Uma sessão concluída ou já cancelada não pode ser cancelada.');
+        }
+
+        // Cancelar uma sessão em curso apagava a cobrança das horas já usadas:
+        // tem de terminar com check-out.
+        if ($sessao->estado === 'em_curso') {
+            throw new InvalidArgumentException('Esta sessão já começou — faz o check-out em vez de a cancelar.');
         }
 
         $sessao->update(['estado' => 'cancelada']);
