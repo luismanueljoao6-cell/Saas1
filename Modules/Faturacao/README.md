@@ -243,3 +243,19 @@ Com `FATURACAO_AGT_ATIVO=true` o módulo deixa de numerar localmente: só emite 
    (repete para NC, ND e RC; repetir o pedido para uma série existente é uma extensão).
 
 Ainda **não** feito (Fase 2b): envio `registarFactura`, consulta de estado, QR Code.
+
+
+## Envio à AGT (Fase 2b)
+
+Com `FATURACAO_AGT_ATIVO=true`, cada documento emitido (FT, NC, ND, RC) fica registado em
+`agt_submissoes` na mesma transação da emissão. `php artisan faturacao:agt-sincronizar`
+(agendado de minuto a minuto) envia os pendentes à AGT em lotes de 30 (`registarFactura`)
+e consulta o estado dos enviados (`obterEstado`): `valido`, `invalido` (erros da AGT
+guardados em `erros`), `rejeitado` ou `erro`. O que se envia é copiado do JWS guardado
+no documento, por isso é igual ao que foi assinado.
+
+Limitações atuais (os documentos nestes casos ficam em `erro`, sem bloquear os outros):
+IVA 0% / isenções (falta o código do Anexo 6.4), recibos sem fatura (adiantamentos),
+documentos em divisa, notas de crédito sem fatura original. `operationType` é `SG` para
+todas as linhas e só a taxa de 14% (`NOR`) está mapeada em `agt.codigos_taxa`.
+Um documento `invalido`/`rejeitado` só se corrige com um documento novo (regra E46) — fluxo ainda por fazer.

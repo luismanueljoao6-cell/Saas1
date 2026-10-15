@@ -2,6 +2,7 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 use Modules\Subscricoes\Models\Plano;
 
 Artisan::command('inspire', function () {
@@ -30,3 +31,10 @@ Artisan::command('planos:preco {slug : Slug do plano} {preco : Novo preço em Kz
 
     return 0;
 })->purpose('Altera o preço de um plano (só afeta cobranças futuras)');
+
+// Comunicação com a AGT: envia os documentos pendentes e consulta o estado dos enviados.
+// Só faz algo com FATURACAO_AGT_ATIVO=true. Requer o agendador (php artisan schedule:work / cron).
+Schedule::command('faturacao:agt-sincronizar')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->when(fn () => (bool) config('faturacao.agt.ativo'));

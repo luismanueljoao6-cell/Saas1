@@ -10,10 +10,12 @@ use Exception;
  */
 class AgtException extends Exception
 {
+    public const TRANSPORTE = 1;
+
     /** @param  array<int, array{codigo: string, descricao: string}>  $erros */
-    public function __construct(string $message, public readonly array $erros = [])
+    public function __construct(string $message, public readonly array $erros = [], int $codigo = 0)
     {
-        parent::__construct($message);
+        parent::__construct($message, $codigo);
     }
 
     public static function semCredenciais(): self
@@ -28,7 +30,7 @@ class AgtException extends Exception
 
     public static function transporte(string $motivo): self
     {
-        return new self('Falha de comunicação com a AGT: '.$motivo);
+        return new self('Falha de comunicação com a AGT: '.$motivo, [], self::TRANSPORTE);
     }
 
     public static function respostaInesperada(int $http): self

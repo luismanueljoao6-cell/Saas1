@@ -24,4 +24,20 @@ final class NumeroJson
 
         return new self($sinal.$inteiro.'.'.rtrim(sprintf('%02d', $fracao), '0'));
     }
+
+    /** @param  string  $decimal  decimal em texto (ex.: "250.00", "0.500") */
+    public static function deDecimal(string $decimal): self
+    {
+        $texto = trim($decimal);
+
+        if (preg_match('/^-?\d+(\.\d+)?$/', $texto) !== 1) {
+            throw new \InvalidArgumentException("Número decimal inválido: {$decimal}");
+        }
+
+        if (str_contains($texto, '.')) {
+            $texto = rtrim(rtrim($texto, '0'), '.');
+        }
+
+        return new self($texto === '' || $texto === '-' ? '0' : $texto);
+    }
 }

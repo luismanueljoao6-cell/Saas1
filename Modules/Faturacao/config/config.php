@@ -113,6 +113,13 @@ return [
         'palavra_passe' => env('FATURACAO_AGT_PALAVRA_PASSE'),
         'timeout' => (int) env('FATURACAO_AGT_TIMEOUT', 20),
         'estabelecimento_padrao' => env('FATURACAO_AGT_ESTABELECIMENTO', 'SEDE'),
+        'lote_maximo' => 30, // máx. de documentos por pedido registarFactura
+        'max_tentativas' => (int) env('FATURACAO_AGT_MAX_TENTATIVAS', 5),
+        'consulta_intervalo' => (int) env('FATURACAO_AGT_CONSULTA_INTERVALO', 60), // segundos entre consultas de estado
+        'operation_type_padrao' => env('FATURACAO_AGT_OPERATION_TYPE', 'SG'), // tipo de operação das linhas (SG = serviço geral)
+        'unidade_padrao' => 'UN',
+        // Taxa de IVA (2 casas) => taxCode da AGT (NOR, INT, RED, OUT). Só as listadas são enviadas.
+        'codigos_taxa' => ['14.00' => 'NOR'],
         'software' => [
             'product_id' => env('FATURACAO_AGT_PRODUCT_ID', 'Saas1'),
             'product_version' => env('FATURACAO_AGT_PRODUCT_VERSION', '1.0.0'),

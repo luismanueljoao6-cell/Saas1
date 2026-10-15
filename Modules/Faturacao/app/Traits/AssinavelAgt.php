@@ -4,6 +4,7 @@ namespace Modules\Faturacao\Traits;
 
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
+use Modules\Faturacao\Models\AgtSubmissao;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Support\PayloadAssinaturaAgt;
 
@@ -14,6 +15,22 @@ use Modules\Faturacao\Support\PayloadAssinaturaAgt;
  */
 trait AssinavelAgt
 {
+    /**
+     * Com a comunicação à AGT ativa, cada documento emitido fica registado para
+     * envio — na mesma transação da emissão, por isso nunca há um sem o outro.
+     */
+    public static function bootAssinavelAgt(): void
+    {
+        static::saved(function ($documento): void {
+            if (config('faturacao.agt.ativo') && $documento->estaEmitido() && $documento->wasChanged('hash')) {
+                AgtSubmissao::query()->firstOrCreate(
+                    ['documento_type' => $documento->getMorphClass(), 'documento_id' => $documento->getKey()],
+                    ['empresa_id' => $documento->empresa_id, 'documento_no' => (string) $documento->numero_documento, 'estado' => AgtSubmissao::PENDENTE],
+                );
+            }
+        });
+    }
+
     protected function payloadAgtJson(int $impostoCentimos, int $liquidoCentimos, int $brutoCentimos): string
     {
         $empresa = Empresa::query()->find($this->empresa_id);

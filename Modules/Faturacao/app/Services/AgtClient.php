@@ -64,7 +64,13 @@ class AgtClient
             if (is_array($item)) {
                 $codigo = (string) ($item['idError'] ?? $item['errorCode'] ?? 'E99');
                 $descricao = (string) ($item['descriptionError'] ?? $item['errorDescription'] ?? '');
-                $erros[] = ['codigo' => $codigo, 'descricao' => $descricao];
+                $erro = ['codigo' => $codigo, 'descricao' => $descricao];
+
+                if (! empty($item['documentNo'])) {
+                    $erro['documento'] = (string) $item['documentNo'];
+                }
+
+                $erros[] = $erro;
             } elseif (is_string($item) && trim($item) !== '') {
                 $erros[] = ['codigo' => 'E99', 'descricao' => trim($item)];
             }
