@@ -20,6 +20,10 @@ class AgtSerieTest extends TestCase
 
     protected string $publicaSoftware;
 
+    protected string $ultimoAutorizado = '1000';
+
+    protected bool $agtSimulada = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -67,14 +71,24 @@ class AgtSerieTest extends TestCase
 
     protected function respostaSerie(string $ultimo = '1000'): void
     {
-        Http::fake(['*' => Http::response([
+        $this->ultimoAutorizado = $ultimo;
+
+        if ($this->agtSimulada) {
+            return;
+        }
+
+        $this->agtSimulada = true;
+
+        // Um só Http::fake(): chamadas seguintes não substituem as respostas anteriores
+        // (ganha a primeira que corresponder), por isso a resposta lê a propriedade.
+        Http::fake(['*' => fn () => Http::response([
             'resultCode' => 1,
             'errorList' => [''],
             'seriesFEResult' => [
                 'seriesCode' => 'FT6325S2C',
-                'authorizedQuantity' => $ultimo,
+                'authorizedQuantity' => $this->ultimoAutorizado,
                 'firstDocumentNo' => '1',
-                'lastDocumentNo' => $ultimo,
+                'lastDocumentNo' => $this->ultimoAutorizado,
             ],
         ], 200)]);
     }
