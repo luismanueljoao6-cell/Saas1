@@ -8,6 +8,7 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Modules\Core\Console\ProvisionarServicosCommand;
 use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Core\Support\ProxiesConfiaveis;
+use Modules\Faturacao\Console\SolicitarSerieAgtCommand;
 use Modules\Faturacao\Console\VerificarCadeiaFiscalCommand;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withCommands([
         ProvisionarServicosCommand::class,
         VerificarCadeiaFiscalCommand::class,
+        SolicitarSerieAgtCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         // Proxies de confiança: NUNCA '*' por omissão. Em produção define

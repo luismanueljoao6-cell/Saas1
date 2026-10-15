@@ -17,6 +17,12 @@ class Serie extends Model
         'ano',
         'prefixo',
         'ultimo_numero',
+        'agt_codigo',
+        'estabelecimento',
+        'contingencia',
+        'quantidade_autorizada',
+        'ultimo_numero_autorizado',
+        'agt_criada_em',
     ];
 
     protected function casts(): array
@@ -24,11 +30,16 @@ class Serie extends Model
         return [
             'ano' => 'integer',
             'ultimo_numero' => 'integer',
+            'quantidade_autorizada' => 'integer',
+            'ultimo_numero_autorizado' => 'integer',
+            'agt_criada_em' => 'datetime',
         ];
     }
 
     public function codigo(): string
     {
-        return "{$this->tipo_documento} {$this->prefixo}{$this->ano}";
+        return $this->agt_codigo !== null
+            ? "{$this->tipo_documento} {$this->agt_codigo}"
+            : "{$this->tipo_documento} {$this->prefixo}{$this->ano}";
     }
 }

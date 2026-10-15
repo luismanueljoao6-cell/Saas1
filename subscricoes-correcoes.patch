@@ -1,0 +1,2729 @@
+From 68c044e3d679f7f11d1e958d28ecc2fb55bbd26d Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Tue, 13 Oct 2026 20:45:39 +0000
+Subject: [PATCH 1/3] =?UTF-8?q?fix(subscricoes):=20webhook=20ProxyPay=20no?=
+ =?UTF-8?q?=20formato=20documentado,=20entidade=20no=20pagamento,=20pollin?=
+ =?UTF-8?q?g,=20rotas=20cache=C3=A1veis,=20=C3=ADndices=20e=20robustez=20d?=
+ =?UTF-8?q?a=20rotina=20di=C3=A1ria?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ Modules/Subscricoes/README.md                 |  2 +-
+ .../Http/Controllers/SubscricaoController.php | 49 +++++++++-
+ .../Requests/IniciarSubscricaoRequest.php     |  3 +-
+ .../Jobs/VerificarSubscricoesExpiradasJob.php | 24 +++--
+ Modules/Subscricoes/app/Models/Pagamento.php  | 12 +++
+ .../PagamentoConfirmadoNotification.php       |  2 +-
+ .../RenovacaoProximaNotification.php          |  8 +-
+ .../Providers/SubscricoesServiceProvider.php  |  1 +
+ .../Contracts/GatewayCancelavelInterface.php  | 19 ++++
+ .../Contracts/GatewayPagamentoInterface.php   |  2 +-
+ .../app/Services/Gateways/ProxyPayGateway.php | 93 ++++++++++++++++---
+ .../app/Services/PagamentoService.php         |  9 +-
+ .../app/Services/SubscricaoService.php        |  6 +-
+ ..._indexes_to_subscricoes_and_pagamentos.php | 33 +++++++
+ .../resources/views/planos/index.blade.php    |  2 +-
+ .../views/subscricao/pendente.blade.php       | 56 +++++++++--
+ Modules/Subscricoes/routes/web.php            | 13 ++-
+ .../tests/Feature/ProxyPayCallbackTest.php    | 70 ++++++++++++++
+ 18 files changed, 359 insertions(+), 45 deletions(-)
+ create mode 100644 Modules/Subscricoes/app/Services/Gateways/Contracts/GatewayCancelavelInterface.php
+ create mode 100644 Modules/Subscricoes/database/migrations/2026_10_13_000001_add_indexes_to_subscricoes_and_pagamentos.php
+ create mode 100644 Modules/Subscricoes/tests/Feature/ProxyPayCallbackTest.php
+
+diff --git a/Modules/Subscricoes/README.md b/Modules/Subscricoes/README.md
+index cfd26d4..88c39be 100644
+--- a/Modules/Subscricoes/README.md
++++ b/Modules/Subscricoes/README.md
+@@ -35,7 +35,7 @@ ## Sobre o gateway de pagamento — o que encontrei
+   arquitetura está desenhada por trás de `GatewayPagamentoInterface`,
+   qualquer um destes é, no limite, uma nova classe.
+ 
+-**Limite de validação:** a integração foi comparada com a documentação pública da API v2, mas ainda não foi testada com credenciais reais. Antes de produção, confirma os pedidos e respostas no sandbox da ProxyPay, sobretudo a criação da referência e os campos aceites. Os webhooks usam `X-Signature`, HMAC-SHA-256 do corpo HTTP original, com a API key como segredo; a aplicação rejeita assinaturas inválidas e não aceita tokens na query string.
++**Limite de validação:** a integração foi comparada com a documentação pública da API v2, mas ainda não foi testada com credenciais reais. Antes de produção, confirma os pedidos e respostas no sandbox da ProxyPay, sobretudo a criação da referência e os campos aceites. Os callbacks são validados com HMAC-SHA-256 e a API key como segredo, no formato documentado pela ProxyPay (`meta.timestamp` + `meta.signature`, evento aninhado em `payment`) ou, em alternativa, `X-Signature` sobre o corpo bruto; a aplicação rejeita assinaturas inválidas e não aceita tokens na query string. Confirma no sandbox o formato exato da v2.
+ 
+ ## Estrutura entregue
+ 
+diff --git a/Modules/Subscricoes/app/Http/Controllers/SubscricaoController.php b/Modules/Subscricoes/app/Http/Controllers/SubscricaoController.php
+index a6ffc0e..6efe0f1 100644
+--- a/Modules/Subscricoes/app/Http/Controllers/SubscricaoController.php
++++ b/Modules/Subscricoes/app/Http/Controllers/SubscricaoController.php
+@@ -2,15 +2,20 @@
+ 
+ namespace Modules\Subscricoes\Http\Controllers;
+ 
++use DomainException;
++use Illuminate\Http\JsonResponse;
+ use Illuminate\Http\RedirectResponse;
+ use Illuminate\Http\Request;
+ use Illuminate\Routing\Controller;
+ use Illuminate\Support\Facades\Log;
++use Illuminate\View\View;
+ use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
+ use Modules\Subscricoes\Http\Requests\IniciarSubscricaoRequest;
++use Modules\Subscricoes\Models\Pagamento;
+ use Modules\Subscricoes\Models\Plano;
+ use Modules\Subscricoes\Models\Subscricao;
+ use Modules\Subscricoes\Services\SubscricaoService;
++use RuntimeException;
+ use Throwable;
+ 
+ class SubscricaoController extends Controller
+@@ -23,6 +28,11 @@ public function iniciar(IniciarSubscricaoRequest $request): RedirectResponse
+ 
+         try {
+             $pagamento = $this->subscricaoService->iniciar($request->user()->empresa, $plano);
++        } catch (DomainException|RuntimeException $e) {
++            // Mensagens de negócio escritas para o utilizador (ex.: "já existe
++            // um pagamento pendente para outro plano") — mostram-se tal e qual.
++            // GatewayPagamentoException estende Exception, não RuntimeException.
++            return back()->with('erro', $e->getMessage());
+         } catch (GatewayPagamentoException $e) {
+             Log::error('Não foi possível gerar referência de pagamento', ['erro' => $e->getMessage()]);
+ 
+@@ -50,14 +60,43 @@ public function alternarRenovacao(Request $request, int $subscricao): RedirectRe
+ 
+         $modelo = Subscricao::findOrFail($subscricao);
+ 
+-        if ($modelo->renovacao_automatica) {
+-            $this->subscricaoService->cancelarRenovacao($modelo);
++        try {
++            if ($modelo->renovacao_automatica) {
++                $this->subscricaoService->cancelarRenovacao($modelo);
+ 
+-            return back()->with('sucesso', 'Renovação cancelada. Manténs o acesso até ao fim do período pago.');
+-        }
++                return back()->with('sucesso', 'Renovação cancelada. Manténs o acesso até ao fim do período pago.');
++            }
+ 
+-        $this->subscricaoService->retomarRenovacao($modelo);
++            $this->subscricaoService->retomarRenovacao($modelo);
++        } catch (DomainException $e) {
++            return back()->with('erro', $e->getMessage());
++        }
+ 
+         return back()->with('sucesso', 'Renovação retomada.');
+     }
++
++    /**
++     * Página de pagamento pendente. Antes era um closure em routes/web.php,
++     * o que impede `php artisan route:cache` em produção.
++     */
++    public function pendente(int $pagamento): View
++    {
++        $modelo = Pagamento::with('subscricao.plano')->findOrFail($pagamento);
++
++        return view('subscricoes::subscricao.pendente', ['pagamento' => $modelo]);
++    }
++
++    /**
++     * Estado do pagamento, consultado pela página de pagamento pendente
++     * (polling) para avançar sozinha quando o pagamento é confirmado.
++     */
++    public function estado(int $pagamento): JsonResponse
++    {
++        $modelo = Pagamento::findOrFail($pagamento);
++
++        return response()->json([
++            'estado' => $modelo->estado,
++            'confirmado' => $modelo->estado === 'confirmado',
++        ]);
++    }
+ }
+diff --git a/Modules/Subscricoes/app/Http/Requests/IniciarSubscricaoRequest.php b/Modules/Subscricoes/app/Http/Requests/IniciarSubscricaoRequest.php
+index 1f12044..eb4ef91 100644
+--- a/Modules/Subscricoes/app/Http/Requests/IniciarSubscricaoRequest.php
++++ b/Modules/Subscricoes/app/Http/Requests/IniciarSubscricaoRequest.php
+@@ -3,6 +3,7 @@
+ namespace Modules\Subscricoes\Http\Requests;
+ 
+ use Illuminate\Foundation\Http\FormRequest;
++use Illuminate\Validation\Rule;
+ 
+ class IniciarSubscricaoRequest extends FormRequest
+ {
+@@ -15,7 +16,7 @@ public function authorize(): bool
+     public function rules(): array
+     {
+         return [
+-            'plano_id' => ['required', 'integer', 'exists:planos,id'],
++            'plano_id' => ['required', 'integer', Rule::exists('planos', 'id')->where('ativo', true)],
+         ];
+     }
+ }
+diff --git a/Modules/Subscricoes/app/Jobs/VerificarSubscricoesExpiradasJob.php b/Modules/Subscricoes/app/Jobs/VerificarSubscricoesExpiradasJob.php
+index 32269de..cad711f 100644
+--- a/Modules/Subscricoes/app/Jobs/VerificarSubscricoesExpiradasJob.php
++++ b/Modules/Subscricoes/app/Jobs/VerificarSubscricoesExpiradasJob.php
+@@ -48,12 +48,24 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
+     public function handle(TenantManager $tenantManager, TenantService $tenantService): void
+     {
+         $tenantManager->semTenant(function () use ($tenantService) {
+-            $this->expirarPagamentosPendentes();
+-            $this->cancelarSubscricoesSemPagamento();
+-            $this->terminarTrials($tenantService);
+-            $this->suspenderSubscricoesVencidas($tenantService);
+-            $this->expirarPeriodosDeTolerancia($tenantService);
+-            $this->gerarRenovacoes();
++            // Cada passo é isolado: uma falha num deles (ex.: base de dados
++            // indisponível por instantes) não pode impedir os restantes.
++            $passos = [
++                'expirarPagamentosPendentes' => fn () => $this->expirarPagamentosPendentes(),
++                'cancelarSubscricoesSemPagamento' => fn () => $this->cancelarSubscricoesSemPagamento(),
++                'terminarTrials' => fn () => $this->terminarTrials($tenantService),
++                'suspenderSubscricoesVencidas' => fn () => $this->suspenderSubscricoesVencidas($tenantService),
++                'expirarPeriodosDeTolerancia' => fn () => $this->expirarPeriodosDeTolerancia($tenantService),
++                'gerarRenovacoes' => fn () => $this->gerarRenovacoes(),
++            ];
++
++            foreach ($passos as $nome => $passo) {
++                try {
++                    $passo();
++                } catch (Throwable $e) {
++                    Log::error("Rotina de subscrições: o passo {$nome} falhou", ['erro' => $e->getMessage()]);
++                }
++            }
+         });
+     }
+ 
+diff --git a/Modules/Subscricoes/app/Models/Pagamento.php b/Modules/Subscricoes/app/Models/Pagamento.php
+index 1ad2c56..947adab 100644
+--- a/Modules/Subscricoes/app/Models/Pagamento.php
++++ b/Modules/Subscricoes/app/Models/Pagamento.php
+@@ -55,6 +55,18 @@ public function confirmadoPor(): BelongsTo
+         return $this->belongsTo(User::class, 'confirmado_por');
+     }
+ 
++    /**
++     * Entidade Multicaixa a indicar no pagamento (o cliente precisa de
++     * entidade + referência + montante). Vem do payload guardado ao criar a
++     * referência, ou do .env como alternativa.
++     */
++    public function entidade(): ?string
++    {
++        $entidade = $this->payload_bruto['entity_id'] ?? config('subscricoes.gateways.proxypay.entity_id');
++
++        return $entidade ? (string) $entidade : null;
++    }
++
+     public function estaExpirado(): bool
+     {
+         return $this->estado === 'pendente' && $this->expira_em !== null && $this->expira_em->isPast();
+diff --git a/Modules/Subscricoes/app/Notifications/PagamentoConfirmadoNotification.php b/Modules/Subscricoes/app/Notifications/PagamentoConfirmadoNotification.php
+index d31ec09..4c3ba7f 100644
+--- a/Modules/Subscricoes/app/Notifications/PagamentoConfirmadoNotification.php
++++ b/Modules/Subscricoes/app/Notifications/PagamentoConfirmadoNotification.php
+@@ -32,6 +32,6 @@ public function toMail(object $notifiable): MailMessage
+             ->line('Recebemos a confirmação do teu pagamento.')
+             ->line("Valor: {$this->valor} {$this->moeda}")
+             ->line("A tua subscrição está ativa até {$this->terminaEm}.")
+-            ->action('Aceder à plataforma', url('/painel'));
++            ->action('Aceder à plataforma', route('core.painel'));
+     }
+ }
+diff --git a/Modules/Subscricoes/app/Notifications/RenovacaoProximaNotification.php b/Modules/Subscricoes/app/Notifications/RenovacaoProximaNotification.php
+index 61ec591..28943a1 100644
+--- a/Modules/Subscricoes/app/Notifications/RenovacaoProximaNotification.php
++++ b/Modules/Subscricoes/app/Notifications/RenovacaoProximaNotification.php
+@@ -19,6 +19,7 @@ public function __construct(
+         protected string $valor,
+         protected string $moeda,
+         protected string $expiraEm,
++        protected ?string $entidade = null,
+     ) {}
+ 
+     public function via(object $notifiable): array
+@@ -33,11 +34,12 @@ public function toMail(object $notifiable): MailMessage
+             ->greeting("Olá, {$notifiable->name}!")
+             ->line("A subscrição da tua empresa termina a {$this->terminaEm}.")
+             ->line(
+-                'Para continuares sem interrupção, paga a referência '.
+-                "{$this->referenciaExterna} — {$this->valor} {$this->moeda} — ".
++                'Para continuares sem interrupção, paga '.
++                ($this->entidade ? "na entidade {$this->entidade}, " : '').
++                "referência {$this->referenciaExterna}, montante {$this->valor} {$this->moeda}, ".
+                 "até {$this->expiraEm}."
+             )
+             ->line('Os dias que ainda te restarem são somados ao novo período.')
+-            ->action('Ver planos e pagamentos', url('/planos'));
++            ->action('Ver planos e pagamentos', route('subscricoes.planos'));
+     }
+ }
+diff --git a/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php b/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php
+index 99d7496..2c565eb 100644
+--- a/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php
++++ b/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php
+@@ -87,6 +87,7 @@ protected function agendarVerificacaoDiaria(): void
+             $schedule->call(fn () => VerificarSubscricoesExpiradasJob::dispatchSync())
+                 ->dailyAt('02:00')
+                 ->name('subscricoes:verificar-expiradas')
++                ->onOneServer()
+                 ->withoutOverlapping();
+         });
+     }
+diff --git a/Modules/Subscricoes/app/Services/Gateways/Contracts/GatewayCancelavelInterface.php b/Modules/Subscricoes/app/Services/Gateways/Contracts/GatewayCancelavelInterface.php
+new file mode 100644
+index 0000000..bf60683
+--- /dev/null
++++ b/Modules/Subscricoes/app/Services/Gateways/Contracts/GatewayCancelavelInterface.php
+@@ -0,0 +1,19 @@
++<?php
++
++namespace Modules\Subscricoes\Services\Gateways\Contracts;
++
++use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
++use Modules\Subscricoes\Models\Pagamento;
++
++/**
++ * Capacidade opcional: gateways que conseguem invalidar uma referência já
++ * criada. Substitui o antigo `method_exists($gateway, 'cancelarReferencia')`,
++ * que falhava em silêncio quando o método não existia.
++ */
++interface GatewayCancelavelInterface
++{
++    /**
++     * @throws GatewayPagamentoException
++     */
++    public function cancelarReferencia(Pagamento $pagamento): void;
++}
+diff --git a/Modules/Subscricoes/app/Services/Gateways/Contracts/GatewayPagamentoInterface.php b/Modules/Subscricoes/app/Services/Gateways/Contracts/GatewayPagamentoInterface.php
+index 606abc5..d1b412a 100644
+--- a/Modules/Subscricoes/app/Services/Gateways/Contracts/GatewayPagamentoInterface.php
++++ b/Modules/Subscricoes/app/Services/Gateways/Contracts/GatewayPagamentoInterface.php
+@@ -46,7 +46,7 @@ public function validarPedidoWebhook(Request $request): bool;
+      * Extrai do payload do webhook os dados necessários para localizar e
+      * confirmar o Pagamento correspondente.
+      *
+-     * @return array{referencia_externa: string, estado: string, payload: array<string, mixed>}
++     * @return array{referencia_externa: string, estado: string, valor?: string|null, payload: array<string, mixed>}
+      */
+     public function interpretarNotificacao(Request $request): array;
+ }
+diff --git a/Modules/Subscricoes/app/Services/Gateways/ProxyPayGateway.php b/Modules/Subscricoes/app/Services/Gateways/ProxyPayGateway.php
+index cf48f09..474163b 100644
+--- a/Modules/Subscricoes/app/Services/Gateways/ProxyPayGateway.php
++++ b/Modules/Subscricoes/app/Services/Gateways/ProxyPayGateway.php
+@@ -9,6 +9,7 @@
+ use Illuminate\Support\Facades\Log;
+ use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
+ use Modules\Subscricoes\Models\Pagamento;
++use Modules\Subscricoes\Services\Gateways\Contracts\GatewayCancelavelInterface;
+ use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
+ use Throwable;
+ 
+@@ -26,11 +27,14 @@
+  * `Accept: application/vnd.proxypay.v2+json` (NÃO é Bearer).
+  * Sandbox: PROXYPAY_BASE_URL=https://api.sandbox.proxypay.co.ao
+  *
+- * Os webhooks da ProxyPay v2 são autenticados com HMAC-SHA-256 do corpo
+- * HTTP original, usando a API key como segredo e a assinatura hexadecimal
+- * no cabeçalho X-Signature. Nunca aceitar tokens na query string.
++ * Autenticação dos callbacks (push API). A documentação da ProxyPay envia a
++ * assinatura DENTRO do corpo JSON (`meta.timestamp` + `meta.signature`), com
++ *   signature = HMAC-SHA-256(API key, timestamp + checksum_data)
++ * e o evento aninhado em `payment`. Também se aceita o esquema alternativo
++ * `X-Signature` = HMAC-SHA-256 do corpo bruto. Qualquer dos dois tem de ser
++ * válido, com a API key como segredo. Nunca aceitar tokens na query string.
+  */
+-class ProxyPayGateway implements GatewayPagamentoInterface
++class ProxyPayGateway implements GatewayCancelavelInterface, GatewayPagamentoInterface
+ {
+     protected string $baseUrl;
+ 
+@@ -148,26 +152,93 @@ public function validarPedidoWebhook(Request $request): bool
+             return false;
+         }
+ 
++        return $this->assinaturaDoCabecalhoValida($request)
++            || $this->assinaturaDoCorpoValida($request);
++    }
++
++    /**
++     * Esquema alternativo: HMAC-SHA-256 hexadecimal dos bytes originais do
++     * corpo (nunca do JSON re-serializado) no cabeçalho X-Signature.
++     */
++    protected function assinaturaDoCabecalhoValida(Request $request): bool
++    {
+         $assinatura = strtolower(trim((string) $request->header('X-Signature', '')));
+ 
+         if (! preg_match('/^[a-f0-9]{64}$/', $assinatura)) {
+             return false;
+         }
+ 
+-        // Importante: assinar os bytes originais, não o JSON descodificado e
+-        // novamente serializado, pois espaços/ordem das propriedades alteram o HMAC.
+-        $esperada = hash_hmac('sha256', $request->getContent(), $this->apiKey);
++        return hash_equals(hash_hmac('sha256', $request->getContent(), (string) $this->apiKey), $assinatura);
++    }
++
++    /**
++     * Esquema documentado pela ProxyPay: meta.signature =
++     * HMAC-SHA-256(API key, meta.timestamp + checksum_data).
++     */
++    protected function assinaturaDoCorpoValida(Request $request): bool
++    {
++        $dados = $request->json()->all();
++
++        $evento = $dados['payment'] ?? null;
++        $timestamp = $dados['meta']['timestamp'] ?? null;
++        $assinatura = $dados['meta']['signature'] ?? null;
++
++        if (! is_array($evento) || ! is_scalar($timestamp) || ! is_string($assinatura)) {
++            return false;
++        }
++
++        $assinatura = strtolower(trim($assinatura));
++
++        if (! preg_match('/^[a-f0-9]{64}$/', $assinatura)) {
++            return false;
++        }
++
++        $esperada = hash_hmac('sha256', $timestamp.$this->checksumDoEvento($evento), (string) $this->apiKey);
+ 
+         return hash_equals($esperada, $assinatura);
+     }
+ 
++    /**
++     * checksum_data = amount + datetime + entity_id + id + reference_id +
++     * reference_number + terminal_id + terminal_location +
++     * terminal_transaction_id + terminal_type + valores de custom_fields
++     * ordenados pela chave.
++     *
++     * @param  array<string, mixed>  $evento
++     */
++    protected function checksumDoEvento(array $evento): string
++    {
++        $checksum = '';
++
++        foreach ([
++            'amount', 'datetime', 'entity_id', 'id', 'reference_id', 'reference_number',
++            'terminal_id', 'terminal_location', 'terminal_transaction_id', 'terminal_type',
++        ] as $campo) {
++            $valor = $evento[$campo] ?? '';
++            $checksum .= is_scalar($valor) ? (string) $valor : '';
++        }
++
++        $campos = is_array($evento['custom_fields'] ?? null) ? $evento['custom_fields'] : [];
++        ksort($campos);
++
++        foreach ($campos as $valor) {
++            $checksum .= is_scalar($valor) ? (string) $valor : '';
++        }
++
++        return $checksum;
++    }
++
+     public function interpretarNotificacao(Request $request): array
+     {
+-        $payload = $request->json()->all();
++        $corpo = $request->json()->all();
++
++        // O evento vem aninhado em `payment` (push API); aceita-se também o
++        // formato plano.
++        $payload = is_array($corpo['payment'] ?? null) ? $corpo['payment'] : $corpo;
+ 
+         $referencia = $payload['reference_id'] ?? $payload['reference'] ?? null;
+ 
+-        if (! $referencia) {
++        if (! is_scalar($referencia) || (string) $referencia === '') {
+             throw GatewayPagamentoException::pagamentoNaoEncontrado('(referência ausente no payload do webhook)');
+         }
+ 
+@@ -175,7 +246,7 @@ public function interpretarNotificacao(Request $request): array
+             'referencia_externa' => (string) $referencia,
+             'estado' => 'confirmado',
+             // Valor efetivamente pago: o PagamentoService compara-o com o devido.
+-            'valor' => isset($payload['amount']) ? (string) $payload['amount'] : null,
++            'valor' => isset($payload['amount']) && is_scalar($payload['amount']) ? (string) $payload['amount'] : null,
+             'payload' => $payload,
+         ];
+     }
+@@ -185,7 +256,7 @@ protected function http(): PendingRequest
+         return Http::withHeaders([
+             'Authorization' => 'Token '.$this->apiKey,
+             'Accept' => 'application/vnd.proxypay.v2+json',
+-        ])->asJson()->timeout(10);
++        ])->asJson()->connectTimeout(5)->timeout(10);
+     }
+ 
+     protected function garantirCredenciaisConfiguradas(): void
+diff --git a/Modules/Subscricoes/app/Services/PagamentoService.php b/Modules/Subscricoes/app/Services/PagamentoService.php
+index 8e3520d..733c78c 100644
+--- a/Modules/Subscricoes/app/Services/PagamentoService.php
++++ b/Modules/Subscricoes/app/Services/PagamentoService.php
+@@ -32,7 +32,7 @@ public function __construct(
+      * que ainda restavam somam-se, nunca se perdem.
+      *
+      * @param  string|null  $valorRecebido  Valor pago segundo o gateway. Se
+-     *                                      informado e inferior ao devido, lança DomainException
++     *                                      informado e diferente do devido, lança DomainException
+      *                                      e NADA é confirmado. Nulo = sem verificação (confirmação manual).
+      *
+      * @throws DomainException|Throwable
+@@ -116,7 +116,12 @@ public function confirmar(Pagamento $pagamento, array $payloadBruto = [], ?User
+                         'estado' => 'confirmado',
+                         'confirmado_em' => $agora,
+                         'confirmado_por' => $confirmadoPor?->id,
+-                        'payload_bruto' => $payloadBruto ?: $pagamento->payload_bruto,
++                        // Preserva o payload original da referência (entidade, valor,
++                        // validade) e guarda a notificação ao lado, em vez de a
++                        // substituir: é a trilha de auditoria do pagamento.
++                        'payload_bruto' => $payloadBruto !== []
++                            ? array_merge($pagamento->payload_bruto ?? [], ['confirmacao' => $payloadBruto])
++                            : $pagamento->payload_bruto,
+                     ]);
+ 
+                     $subscricao->update([
+diff --git a/Modules/Subscricoes/app/Services/SubscricaoService.php b/Modules/Subscricoes/app/Services/SubscricaoService.php
+index 78a041f..cbd6a8c 100644
+--- a/Modules/Subscricoes/app/Services/SubscricaoService.php
++++ b/Modules/Subscricoes/app/Services/SubscricaoService.php
+@@ -15,6 +15,7 @@
+ use Modules\Subscricoes\Models\Plano;
+ use Modules\Subscricoes\Models\Subscricao;
+ use Modules\Subscricoes\Notifications\RenovacaoProximaNotification;
++use Modules\Subscricoes\Services\Gateways\Contracts\GatewayCancelavelInterface;
+ use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
+ use RuntimeException;
+ use Throwable;
+@@ -218,7 +219,7 @@ public function gerarRenovacao(Subscricao $subscricao): Pagamento
+ 
+                 if (! $podeNotificar) {
+                     try {
+-                        if (method_exists($this->gateway, 'cancelarReferencia')) {
++                        if ($this->gateway instanceof GatewayCancelavelInterface) {
+                             $this->gateway->cancelarReferencia($pagamento);
+                         }
+                     } catch (Throwable $e) {
+@@ -251,6 +252,7 @@ public function gerarRenovacao(Subscricao $subscricao): Pagamento
+                                 (string) $pagamento->valor,
+                                 $pagamento->moeda,
+                                 $pagamento->expira_em->format('d/m/Y'),
++                                $pagamento->entidade(),
+                             ));
+                         } catch (Throwable $e) {
+                             Log::warning('Referência de renovação gerada, mas o aviso falhou', [
+@@ -306,7 +308,7 @@ public function cancelarRenovacao(Subscricao $subscricao): Subscricao
+             }
+ 
+             try {
+-                if (method_exists($this->gateway, 'cancelarReferencia')) {
++                if ($this->gateway instanceof GatewayCancelavelInterface) {
+                     $this->gateway->cancelarReferencia($pendente);
+                 }
+             } catch (Throwable $e) {
+diff --git a/Modules/Subscricoes/database/migrations/2026_10_13_000001_add_indexes_to_subscricoes_and_pagamentos.php b/Modules/Subscricoes/database/migrations/2026_10_13_000001_add_indexes_to_subscricoes_and_pagamentos.php
+new file mode 100644
+index 0000000..4b91bbe
+--- /dev/null
++++ b/Modules/Subscricoes/database/migrations/2026_10_13_000001_add_indexes_to_subscricoes_and_pagamentos.php
+@@ -0,0 +1,33 @@
++<?php
++
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\Schema;
++
++return new class extends Migration
++{
++    public function up(): void
++    {
++        // A rotina diária filtra por estado + data em todas as empresas.
++        Schema::table('subscricoes', function (Blueprint $table) {
++            $table->index(['estado', 'termina_em'], 'subscricoes_estado_termina_em_index');
++        });
++
++        Schema::table('pagamentos', function (Blueprint $table) {
++            $table->index(['estado', 'expira_em'], 'pagamentos_estado_expira_em_index');
++            $table->index(['subscricao_id', 'estado'], 'pagamentos_subscricao_estado_index');
++        });
++    }
++
++    public function down(): void
++    {
++        Schema::table('subscricoes', function (Blueprint $table) {
++            $table->dropIndex('subscricoes_estado_termina_em_index');
++        });
++
++        Schema::table('pagamentos', function (Blueprint $table) {
++            $table->dropIndex('pagamentos_estado_expira_em_index');
++            $table->dropIndex('pagamentos_subscricao_estado_index');
++        });
++    }
++};
+diff --git a/Modules/Subscricoes/resources/views/planos/index.blade.php b/Modules/Subscricoes/resources/views/planos/index.blade.php
+index be43b3d..dc1dc1e 100644
+--- a/Modules/Subscricoes/resources/views/planos/index.blade.php
++++ b/Modules/Subscricoes/resources/views/planos/index.blade.php
+@@ -73,7 +73,7 @@ class="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-whit
+                     </form>
+                 </div>
+             @empty
+-                <p class="col-span-3 text-center text-sm text-slate-500">
++                <p class="col-span-full text-center text-sm text-slate-500">
+                     Ainda não há planos configurados — corre o PlanosSeeder.
+                 </p>
+             @endforelse
+diff --git a/Modules/Subscricoes/resources/views/subscricao/pendente.blade.php b/Modules/Subscricoes/resources/views/subscricao/pendente.blade.php
+index 770bdad..8a202d2 100644
+--- a/Modules/Subscricoes/resources/views/subscricao/pendente.blade.php
++++ b/Modules/Subscricoes/resources/views/subscricao/pendente.blade.php
+@@ -10,18 +10,62 @@
+             {{ number_format((float) $pagamento->valor, 0, ',', ' ') }} {{ $pagamento->moeda }}
+         </p>
+ 
+-        <div class="mt-6 rounded-lg bg-slate-50 border border-slate-200 p-6">
+-            <p class="text-xs uppercase tracking-wide text-slate-500">Referência Multicaixa</p>
+-            <p class="mt-1 font-mono text-2xl font-semibold text-slate-900" x-data
+-               @click="navigator.clipboard.writeText('{{ $pagamento->referencia_externa }}')">
++        <div class="mt-6 rounded-lg bg-slate-50 border border-slate-200 p-6"
++             x-data="{
++                 copiado: false,
++                 estado: 'pendente',
++                 tentativas: 0,
++                 copiar(texto) {
++                     navigator.clipboard.writeText(texto).then(() => {
++                         this.copiado = true;
++                         setTimeout(() => this.copiado = false, 2000);
++                     });
++                 },
++                 async verificar() {
++                     if (this.estado === 'confirmado' || this.tentativas >= 120) return;
++                     this.tentativas++;
++                     try {
++                         const r = await fetch(@js(route('subscricoes.estado', $pagamento)), { headers: { 'Accept': 'application/json' } });
++                         if (r.ok) {
++                             const d = await r.json();
++                             this.estado = d.estado;
++                             if (d.confirmado) { setTimeout(() => window.location = @js(route('core.painel')), 1500); return; }
++                         }
++                     } catch (e) { /* tenta de novo no próximo ciclo */ }
++                     setTimeout(() => this.verificar(), 5000);
++                 }
++             }"
++             x-init="verificar()">
++            @if ($pagamento->entidade())
++                <p class="text-xs uppercase tracking-wide text-slate-500">Entidade</p>
++                <p class="mt-1 font-mono text-2xl font-semibold text-slate-900">{{ $pagamento->entidade() }}</p>
++            @endif
++
++            <p class="mt-4 text-xs uppercase tracking-wide text-slate-500">Referência Multicaixa</p>
++            <button type="button" class="mt-1 font-mono text-2xl font-semibold text-slate-900"
++                    @click="copiar(@js($pagamento->referencia_externa))">
+                 {{ $pagamento->referencia_externa }}
++            </button>
++
++            <p class="mt-4 text-xs uppercase tracking-wide text-slate-500">Montante</p>
++            <p class="mt-1 font-mono text-2xl font-semibold text-slate-900">
++                {{ number_format((float) $pagamento->valor, 2, ',', ' ') }} {{ $pagamento->moeda }}
++            </p>
++
++            <p class="mt-3 text-xs text-slate-500">
++                <span x-show="!copiado">Toca na referência para copiar.</span>
++                <span x-show="copiado" x-cloak class="text-emerald-600">Referência copiada.</span>
++                Válida até {{ $pagamento->expira_em?->format('d/m/Y') }}.
++            </p>
++
++            <p x-show="estado === 'confirmado'" x-cloak class="mt-4 text-sm font-medium text-emerald-700">
++                Pagamento confirmado! A redirecionar para o painel…
+             </p>
+-            <p class="mt-2 text-xs text-slate-500">Toca para copiar. Válida até {{ $pagamento->expira_em?->format('d/m/Y') }}.</p>
+         </div>
+ 
+         <p class="mt-6 text-sm text-slate-500">
+             Assim que o pagamento for confirmado pelo banco, a tua subscrição fica ativa
+-            automaticamente — não precisas de fazer mais nada nem de recarregar esta página.
++            automaticamente e esta página avança sozinha.
+         </p>
+ 
+         <a href="{{ route('core.painel') }}" class="mt-6 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500">
+diff --git a/Modules/Subscricoes/routes/web.php b/Modules/Subscricoes/routes/web.php
+index 32247bc..5bd6e73 100644
+--- a/Modules/Subscricoes/routes/web.php
++++ b/Modules/Subscricoes/routes/web.php
+@@ -3,7 +3,6 @@
+ use Illuminate\Support\Facades\Route;
+ use Modules\Subscricoes\Http\Controllers\PlanoController;
+ use Modules\Subscricoes\Http\Controllers\SubscricaoController;
+-use Modules\Subscricoes\Models\Pagamento;
+ 
+ /*
+ |--------------------------------------------------------------------------
+@@ -23,11 +22,15 @@
+     Route::get('/planos', [PlanoController::class, 'index'])->name('subscricoes.planos');
+     Route::post('/subscricao', [SubscricaoController::class, 'iniciar'])->name('subscricoes.iniciar');
+     Route::post('/subscricao/{subscricao}/renovacao', [SubscricaoController::class, 'alternarRenovacao'])
++        ->whereNumber('subscricao')
+         ->name('subscricoes.renovacao');
+ 
+-    Route::get('/subscricao/pagamentos/{pagamento}', function (int $pagamento) {
+-        $modelo = Pagamento::with('subscricao.plano')->findOrFail($pagamento);
++    Route::get('/subscricao/pagamentos/{pagamento}', [SubscricaoController::class, 'pendente'])
++        ->whereNumber('pagamento')
++        ->name('subscricoes.pendente');
+ 
+-        return view('subscricoes::subscricao.pendente', ['pagamento' => $modelo]);
+-    })->name('subscricoes.pendente');
++    Route::get('/subscricao/pagamentos/{pagamento}/estado', [SubscricaoController::class, 'estado'])
++        ->whereNumber('pagamento')
++        ->middleware('throttle:60,1')
++        ->name('subscricoes.estado');
+ });
+diff --git a/Modules/Subscricoes/tests/Feature/ProxyPayCallbackTest.php b/Modules/Subscricoes/tests/Feature/ProxyPayCallbackTest.php
+new file mode 100644
+index 0000000..ff8af7f
+--- /dev/null
++++ b/Modules/Subscricoes/tests/Feature/ProxyPayCallbackTest.php
+@@ -0,0 +1,70 @@
++<?php
++
++namespace Modules\Subscricoes\Tests\Feature;
++
++use Illuminate\Http\Request;
++use Modules\Subscricoes\Services\Gateways\ProxyPayGateway;
++use Tests\TestCase;
++
++/**
++ * Formato documentado pela ProxyPay (push API): evento aninhado em `payment`,
++ * assinatura em `meta.signature` = HMAC-SHA-256(API key, timestamp + checksum_data).
++ * O exemplo é o da própria documentação.
++ */
++class ProxyPayCallbackTest extends TestCase
++{
++    private const CHAVE = 'h5a4e6ctej01hn9agh7uggt5n8r29ups';
++
++    private const ASSINATURA = '809427D33F649EDB8A7C123D76E5B426C37DFE6B56C9160509CFCAA01C86F844';
++
++    private function corpo(string $assinatura = self::ASSINATURA, string $montante = '5000.00'): string
++    {
++        return json_encode([
++            'payment' => [
++                'terminal_type' => '01',
++                'terminal_transaction_id' => '00123',
++                'terminal_location' => 'Luanda',
++                'terminal_id' => '00456',
++                'reference_number' => '283749832',
++                'reference_id' => '8uVigNJ7Jj4hvVMdhQ',
++                'id' => '449500352608',
++                'entity_id' => '99999',
++                'datetime' => '2015-05-10T17:43:10Z',
++                'custom_fields' => ['invoice' => '2014/0097', 'customer_name' => 'Acme'],
++                'amount' => $montante,
++            ],
++            'meta' => ['timestamp' => '1428262214', 'signature' => $assinatura],
++        ]);
++    }
++
++    private function pedido(string $corpo): Request
++    {
++        return Request::create('/api/webhooks/proxypay', 'POST', [], [], [], [
++            'CONTENT_TYPE' => 'application/json',
++        ], $corpo);
++    }
++
++    public function test_aceita_assinatura_documentada_no_corpo(): void
++    {
++        config(['subscricoes.gateways.proxypay.api_key' => self::CHAVE]);
++
++        $this->assertTrue((new ProxyPayGateway)->validarPedidoWebhook($this->pedido($this->corpo())));
++    }
++
++    public function test_rejeita_corpo_adulterado_ou_assinatura_errada(): void
++    {
++        config(['subscricoes.gateways.proxypay.api_key' => self::CHAVE]);
++        $gateway = new ProxyPayGateway;
++
++        $this->assertFalse($gateway->validarPedidoWebhook($this->pedido($this->corpo(montante: '1.00'))));
++        $this->assertFalse($gateway->validarPedidoWebhook($this->pedido($this->corpo(str_repeat('0', 64)))));
++    }
++
++    public function test_interpreta_evento_aninhado_em_payment(): void
++    {
++        $notificacao = (new ProxyPayGateway)->interpretarNotificacao($this->pedido($this->corpo()));
++
++        $this->assertSame('8uVigNJ7Jj4hvVMdhQ', $notificacao['referencia_externa']);
++        $this->assertSame('5000.00', $notificacao['valor']);
++    }
++}
+-- 
+2.43.0
+
+
+From 82dafb91c08693bd146974d7f87c773d4d758baa Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Tue, 13 Oct 2026 20:49:23 +0000
+Subject: [PATCH 2/3] =?UTF-8?q?feat(subscricoes):=20confirma=C3=A7=C3=A3o?=
+ =?UTF-8?q?=20manual=20por=20super=20admin,=20cache=20de=20limites=20com?=
+ =?UTF-8?q?=20invalida=C3=A7=C3=A3o,=20job=20sem=20retries=20para=20refer?=
+ =?UTF-8?q?=C3=AAncia=20desconhecida,=20guarda=20AOA=20e=20retry=20no=20ga?=
+ =?UTF-8?q?teway?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .../Admin/PagamentoManualController.php       | 61 +++++++++++++++++++
+ .../Jobs/ProcessarPagamentoConfirmadoJob.php  | 12 ++++
+ Modules/Subscricoes/app/Models/Plano.php      | 10 +++
+ Modules/Subscricoes/app/Models/Subscricao.php | 11 ++++
+ .../Providers/SubscricoesServiceProvider.php  |  3 +-
+ .../app/Services/Gateways/ProxyPayGateway.php | 27 +++++++-
+ .../app/Services/LimitesPlanoService.php      | 32 ++++++++++
+ .../views/admin/pagamentos.blade.php          | 53 ++++++++++++++++
+ Modules/Subscricoes/routes/web.php            |  8 +++
+ 9 files changed, 214 insertions(+), 3 deletions(-)
+ create mode 100644 Modules/Subscricoes/app/Http/Controllers/Admin/PagamentoManualController.php
+ create mode 100644 Modules/Subscricoes/resources/views/admin/pagamentos.blade.php
+
+diff --git a/Modules/Subscricoes/app/Http/Controllers/Admin/PagamentoManualController.php b/Modules/Subscricoes/app/Http/Controllers/Admin/PagamentoManualController.php
+new file mode 100644
+index 0000000..701247a
+--- /dev/null
++++ b/Modules/Subscricoes/app/Http/Controllers/Admin/PagamentoManualController.php
+@@ -0,0 +1,61 @@
++<?php
++
++namespace Modules\Subscricoes\Http\Controllers\Admin;
++
++use DomainException;
++use Illuminate\Http\RedirectResponse;
++use Illuminate\Http\Request;
++use Illuminate\Routing\Controller;
++use Illuminate\View\View;
++use Modules\Core\Services\TenantManager;
++use Modules\Subscricoes\Models\Pagamento;
++use Modules\Subscricoes\Services\PagamentoService;
++use Throwable;
++
++/**
++ * Reconciliação manual (ex.: transferência bancária) — só super admins da
++ * plataforma. Um super admin não tem tenant, por isso as leituras fazem
++ * bypass explícito e deliberado através do TenantManager::semTenant().
++ */
++class PagamentoManualController extends Controller
++{
++    public function __construct(
++        protected PagamentoService $pagamentoService,
++        protected TenantManager $tenantManager,
++    ) {}
++
++    public function index(Request $request): View
++    {
++        abort_unless($request->user()?->is_super_admin, 403);
++
++        $pagamentos = $this->tenantManager->semTenant(fn () => Pagamento::query()
++            ->whereIn('estado', ['pendente', 'expirado', 'falhado'])
++            ->with(['empresa', 'subscricao.plano'])
++            ->latest('id')
++            ->limit(100)
++            ->get());
++
++        return view('subscricoes::admin.pagamentos', ['pagamentos' => $pagamentos]);
++    }
++
++    public function confirmar(Request $request, int $pagamento): RedirectResponse
++    {
++        abort_unless($request->user()?->is_super_admin, 403);
++
++        $modelo = $this->tenantManager->semTenant(fn () => Pagamento::query()->findOrFail($pagamento));
++
++        try {
++            $this->pagamentoService->confirmar(
++                $modelo,
++                ['confirmacao_manual' => true, 'confirmado_por' => $request->user()->id],
++                $request->user(),
++            );
++        } catch (DomainException $e) {
++            return back()->with('erro', $e->getMessage());
++        } catch (Throwable) {
++            return back()->with('erro', 'Não foi possível confirmar o pagamento. Consulta o log para o detalhe.');
++        }
++
++        return back()->with('sucesso', "Pagamento {$modelo->id} confirmado e subscrição ativada.");
++    }
++}
+diff --git a/Modules/Subscricoes/app/Jobs/ProcessarPagamentoConfirmadoJob.php b/Modules/Subscricoes/app/Jobs/ProcessarPagamentoConfirmadoJob.php
+index a373f06..9d9c318 100644
+--- a/Modules/Subscricoes/app/Jobs/ProcessarPagamentoConfirmadoJob.php
++++ b/Modules/Subscricoes/app/Jobs/ProcessarPagamentoConfirmadoJob.php
+@@ -9,6 +9,7 @@
+ use Illuminate\Queue\InteractsWithQueue;
+ use Illuminate\Queue\SerializesModels;
+ use Illuminate\Support\Facades\Log;
++use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
+ use Modules\Subscricoes\Services\PagamentoService;
+ use Throwable;
+ 
+@@ -64,6 +65,17 @@ public function handle(PagamentoService $pagamentoService): void
+                 'erro' => $e->getMessage(),
+             ]);
+ 
++            $this->fail($e);
++        } catch (GatewayPagamentoException $e) {
++            // Referência que não existe aqui (ex.: outra aplicação na mesma
++            // entidade ProxyPay): repetir cinco vezes não a faz aparecer.
++            Log::critical('Notificação de pagamento para uma referência desconhecida', [
++                'gateway' => $this->gatewayIdentificador,
++                'referencia_externa' => $this->referenciaExterna,
++                'valor_recebido' => $this->valorRecebido,
++                'erro' => $e->getMessage(),
++            ]);
++
+             $this->fail($e);
+         } catch (Throwable $e) {
+             Log::error('ProcessarPagamentoConfirmadoJob falhou', [
+diff --git a/Modules/Subscricoes/app/Models/Plano.php b/Modules/Subscricoes/app/Models/Plano.php
+index 78193c1..6bee7e3 100644
+--- a/Modules/Subscricoes/app/Models/Plano.php
++++ b/Modules/Subscricoes/app/Models/Plano.php
+@@ -5,6 +5,7 @@
+ use Illuminate\Database\Eloquent\Factories\HasFactory;
+ use Illuminate\Database\Eloquent\Model;
+ use Illuminate\Database\Eloquent\Relations\HasMany;
++use Modules\Subscricoes\Services\LimitesPlanoService;
+ 
+ /**
+  * Não usa BelongsToTenant: os planos são globais da plataforma, não
+@@ -52,6 +53,15 @@ protected function casts(): array
+         ];
+     }
+ 
++    protected static function booted(): void
++    {
++        // Os limites do plano alimentam subscrições antigas sem snapshot.
++        $esquecer = fn () => app(LimitesPlanoService::class)->esquecer();
++
++        static::saved($esquecer);
++        static::deleted($esquecer);
++    }
++
+     public function subscricoes(): HasMany
+     {
+         return $this->hasMany(Subscricao::class);
+diff --git a/Modules/Subscricoes/app/Models/Subscricao.php b/Modules/Subscricoes/app/Models/Subscricao.php
+index 31aa519..8d4c090 100644
+--- a/Modules/Subscricoes/app/Models/Subscricao.php
++++ b/Modules/Subscricoes/app/Models/Subscricao.php
+@@ -8,6 +8,7 @@
+ use Illuminate\Database\Eloquent\Relations\HasMany;
+ use Modules\Core\Models\Empresa;
+ use Modules\Core\Traits\BelongsToTenant;
++use Modules\Subscricoes\Services\LimitesPlanoService;
+ 
+ /**
+  * Fonte de verdade DETALHADA da subscrição. Empresa::estado_subscricao (no
+@@ -53,6 +54,16 @@ protected function casts(): array
+         ];
+     }
+ 
++    protected static function booted(): void
++    {
++        $esquecer = function (self $subscricao): void {
++            app(LimitesPlanoService::class)->esquecer((int) $subscricao->empresa_id);
++        };
++
++        static::saved($esquecer);
++        static::deleted($esquecer);
++    }
++
+     public function empresa(): BelongsTo
+     {
+         return $this->belongsTo(Empresa::class, 'empresa_id');
+diff --git a/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php b/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php
+index 2c565eb..09a042e 100644
+--- a/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php
++++ b/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php
+@@ -31,7 +31,8 @@ public function register(): void
+ 
+         // Os limites passam a vir do plano da empresa (substitui o
+         // SemLimites que o Core regista por omissão).
+-        $this->app->bind(LimitesDaEmpresa::class, LimitesPlanoService::class);
++        $this->app->scoped(LimitesPlanoService::class);
++        $this->app->bind(LimitesDaEmpresa::class, fn ($app) => $app->make(LimitesPlanoService::class));
+ 
+         $this->app->bind(GatewayPagamentoInterface::class, function ($app) {
+             $identificador = config('subscricoes.gateway');
+diff --git a/Modules/Subscricoes/app/Services/Gateways/ProxyPayGateway.php b/Modules/Subscricoes/app/Services/Gateways/ProxyPayGateway.php
+index 474163b..5f865d4 100644
+--- a/Modules/Subscricoes/app/Services/Gateways/ProxyPayGateway.php
++++ b/Modules/Subscricoes/app/Services/Gateways/ProxyPayGateway.php
+@@ -2,6 +2,7 @@
+ 
+ namespace Modules\Subscricoes\Services\Gateways;
+ 
++use Illuminate\Http\Client\ConnectionException;
+ use Illuminate\Http\Client\PendingRequest;
+ use Illuminate\Http\Client\RequestException;
+ use Illuminate\Http\Request;
+@@ -58,6 +59,14 @@ public function gerarReferencia(Pagamento $pagamento): array
+     {
+         $this->garantirCredenciaisConfiguradas();
+ 
++        // A ProxyPay/Multicaixa só processa kwanzas.
++        if (strtoupper((string) $pagamento->moeda) !== 'AOA') {
++            throw GatewayPagamentoException::falhaAoGerarReferencia(
++                $this->identificador(),
++                "a moeda '{$pagamento->moeda}' não é suportada (apenas AOA)"
++            );
++        }
++
+         try {
+             // 1) ID de referência livre (corpo: número, por vezes entre aspas).
+             $idResposta = $this->http()->post("{$this->baseUrl}/reference_ids")->throw();
+@@ -80,7 +89,7 @@ public function gerarReferencia(Pagamento $pagamento): array
+                 ],
+             ];
+ 
+-            $this->http()->put("{$this->baseUrl}/references/{$referencia}", $dados)->throw();
++            $this->httpIdempotente()->put("{$this->baseUrl}/references/{$referencia}", $dados)->throw();
+ 
+             return [
+                 'referencia_externa' => $referencia,
+@@ -120,7 +129,7 @@ public function cancelarReferencia(Pagamento $pagamento): void
+         $this->garantirCredenciaisConfiguradas();
+ 
+         try {
+-            $resposta = $this->http()->delete(
++            $resposta = $this->httpIdempotente()->delete(
+                 "{$this->baseUrl}/references/{$pagamento->referencia_externa}"
+             );
+ 
+@@ -259,6 +268,20 @@ protected function http(): PendingRequest
+         ])->asJson()->connectTimeout(5)->timeout(10);
+     }
+ 
++    /**
++     * Para PUT/DELETE (idempotentes): repete em falhas de rede e 5xx.
++     * O POST /reference_ids não se repete — só desperdiçaria IDs.
++     */
++    protected function httpIdempotente(): PendingRequest
++    {
++        return $this->http()->retry(
++            2,
++            300,
++            fn ($e) => $e instanceof ConnectionException
++                || ($e instanceof RequestException && $e->response->serverError()),
++        );
++    }
++
+     protected function garantirCredenciaisConfiguradas(): void
+     {
+         if (! $this->apiKey) {
+diff --git a/Modules/Subscricoes/app/Services/LimitesPlanoService.php b/Modules/Subscricoes/app/Services/LimitesPlanoService.php
+index cb3d190..4b3d400 100644
+--- a/Modules/Subscricoes/app/Services/LimitesPlanoService.php
++++ b/Modules/Subscricoes/app/Services/LimitesPlanoService.php
+@@ -15,8 +15,32 @@
+  */
+ class LimitesPlanoService implements LimitesDaEmpresa
+ {
++    /**
++     * Memo por empresa. O serviço é registado como `scoped` (um por pedido ou
++     * por job), por isso a memoização nunca sobrevive entre pedidos; dentro
++     * do mesmo pedido, é invalidada sempre que uma Subscricao ou um Plano
++     * muda (ver os eventos nesses models).
++     *
++     * @var array<int, array<string, int|null>>
++     */
++    protected array $memo = [];
++
+     public function __construct(protected TenantManager $tenantManager) {}
+ 
++    /**
++     * Esquece os limites memoizados de uma empresa (ou de todas).
++     */
++    public function esquecer(?int $empresaId = null): void
++    {
++        if ($empresaId === null) {
++            $this->memo = [];
++
++            return;
++        }
++
++        unset($this->memo[$empresaId]);
++    }
++
+     public function limite(Empresa $empresa, string $chave): ?int
+     {
+         $limites = $this->limitesAtuais($empresa);
+@@ -32,6 +56,14 @@ public function limite(Empresa $empresa, string $chave): ?int
+      * @return array<string, int|null>
+      */
+     protected function limitesAtuais(Empresa $empresa): array
++    {
++        return $this->memo[$empresa->id] ??= $this->calcularLimites($empresa);
++    }
++
++    /**
++     * @return array<string, int|null>
++     */
++    protected function calcularLimites(Empresa $empresa): array
+     {
+         // Filtra por empresa_id explícito, por isso não depende do tenant
+         // "ambiente" (pode não haver nenhum: jobs, testes, consola).
+diff --git a/Modules/Subscricoes/resources/views/admin/pagamentos.blade.php b/Modules/Subscricoes/resources/views/admin/pagamentos.blade.php
+new file mode 100644
+index 0000000..8de1211
+--- /dev/null
++++ b/Modules/Subscricoes/resources/views/admin/pagamentos.blade.php
+@@ -0,0 +1,53 @@
++@extends('core::layouts.app')
++
++@section('titulo', 'Pagamentos por reconciliar')
++
++@section('conteudo')
++    <div class="mx-auto w-full max-w-5xl">
++        <h1 class="text-2xl font-semibold text-slate-900">Pagamentos por reconciliar</h1>
++        <p class="mt-1 text-sm text-slate-500">
++            Confirma só depois de verificares o recebimento (ex.: transferência). A confirmação ativa a subscrição da empresa.
++        </p>
++
++        <div class="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
++            <table class="min-w-full divide-y divide-slate-200 text-sm">
++                <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
++                    <tr>
++                        <th class="px-4 py-3">#</th>
++                        <th class="px-4 py-3">Empresa</th>
++                        <th class="px-4 py-3">Plano</th>
++                        <th class="px-4 py-3">Referência</th>
++                        <th class="px-4 py-3">Valor</th>
++                        <th class="px-4 py-3">Estado</th>
++                        <th class="px-4 py-3"></th>
++                    </tr>
++                </thead>
++                <tbody class="divide-y divide-slate-100">
++                    @forelse ($pagamentos as $pagamento)
++                        <tr>
++                            <td class="px-4 py-3">{{ $pagamento->id }}</td>
++                            <td class="px-4 py-3">{{ $pagamento->empresa?->nome_comercial }}</td>
++                            <td class="px-4 py-3">{{ $pagamento->subscricao?->plano?->nome }}</td>
++                            <td class="px-4 py-3 font-mono">{{ $pagamento->referencia_externa ?? '—' }}</td>
++                            <td class="px-4 py-3">{{ number_format((float) $pagamento->valor, 2, ',', ' ') }} {{ $pagamento->moeda }}</td>
++                            <td class="px-4 py-3">{{ $pagamento->estado }}</td>
++                            <td class="px-4 py-3 text-right">
++                                <form method="POST" action="{{ route('subscricoes.admin.confirmar', $pagamento->id) }}"
++                                      onsubmit="return confirm('Confirmar que o pagamento {{ $pagamento->id }} foi recebido?')">
++                                    @csrf
++                                    <button type="submit" class="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500">
++                                        Confirmar recebimento
++                                    </button>
++                                </form>
++                            </td>
++                        </tr>
++                    @empty
++                        <tr>
++                            <td colspan="7" class="px-4 py-6 text-center text-slate-500">Nada por reconciliar.</td>
++                        </tr>
++                    @endforelse
++                </tbody>
++            </table>
++        </div>
++    </div>
++@endsection
+diff --git a/Modules/Subscricoes/routes/web.php b/Modules/Subscricoes/routes/web.php
+index 5bd6e73..8de31c2 100644
+--- a/Modules/Subscricoes/routes/web.php
++++ b/Modules/Subscricoes/routes/web.php
+@@ -1,6 +1,7 @@
+ <?php
+ 
+ use Illuminate\Support\Facades\Route;
++use Modules\Subscricoes\Http\Controllers\Admin\PagamentoManualController;
+ use Modules\Subscricoes\Http\Controllers\PlanoController;
+ use Modules\Subscricoes\Http\Controllers\SubscricaoController;
+ 
+@@ -33,4 +34,11 @@
+         ->whereNumber('pagamento')
+         ->middleware('throttle:60,1')
+         ->name('subscricoes.estado');
++
++    // Reconciliação manual: só super admins (verificado no controller).
++    Route::get('/admin/pagamentos', [PagamentoManualController::class, 'index'])
++        ->name('subscricoes.admin.pagamentos');
++    Route::post('/admin/pagamentos/{pagamento}/confirmar', [PagamentoManualController::class, 'confirmar'])
++        ->whereNumber('pagamento')
++        ->name('subscricoes.admin.confirmar');
+ });
+-- 
+2.43.0
+
+
+From fd292b6d53e93541d1dbf448b63053b4f52652f3 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Wed, 14 Oct 2026 21:05:33 +0000
+Subject: [PATCH 3/3] =?UTF-8?q?feat(subscricoes):=20enums=20de=20estado,?=
+ =?UTF-8?q?=20pre=C3=A7o=20contratado,=20caixa=20de=20entrada=20de=20webho?=
+ =?UTF-8?q?oks,=20p=C3=A1ginas=20de=20fatura=C3=A7=C3=A3o,=20menu=20do=20s?=
+ =?UTF-8?q?uper=20admin=20e=20testes?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .env.example                                  |   9 +-
+ Modules/Core/app/Support/Navegacao.php        |   5 +
+ .../Console/ReprocessarWebhooksCommand.php    |  51 ++++
+ .../app/Enums/EventoWebhookEstado.php         |  10 +
+ .../Subscricoes/app/Enums/PagamentoEstado.php |  29 ++
+ .../app/Enums/SubscricaoEstado.php            |  22 ++
+ .../Admin/PagamentoManualController.php       |   3 +-
+ .../Http/Controllers/FaturacaoController.php  |  54 ++++
+ .../app/Http/Controllers/PlanoController.php  |   3 +-
+ .../Http/Controllers/SubscricaoController.php |   3 +-
+ .../Webhooks/ProxyPayWebhookController.php    |  34 ++-
+ .../Jobs/ProcessarPagamentoConfirmadoJob.php  |  41 +++
+ .../Jobs/VerificarSubscricoesExpiradasJob.php |  28 +-
+ .../Subscricoes/app/Models/EventoWebhook.php  |  33 +++
+ Modules/Subscricoes/app/Models/Pagamento.php  |   3 +-
+ Modules/Subscricoes/app/Models/Subscricao.php |   6 +-
+ .../Providers/SubscricoesServiceProvider.php  |   3 +-
+ .../app/Services/LimitesPlanoService.php      |   3 +-
+ .../app/Services/PagamentoService.php         |  20 +-
+ .../app/Services/SubscricaoService.php        |  47 +--
+ Modules/Subscricoes/config/config.php         |   9 +
+ ..._000002_add_preco_to_subscricoes_table.php |  45 +++
+ ...13_000003_create_eventos_webhook_table.php |  33 +++
+ .../views/faturacao/pagamentos.blade.php      |  45 +++
+ .../views/faturacao/resumo.blade.php          |  73 +++++
+ .../views/partials/estado-pagamento.blade.php |  16 ++
+ Modules/Subscricoes/routes/web.php            |   4 +
+ .../Feature/FuncionalidadesCompletasTest.php  | 269 ++++++++++++++++++
+ README.md                                     |   4 +-
+ 29 files changed, 846 insertions(+), 59 deletions(-)
+ create mode 100644 Modules/Subscricoes/app/Console/ReprocessarWebhooksCommand.php
+ create mode 100644 Modules/Subscricoes/app/Enums/EventoWebhookEstado.php
+ create mode 100644 Modules/Subscricoes/app/Enums/PagamentoEstado.php
+ create mode 100644 Modules/Subscricoes/app/Enums/SubscricaoEstado.php
+ create mode 100644 Modules/Subscricoes/app/Http/Controllers/FaturacaoController.php
+ create mode 100644 Modules/Subscricoes/app/Models/EventoWebhook.php
+ create mode 100644 Modules/Subscricoes/database/migrations/2026_10_13_000002_add_preco_to_subscricoes_table.php
+ create mode 100644 Modules/Subscricoes/database/migrations/2026_10_13_000003_create_eventos_webhook_table.php
+ create mode 100644 Modules/Subscricoes/resources/views/faturacao/pagamentos.blade.php
+ create mode 100644 Modules/Subscricoes/resources/views/faturacao/resumo.blade.php
+ create mode 100644 Modules/Subscricoes/resources/views/partials/estado-pagamento.blade.php
+ create mode 100644 Modules/Subscricoes/tests/Feature/FuncionalidadesCompletasTest.php
+
+diff --git a/.env.example b/.env.example
+index 77aa234..7eda5a1 100644
+--- a/.env.example
++++ b/.env.example
+@@ -89,9 +89,12 @@ SUBSCRICOES_GATEWAY=proxypay
+ PROXYPAY_BASE_URL=https://api.sandbox.proxypay.co.ao
+ PROXYPAY_API_KEY=
+ PROXYPAY_ENTITY_ID=
+-# Segredo do webhook: configura na ProxyPay o URL
+-#   https://SEU-DOMINIO/api/webhooks/proxypay?token=<este valor>
+-PROXYPAY_WEBHOOK_TOKEN=
++# Webhook: configura na ProxyPay o URL https://SEU-DOMINIO/api/webhooks/proxypay
++# (sem token na query string). A autenticidade é validada por assinatura
++# HMAC-SHA-256 usando PROXYPAY_API_KEY como segredo.
++
++# Renovações: true = cobram o preço contratado; false = o preço atual do plano.
++SUBSCRICOES_RENOVACAO_PRECO_CONTRATADO=true
+ 
+ # --- Estúdio de Música (por omissão 'log': só regista, não envia) ---
+ ESTUDIOMUSICA_CANAL_WHATSAPP=log
+diff --git a/Modules/Core/app/Support/Navegacao.php b/Modules/Core/app/Support/Navegacao.php
+index 6355c85..ae95ebf 100644
+--- a/Modules/Core/app/Support/Navegacao.php
++++ b/Modules/Core/app/Support/Navegacao.php
+@@ -58,6 +58,7 @@ public static function grupos(): array
+                     ['rota' => 'subscricoes.faturacao', 'rotulo' => 'Faturação do SaaS', 'icone' => 'recibo', 'ativo' => 'subscricoes.faturacao'],
+                     ['rota' => 'subscricoes.planos', 'rotulo' => 'Plano atual', 'icone' => 'plano', 'ativo' => ['subscricoes.planos', 'subscricoes.iniciar', 'subscricoes.renovacao']],
+                     ['rota' => 'subscricoes.pagamentos', 'rotulo' => 'Pagamentos ProxyPay', 'icone' => 'cartao', 'ativo' => ['subscricoes.pagamentos', 'subscricoes.pendente']],
++                    ['rota' => 'subscricoes.admin.pagamentos', 'rotulo' => 'Reconciliar pagamentos', 'icone' => 'cartao', 'ativo' => 'subscricoes.admin.*', 'super' => true],
+                 ],
+             ],
+             [
+@@ -97,6 +98,10 @@ public static function grupos(): array
+                     continue;
+                 }
+ 
++                if (($item['super'] ?? false) && ! $superAdmin) {
++                    continue;
++                }
++
+                 if (! $disponivel && ! $mostrarEmBreve) {
+                     continue;
+                 }
+diff --git a/Modules/Subscricoes/app/Console/ReprocessarWebhooksCommand.php b/Modules/Subscricoes/app/Console/ReprocessarWebhooksCommand.php
+new file mode 100644
+index 0000000..b0f9f04
+--- /dev/null
++++ b/Modules/Subscricoes/app/Console/ReprocessarWebhooksCommand.php
+@@ -0,0 +1,51 @@
++<?php
++
++namespace Modules\Subscricoes\Console;
++
++use Illuminate\Console\Command;
++use Modules\Subscricoes\Enums\EventoWebhookEstado;
++use Modules\Subscricoes\Jobs\ProcessarPagamentoConfirmadoJob;
++use Modules\Subscricoes\Models\EventoWebhook;
++
++class ReprocessarWebhooksCommand extends Command
++{
++    protected $signature = 'subscricoes:reprocessar-webhooks
++                            {--minutos=10 : Só eventos recebidos há mais de N minutos}
++                            {--falhados : Inclui também os eventos falhados}';
++
++    protected $description = 'Volta a pôr na fila os webhooks de pagamento que não chegaram a ser processados';
++
++    public function handle(): int
++    {
++        $estados = [EventoWebhookEstado::Recebido->value];
++
++        if ($this->option('falhados')) {
++            $estados[] = EventoWebhookEstado::Falhado->value;
++        }
++
++        $total = 0;
++
++        EventoWebhook::query()
++            ->whereIn('estado', $estados)
++            ->whereNotNull('referencia_externa')
++            ->where('created_at', '<', now()->subMinutes((int) $this->option('minutos')))
++            ->orderBy('id')
++            ->chunkById(100, function ($eventos) use (&$total) {
++                foreach ($eventos as $evento) {
++                    ProcessarPagamentoConfirmadoJob::dispatch(
++                        $evento->gateway,
++                        (string) $evento->referencia_externa,
++                        $evento->payload ?? [],
++                        $evento->valor,
++                        $evento->id,
++                    );
++
++                    $total++;
++                }
++            });
++
++        $this->info("{$total} evento(s) reenviado(s) para a fila.");
++
++        return self::SUCCESS;
++    }
++}
+diff --git a/Modules/Subscricoes/app/Enums/EventoWebhookEstado.php b/Modules/Subscricoes/app/Enums/EventoWebhookEstado.php
+new file mode 100644
+index 0000000..19465c7
+--- /dev/null
++++ b/Modules/Subscricoes/app/Enums/EventoWebhookEstado.php
+@@ -0,0 +1,10 @@
++<?php
++
++namespace Modules\Subscricoes\Enums;
++
++enum EventoWebhookEstado: string
++{
++    case Recebido = 'recebido';
++    case Processado = 'processado';
++    case Falhado = 'falhado';
++}
+diff --git a/Modules/Subscricoes/app/Enums/PagamentoEstado.php b/Modules/Subscricoes/app/Enums/PagamentoEstado.php
+new file mode 100644
+index 0000000..46b6539
+--- /dev/null
++++ b/Modules/Subscricoes/app/Enums/PagamentoEstado.php
+@@ -0,0 +1,29 @@
++<?php
++
++namespace Modules\Subscricoes\Enums;
++
++/**
++ * Estados de um Pagamento (ver SubscricaoEstado para a razão de não haver cast).
++ */
++enum PagamentoEstado: string
++{
++    case Pendente = 'pendente';
++    case Confirmado = 'confirmado';
++    case Falhado = 'falhado';
++    case Expirado = 'expirado';
++
++    public function e(?string $estado): bool
++    {
++        return $estado === $this->value;
++    }
++
++    /**
++     * Estados que exigem reconciliação manual para serem confirmados.
++     *
++     * @return array<int, string>
++     */
++    public static function reconciliaveis(): array
++    {
++        return [self::Expirado->value, self::Falhado->value];
++    }
++}
+diff --git a/Modules/Subscricoes/app/Enums/SubscricaoEstado.php b/Modules/Subscricoes/app/Enums/SubscricaoEstado.php
+new file mode 100644
+index 0000000..0067f09
+--- /dev/null
++++ b/Modules/Subscricoes/app/Enums/SubscricaoEstado.php
+@@ -0,0 +1,22 @@
++<?php
++
++namespace Modules\Subscricoes\Enums;
++
++/**
++ * Estados de uma Subscricao. A coluna continua a ser string: os models não
++ * fazem cast, por isso `$subscricao->estado` devolve a string e o enum serve
++ * para queries e comparações (`SubscricaoEstado::Ativa->value`) sem strings
++ * soltas espalhadas pelo código.
++ */
++enum SubscricaoEstado: string
++{
++    case Pendente = 'pendente';
++    case Ativa = 'ativa';
++    case Cancelada = 'cancelada';
++    case Expirada = 'expirada';
++
++    public function e(?string $estado): bool
++    {
++        return $estado === $this->value;
++    }
++}
+diff --git a/Modules/Subscricoes/app/Http/Controllers/Admin/PagamentoManualController.php b/Modules/Subscricoes/app/Http/Controllers/Admin/PagamentoManualController.php
+index 701247a..72167b8 100644
+--- a/Modules/Subscricoes/app/Http/Controllers/Admin/PagamentoManualController.php
++++ b/Modules/Subscricoes/app/Http/Controllers/Admin/PagamentoManualController.php
+@@ -8,6 +8,7 @@
+ use Illuminate\Routing\Controller;
+ use Illuminate\View\View;
+ use Modules\Core\Services\TenantManager;
++use Modules\Subscricoes\Enums\PagamentoEstado;
+ use Modules\Subscricoes\Models\Pagamento;
+ use Modules\Subscricoes\Services\PagamentoService;
+ use Throwable;
+@@ -29,7 +30,7 @@ public function index(Request $request): View
+         abort_unless($request->user()?->is_super_admin, 403);
+ 
+         $pagamentos = $this->tenantManager->semTenant(fn () => Pagamento::query()
+-            ->whereIn('estado', ['pendente', 'expirado', 'falhado'])
++            ->whereIn('estado', [PagamentoEstado::Pendente->value, ...PagamentoEstado::reconciliaveis()])
+             ->with(['empresa', 'subscricao.plano'])
+             ->latest('id')
+             ->limit(100)
+diff --git a/Modules/Subscricoes/app/Http/Controllers/FaturacaoController.php b/Modules/Subscricoes/app/Http/Controllers/FaturacaoController.php
+new file mode 100644
+index 0000000..63f8ae3
+--- /dev/null
++++ b/Modules/Subscricoes/app/Http/Controllers/FaturacaoController.php
+@@ -0,0 +1,54 @@
++<?php
++
++namespace Modules\Subscricoes\Http\Controllers;
++
++use Illuminate\Routing\Controller;
++use Illuminate\View\View;
++use Modules\Subscricoes\Enums\PagamentoEstado;
++use Modules\Subscricoes\Enums\SubscricaoEstado;
++use Modules\Subscricoes\Models\Pagamento;
++use Modules\Subscricoes\Models\Subscricao;
++
++/**
++ * Páginas da própria empresa sobre a sua faturação no SaaS. Os models são
++ * filtrados pelo tenant (BelongsToTenant), por isso cada empresa só vê o seu.
++ */
++class FaturacaoController extends Controller
++{
++    /**
++     * Resumo: subscrição atual, próxima renovação e últimos pagamentos.
++     */
++    public function resumo(): View
++    {
++        $subscricao = Subscricao::with('plano')
++            ->where('estado', SubscricaoEstado::Ativa->value)
++            ->where(fn ($query) => $query->whereNull('termina_em')->orWhere('termina_em', '>', now()))
++            ->latest('id')
++            ->first();
++
++        $pendente = Pagamento::with('subscricao.plano')
++            ->where('estado', PagamentoEstado::Pendente->value)
++            ->where('expira_em', '>', now())
++            ->latest('id')
++            ->first();
++
++        $totalPago = Pagamento::where('estado', PagamentoEstado::Confirmado->value)->sum('valor');
++
++        return view('subscricoes::faturacao.resumo', [
++            'subscricao' => $subscricao,
++            'pendente' => $pendente,
++            'totalPago' => $totalPago,
++            'recentes' => Pagamento::with('subscricao.plano')->latest('id')->limit(5)->get(),
++        ]);
++    }
++
++    /**
++     * Histórico completo de pagamentos da empresa.
++     */
++    public function pagamentos(): View
++    {
++        return view('subscricoes::faturacao.pagamentos', [
++            'pagamentos' => Pagamento::with('subscricao.plano')->latest('id')->paginate(15),
++        ]);
++    }
++}
+diff --git a/Modules/Subscricoes/app/Http/Controllers/PlanoController.php b/Modules/Subscricoes/app/Http/Controllers/PlanoController.php
+index 3770ea4..90adba4 100644
+--- a/Modules/Subscricoes/app/Http/Controllers/PlanoController.php
++++ b/Modules/Subscricoes/app/Http/Controllers/PlanoController.php
+@@ -6,6 +6,7 @@
+ use Illuminate\View\View;
+ use Modules\Subscricoes\Models\Plano;
+ use Modules\Subscricoes\Models\Subscricao;
++use Modules\Subscricoes\Enums\SubscricaoEstado;
+ 
+ class PlanoController extends Controller
+ {
+@@ -14,7 +15,7 @@ public function index(): View
+         return view('subscricoes::planos.index', [
+             'planos' => Plano::ativos()->get(),
+             'subscricaoAtual' => Subscricao::with('plano')
+-                ->where('estado', 'ativa')
++                ->where('estado', SubscricaoEstado::Ativa->value)
+                 ->where(function ($query) {
+                     $query->whereNull('termina_em')
+                         ->orWhere('termina_em', '>', now());
+diff --git a/Modules/Subscricoes/app/Http/Controllers/SubscricaoController.php b/Modules/Subscricoes/app/Http/Controllers/SubscricaoController.php
+index 6efe0f1..4a75e00 100644
+--- a/Modules/Subscricoes/app/Http/Controllers/SubscricaoController.php
++++ b/Modules/Subscricoes/app/Http/Controllers/SubscricaoController.php
+@@ -9,6 +9,7 @@
+ use Illuminate\Routing\Controller;
+ use Illuminate\Support\Facades\Log;
+ use Illuminate\View\View;
++use Modules\Subscricoes\Enums\PagamentoEstado;
+ use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
+ use Modules\Subscricoes\Http\Requests\IniciarSubscricaoRequest;
+ use Modules\Subscricoes\Models\Pagamento;
+@@ -96,7 +97,7 @@ public function estado(int $pagamento): JsonResponse
+ 
+         return response()->json([
+             'estado' => $modelo->estado,
+-            'confirmado' => $modelo->estado === 'confirmado',
++            'confirmado' => $modelo->estado === PagamentoEstado::Confirmado->value,
+         ]);
+     }
+ }
+diff --git a/Modules/Subscricoes/app/Http/Controllers/Webhooks/ProxyPayWebhookController.php b/Modules/Subscricoes/app/Http/Controllers/Webhooks/ProxyPayWebhookController.php
+index 127941b..e69313e 100644
+--- a/Modules/Subscricoes/app/Http/Controllers/Webhooks/ProxyPayWebhookController.php
++++ b/Modules/Subscricoes/app/Http/Controllers/Webhooks/ProxyPayWebhookController.php
+@@ -6,18 +6,22 @@
+ use Illuminate\Http\Request;
+ use Illuminate\Routing\Controller;
+ use Illuminate\Support\Facades\Log;
++use Illuminate\Support\Str;
++use Modules\Subscricoes\Enums\EventoWebhookEstado;
+ use Modules\Subscricoes\Jobs\ProcessarPagamentoConfirmadoJob;
++use Modules\Subscricoes\Models\EventoWebhook;
+ use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
+ use Throwable;
+ 
+ /**
+  * A autenticidade do pedido já foi confirmada pelo middleware
+- * VerificarAssinaturaWebhook antes de chegar aqui. Este controller só
+- * interpreta o payload e despacha o Job — não faz nenhuma escrita na base
+- * de dados diretamente, para responder ao gateway o mais depressa possível.
++ * VerificarAssinaturaWebhook antes de chegar aqui. Este controller grava o
++ * evento (caixa de entrada), despacha o Job e responde 200 de imediato.
+  *
+  * ATENÇÃO: o Job corre na fila — é obrigatório ter `php artisan queue:work`
+- * (ou um supervisor) ativo, senão os pagamentos nunca são confirmados.
++ * (ou um supervisor) ativo. Se não estiver, os eventos ficam 'recebido' em
++ * eventos_webhook e podem ser reenviados com
++ * `php artisan subscricoes:reprocessar-webhooks`.
+  */
+ class ProxyPayWebhookController extends Controller
+ {
+@@ -33,17 +37,33 @@ public function __invoke(Request $request): JsonResponse
+                 'erro' => $e->getMessage(),
+             ]);
+ 
+-            // 200 propositado: alguns gateways reenviam agressivamente em
+-            // caso de erro. Já registámos o problema; um payload
+-            // indecifrável não vai ficar decifrável só por tentar de novo.
++            EventoWebhook::create([
++                'gateway' => $this->gateway->identificador(),
++                'payload' => ['corpo_bruto' => Str::limit($request->getContent(), 8000, '')],
++                'estado' => EventoWebhookEstado::Falhado->value,
++                'erro' => $e->getMessage(),
++            ]);
++
++            // 200 propositado: um payload indecifrável não vai ficar
++            // decifrável só por tentar de novo. Fica registado para revisão.
+             return response()->json(['recebido' => true]);
+         }
+ 
++        // Se gravar falhar, o erro propaga-se (500) e o gateway reenvia.
++        $evento = EventoWebhook::create([
++            'gateway' => $this->gateway->identificador(),
++            'referencia_externa' => $notificacao['referencia_externa'],
++            'valor' => $notificacao['valor'] ?? null,
++            'payload' => $notificacao['payload'],
++            'estado' => EventoWebhookEstado::Recebido->value,
++        ]);
++
+         ProcessarPagamentoConfirmadoJob::dispatch(
+             $this->gateway->identificador(),
+             $notificacao['referencia_externa'],
+             $notificacao['payload'],
+             $notificacao['valor'] ?? null,
++            $evento->id,
+         );
+ 
+         return response()->json(['recebido' => true]);
+diff --git a/Modules/Subscricoes/app/Jobs/ProcessarPagamentoConfirmadoJob.php b/Modules/Subscricoes/app/Jobs/ProcessarPagamentoConfirmadoJob.php
+index 9d9c318..3788895 100644
+--- a/Modules/Subscricoes/app/Jobs/ProcessarPagamentoConfirmadoJob.php
++++ b/Modules/Subscricoes/app/Jobs/ProcessarPagamentoConfirmadoJob.php
+@@ -9,7 +9,9 @@
+ use Illuminate\Queue\InteractsWithQueue;
+ use Illuminate\Queue\SerializesModels;
+ use Illuminate\Support\Facades\Log;
++use Modules\Subscricoes\Enums\EventoWebhookEstado;
+ use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
++use Modules\Subscricoes\Models\EventoWebhook;
+ use Modules\Subscricoes\Services\PagamentoService;
+ use Throwable;
+ 
+@@ -33,6 +35,7 @@ public function __construct(
+         protected string $referenciaExterna,
+         protected array $payloadBruto,
+         protected ?string $valorRecebido = null,
++        protected ?int $eventoId = null,
+     ) {}
+ 
+     public function handle(PagamentoService $pagamentoService): void
+@@ -55,6 +58,8 @@ public function handle(PagamentoService $pagamentoService): void
+             }
+ 
+             $pagamentoService->confirmar($pagamento, $this->payloadBruto, null, $this->valorRecebido);
++
++            $this->marcarEvento(EventoWebhookEstado::Processado);
+         } catch (DomainException $e) {
+             // Regra de negócio violada (ex.: valor pago inferior ao devido):
+             // repetir não resolve — falha de vez e fica para revisão manual.
+@@ -65,6 +70,7 @@ public function handle(PagamentoService $pagamentoService): void
+                 'erro' => $e->getMessage(),
+             ]);
+ 
++            $this->marcarEvento(EventoWebhookEstado::Falhado, $e->getMessage());
+             $this->fail($e);
+         } catch (GatewayPagamentoException $e) {
+             // Referência que não existe aqui (ex.: outra aplicação na mesma
+@@ -76,6 +82,7 @@ public function handle(PagamentoService $pagamentoService): void
+                 'erro' => $e->getMessage(),
+             ]);
+ 
++            $this->marcarEvento(EventoWebhookEstado::Falhado, $e->getMessage());
+             $this->fail($e);
+         } catch (Throwable $e) {
+             Log::error('ProcessarPagamentoConfirmadoJob falhou', [
+@@ -85,7 +92,41 @@ public function handle(PagamentoService $pagamentoService): void
+                 'erro' => $e->getMessage(),
+             ]);
+ 
++            $this->marcarEvento(EventoWebhookEstado::Recebido, $e->getMessage());
++
+             throw $e; // permite ao Laravel gerir novas tentativas / backoff
+         }
+     }
++
++    /**
++     * Chamado pelo Laravel quando esgota as tentativas ou falha de vez.
++     */
++    public function failed(Throwable $e): void
++    {
++        $this->marcarEvento(EventoWebhookEstado::Falhado, $e->getMessage());
++    }
++
++    /**
++     * Atualiza a caixa de entrada. Nunca lança: uma falha aqui não pode
++     * estragar o processamento do pagamento.
++     */
++    protected function marcarEvento(EventoWebhookEstado $estado, ?string $erro = null): void
++    {
++        if ($this->eventoId === null) {
++            return;
++        }
++
++        try {
++            EventoWebhook::query()->whereKey($this->eventoId)->update([
++                'estado' => $estado->value,
++                'erro' => $erro,
++                'processado_em' => $estado === EventoWebhookEstado::Processado ? now() : null,
++            ]);
++        } catch (Throwable $e) {
++            Log::warning('Não foi possível atualizar o evento de webhook', [
++                'evento_id' => $this->eventoId,
++                'erro' => $e->getMessage(),
++            ]);
++        }
++    }
+ }
+diff --git a/Modules/Subscricoes/app/Jobs/VerificarSubscricoesExpiradasJob.php b/Modules/Subscricoes/app/Jobs/VerificarSubscricoesExpiradasJob.php
+index cad711f..456c4f8 100644
+--- a/Modules/Subscricoes/app/Jobs/VerificarSubscricoesExpiradasJob.php
++++ b/Modules/Subscricoes/app/Jobs/VerificarSubscricoesExpiradasJob.php
+@@ -17,6 +17,8 @@
+ use Modules\Subscricoes\Models\Subscricao;
+ use Modules\Subscricoes\Services\SubscricaoService;
+ use Throwable;
++use Modules\Subscricoes\Enums\PagamentoEstado;
++use Modules\Subscricoes\Enums\SubscricaoEstado;
+ 
+ /**
+  * Rotina diária (ver SubscricoesServiceProvider para o agendamento; para
+@@ -72,15 +74,15 @@ public function handle(TenantManager $tenantManager, TenantService $tenantServic
+     protected function expirarPagamentosPendentes(): void
+     {
+         Pagamento::query()
+-            ->where('estado', 'pendente')
++            ->where('estado', PagamentoEstado::Pendente->value)
+             ->where('expira_em', '<', now())
+-            ->update(['estado' => 'expirado']);
++            ->update(['estado' => PagamentoEstado::Expirado->value]);
+     }
+ 
+     protected function cancelarSubscricoesSemPagamento(): void
+     {
+         Subscricao::query()
+-            ->where('estado', 'pendente')
++            ->where('estado', SubscricaoEstado::Pendente->value)
+             ->select('id')
+             ->chunkById(100, function ($subscricoes) {
+                 foreach ($subscricoes as $subscricao) {
+@@ -93,18 +95,18 @@ protected function cancelarSubscricoesSemPagamento(): void
+                                 ->lockForUpdate()
+                                 ->findOrFail($subscricao->id);
+ 
+-                            if ($atual->estado !== 'pendente') {
++                            if ($atual->estado !== SubscricaoEstado::Pendente->value) {
+                                 return;
+                             }
+ 
+                             $temPagamentoVivo = Pagamento::query()
+                                 ->where('subscricao_id', $atual->id)
+-                                ->whereIn('estado', ['pendente', 'confirmado'])
++                                ->whereIn('estado', [PagamentoEstado::Pendente->value, PagamentoEstado::Confirmado->value])
+                                 ->exists();
+ 
+                             if (! $temPagamentoVivo) {
+                                 $atual->update([
+-                                    'estado' => 'cancelada',
++                                    'estado' => SubscricaoEstado::Cancelada->value,
+                                     'cancelada_em' => now(),
+                                 ]);
+                             }
+@@ -156,7 +158,7 @@ protected function terminarTrials(TenantService $tenantService): void
+     protected function suspenderSubscricoesVencidas(TenantService $tenantService): void
+     {
+         Subscricao::query()
+-            ->where('estado', 'ativa')
++            ->where('estado', SubscricaoEstado::Ativa->value)
+             ->where('termina_em', '<', now())
+             ->with('empresa')
+             ->chunkById(100, function ($subscricoes) use ($tenantService) {
+@@ -168,7 +170,7 @@ protected function suspenderSubscricoesVencidas(TenantService $tenantService): v
+                                 ->findOrFail($subscricao->id);
+ 
+                             if (
+-                                $subscricaoAtual->estado !== 'ativa'
++                                $subscricaoAtual->estado !== SubscricaoEstado::Ativa->value
+                                 || $subscricaoAtual->termina_em === null
+                                 || $subscricaoAtual->termina_em->isFuture()
+                             ) {
+@@ -182,12 +184,12 @@ protected function suspenderSubscricoesVencidas(TenantService $tenantService): v
+                             $outraSubscricaoValida = Subscricao::query()
+                                 ->where('empresa_id', $subscricaoAtual->empresa_id)
+                                 ->where('id', '!=', $subscricaoAtual->id)
+-                                ->where('estado', 'ativa')
++                                ->where('estado', SubscricaoEstado::Ativa->value)
+                                 ->where('termina_em', '>', now())
+                                 ->exists();
+ 
+                             if ($outraSubscricaoValida) {
+-                                $subscricaoAtual->update(['estado' => 'expirada']);
++                                $subscricaoAtual->update(['estado' => SubscricaoEstado::Expirada->value]);
+ 
+                                 return;
+                             }
+@@ -197,7 +199,7 @@ protected function suspenderSubscricoesVencidas(TenantService $tenantService): v
+                                 ->findOrFail($subscricaoAtual->empresa_id);
+ 
+                             $tenantService->suspender($empresa);
+-                            $subscricaoAtual->update(['estado' => 'expirada']);
++                            $subscricaoAtual->update(['estado' => SubscricaoEstado::Expirada->value]);
+                         });
+                     } catch (Throwable $e) {
+                         Log::error('Falha ao suspender subscrição vencida', [
+@@ -249,7 +251,7 @@ protected function gerarRenovacoes(): void
+         $subscricaoService = app(SubscricaoService::class);
+ 
+         Subscricao::query()
+-            ->where('estado', 'ativa')
++            ->where('estado', SubscricaoEstado::Ativa->value)
+             ->where('renovacao_automatica', true)
+             ->where('termina_em', '>', now())
+             ->where('termina_em', '<=', now()->addDays($dias))
+@@ -258,7 +260,7 @@ protected function gerarRenovacoes(): void
+                     try {
+                         $jaTemReferencia = Pagamento::query()
+                             ->where('subscricao_id', $subscricao->id)
+-                            ->where('estado', 'pendente')
++                            ->where('estado', PagamentoEstado::Pendente->value)
+                             ->where('expira_em', '>', now())
+                             ->exists();
+ 
+diff --git a/Modules/Subscricoes/app/Models/EventoWebhook.php b/Modules/Subscricoes/app/Models/EventoWebhook.php
+new file mode 100644
+index 0000000..c2da89c
+--- /dev/null
++++ b/Modules/Subscricoes/app/Models/EventoWebhook.php
+@@ -0,0 +1,33 @@
++<?php
++
++namespace Modules\Subscricoes\Models;
++
++use Illuminate\Database\Eloquent\Model;
++
++/**
++ * Notificação recebida de um gateway de pagamento. Não pertence a nenhuma
++ * empresa (o gateway não sabe o que é uma empresa), por isso não usa
++ * BelongsToTenant — tal como o Plano.
++ */
++class EventoWebhook extends Model
++{
++    protected $table = 'eventos_webhook';
++
++    protected $fillable = [
++        'gateway',
++        'referencia_externa',
++        'valor',
++        'payload',
++        'estado',
++        'erro',
++        'processado_em',
++    ];
++
++    protected function casts(): array
++    {
++        return [
++            'payload' => 'array',
++            'processado_em' => 'datetime',
++        ];
++    }
++}
+diff --git a/Modules/Subscricoes/app/Models/Pagamento.php b/Modules/Subscricoes/app/Models/Pagamento.php
+index 947adab..f21ebc5 100644
+--- a/Modules/Subscricoes/app/Models/Pagamento.php
++++ b/Modules/Subscricoes/app/Models/Pagamento.php
+@@ -8,6 +8,7 @@
+ use Modules\Core\Models\Empresa;
+ use Modules\Core\Models\User;
+ use Modules\Core\Traits\BelongsToTenant;
++use Modules\Subscricoes\Enums\PagamentoEstado;
+ 
+ class Pagamento extends Model
+ {
+@@ -69,6 +70,6 @@ public function entidade(): ?string
+ 
+     public function estaExpirado(): bool
+     {
+-        return $this->estado === 'pendente' && $this->expira_em !== null && $this->expira_em->isPast();
++        return $this->estado === PagamentoEstado::Pendente->value && $this->expira_em !== null && $this->expira_em->isPast();
+     }
+ }
+diff --git a/Modules/Subscricoes/app/Models/Subscricao.php b/Modules/Subscricoes/app/Models/Subscricao.php
+index 8d4c090..21c4702 100644
+--- a/Modules/Subscricoes/app/Models/Subscricao.php
++++ b/Modules/Subscricoes/app/Models/Subscricao.php
+@@ -9,6 +9,7 @@
+ use Modules\Core\Models\Empresa;
+ use Modules\Core\Traits\BelongsToTenant;
+ use Modules\Subscricoes\Services\LimitesPlanoService;
++use Modules\Subscricoes\Enums\SubscricaoEstado;
+ 
+ /**
+  * Fonte de verdade DETALHADA da subscrição. Empresa::estado_subscricao (no
+@@ -31,6 +32,8 @@ class Subscricao extends Model
+     protected $fillable = [
+         'empresa_id',
+         'plano_id',
++        'preco',
++        'moeda',
+         'periodo_dias',
+         'limites',
+         'servicos',
+@@ -48,6 +51,7 @@ protected function casts(): array
+             'termina_em' => 'datetime',
+             'cancelada_em' => 'datetime',
+             'renovacao_automatica' => 'boolean',
++            'preco' => 'decimal:2',
+             'periodo_dias' => 'integer',
+             'limites' => 'array',
+             'servicos' => 'array',
+@@ -81,6 +85,6 @@ public function pagamentos(): HasMany
+ 
+     public function estaAtiva(): bool
+     {
+-        return $this->estado === 'ativa' && ($this->termina_em === null || $this->termina_em->isFuture());
++        return $this->estado === SubscricaoEstado::Ativa->value && ($this->termina_em === null || $this->termina_em->isFuture());
+     }
+ }
+diff --git a/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php b/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php
+index 09a042e..2ec91f7 100644
+--- a/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php
++++ b/Modules/Subscricoes/app/Providers/SubscricoesServiceProvider.php
+@@ -7,6 +7,7 @@
+ use Illuminate\Support\ServiceProvider;
+ use Modules\Core\Contracts\LimitesDaEmpresa;
+ use Modules\Core\Services\MenuRegistry;
++use Modules\Subscricoes\Console\ReprocessarWebhooksCommand;
+ use Modules\Subscricoes\Console\VerificarSubscricoesCommand;
+ use Modules\Subscricoes\Http\Middleware\VerificarAssinaturaWebhook;
+ use Modules\Subscricoes\Jobs\VerificarSubscricoesExpiradasJob;
+@@ -67,7 +68,7 @@ public function boot(): void
+         ], 'subscricoes-config');
+ 
+         if ($this->app->runningInConsole()) {
+-            $this->commands([VerificarSubscricoesCommand::class]);
++            $this->commands([VerificarSubscricoesCommand::class, ReprocessarWebhooksCommand::class]);
+         }
+ 
+         $this->agendarVerificacaoDiaria();
+diff --git a/Modules/Subscricoes/app/Services/LimitesPlanoService.php b/Modules/Subscricoes/app/Services/LimitesPlanoService.php
+index 4b3d400..1d3732b 100644
+--- a/Modules/Subscricoes/app/Services/LimitesPlanoService.php
++++ b/Modules/Subscricoes/app/Services/LimitesPlanoService.php
+@@ -6,6 +6,7 @@
+ use Modules\Core\Models\Empresa;
+ use Modules\Core\Services\TenantManager;
+ use Modules\Subscricoes\Models\Subscricao;
++use Modules\Subscricoes\Enums\SubscricaoEstado;
+ 
+ /**
+  * Traduz o plano da empresa nos limites que o resto do sistema consulta
+@@ -69,7 +70,7 @@ protected function calcularLimites(Empresa $empresa): array
+         // "ambiente" (pode não haver nenhum: jobs, testes, consola).
+         $subscricao = $this->tenantManager->semTenant(fn () => Subscricao::query()
+             ->where('empresa_id', $empresa->id)
+-            ->where('estado', 'ativa')
++            ->where('estado', SubscricaoEstado::Ativa->value)
+             ->where(function ($query) {
+                 $query->whereNull('termina_em')
+                     ->orWhere('termina_em', '>', now());
+diff --git a/Modules/Subscricoes/app/Services/PagamentoService.php b/Modules/Subscricoes/app/Services/PagamentoService.php
+index 733c78c..3608593 100644
+--- a/Modules/Subscricoes/app/Services/PagamentoService.php
++++ b/Modules/Subscricoes/app/Services/PagamentoService.php
+@@ -15,6 +15,8 @@
+ use Modules\Subscricoes\Models\Subscricao;
+ use Modules\Subscricoes\Notifications\PagamentoConfirmadoNotification;
+ use Throwable;
++use Modules\Subscricoes\Enums\PagamentoEstado;
++use Modules\Subscricoes\Enums\SubscricaoEstado;
+ 
+ class PagamentoService
+ {
+@@ -39,7 +41,7 @@ public function __construct(
+      */
+     public function confirmar(Pagamento $pagamento, array $payloadBruto = [], ?User $confirmadoPor = null, ?string $valorRecebido = null): Pagamento
+     {
+-        if ($pagamento->estado === 'confirmado') {
++        if ($pagamento->estado === PagamentoEstado::Confirmado->value) {
+             Log::info('Pagamento já estava confirmado — notificação ignorada em segurança', [
+                 'pagamento_id' => $pagamento->id,
+             ]);
+@@ -57,7 +59,7 @@ public function confirmar(Pagamento $pagamento, array $payloadBruto = [], ?User
+                     // não podem confirmar (e somar dias) duas vezes.
+                     $pagamento = Pagamento::query()->lockForUpdate()->findOrFail($pagamento->id);
+ 
+-                    if ($pagamento->estado === 'confirmado') {
++                    if ($pagamento->estado === PagamentoEstado::Confirmado->value) {
+                         return [$pagamento, collect(), null];
+                     }
+ 
+@@ -66,10 +68,10 @@ public function confirmar(Pagamento $pagamento, array $payloadBruto = [], ?User
+                     // transferência real, a reconciliação deve ser explícita
+                     // por um administrador, após confirmar o recebimento.
+                     $reconciliacaoManual = $confirmadoPor !== null
+-                        && in_array($pagamento->estado, ['expirado', 'falhado'], true);
++                        && in_array($pagamento->estado, PagamentoEstado::reconciliaveis(), true);
+ 
+                     if (
+-                        $pagamento->estado !== 'pendente'
++                        $pagamento->estado !== PagamentoEstado::Pendente->value
+                         && ! $reconciliacaoManual
+                     ) {
+                         throw new DomainException(
+@@ -94,7 +96,7 @@ public function confirmar(Pagamento $pagamento, array $payloadBruto = [], ?User
+                     // Uma referência de renovação deixa de ser válida quando a
+                     // renovação automática foi cancelada. A verificação sob lock
+                     // fecha a corrida entre o cancelamento e um webhook em curso.
+-                    if ($subscricao->estado === 'ativa' && ! $subscricao->renovacao_automatica) {
++                    if ($subscricao->estado === SubscricaoEstado::Ativa->value && ! $subscricao->renovacao_automatica) {
+                         throw new DomainException(
+                             "A renovação da subscrição {$subscricao->id} foi cancelada; o pagamento pendente não pode ativá-la."
+                         );
+@@ -113,7 +115,7 @@ public function confirmar(Pagamento $pagamento, array $payloadBruto = [], ?User
+                     $terminaEm = $base->copy()->addDays($subscricao->periodo_dias ?? $subscricao->plano->periodo_dias);
+ 
+                     $pagamento->update([
+-                        'estado' => 'confirmado',
++                        'estado' => PagamentoEstado::Confirmado->value,
+                         'confirmado_em' => $agora,
+                         'confirmado_por' => $confirmadoPor?->id,
+                         // Preserva o payload original da referência (entidade, valor,
+@@ -125,7 +127,7 @@ public function confirmar(Pagamento $pagamento, array $payloadBruto = [], ?User
+                     ]);
+ 
+                     $subscricao->update([
+-                        'estado' => 'ativa',
++                        'estado' => SubscricaoEstado::Ativa->value,
+                         'inicio_em' => $subscricao->inicio_em ?? $agora,
+                         'termina_em' => $terminaEm,
+                     ]);
+@@ -134,9 +136,9 @@ public function confirmar(Pagamento $pagamento, array $payloadBruto = [], ?User
+                     // (mudança de plano): as anteriores ficam encerradas.
+                     Subscricao::query()
+                         ->where('empresa_id', $empresa->id)
+-                        ->where('estado', 'ativa')
++                        ->where('estado', SubscricaoEstado::Ativa->value)
+                         ->where('id', '!=', $subscricao->id)
+-                        ->update(['estado' => 'expirada']);
++                        ->update(['estado' => SubscricaoEstado::Expirada->value]);
+ 
+                     $this->tenantService->ativar($empresa, $terminaEm);
+ 
+diff --git a/Modules/Subscricoes/app/Services/SubscricaoService.php b/Modules/Subscricoes/app/Services/SubscricaoService.php
+index cbd6a8c..d567957 100644
+--- a/Modules/Subscricoes/app/Services/SubscricaoService.php
++++ b/Modules/Subscricoes/app/Services/SubscricaoService.php
+@@ -19,6 +19,8 @@
+ use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
+ use RuntimeException;
+ use Throwable;
++use Modules\Subscricoes\Enums\PagamentoEstado;
++use Modules\Subscricoes\Enums\SubscricaoEstado;
+ 
+ class SubscricaoService
+ {
+@@ -52,9 +54,9 @@ public function iniciar(Empresa $empresa, Plano $plano): Pagamento
+ 
+                     $existente = Pagamento::query()
+                         ->where('empresa_id', $empresaBloqueada->id)
+-                        ->where('estado', 'pendente')
++                        ->where('estado', PagamentoEstado::Pendente->value)
+                         ->where('expira_em', '>', now())
+-                        ->whereHas('subscricao', fn ($query) => $query->where('estado', 'pendente'))
++                        ->whereHas('subscricao', fn ($query) => $query->where('estado', SubscricaoEstado::Pendente->value))
+                         ->with('subscricao')
+                         ->latest('id')
+                         ->first();
+@@ -72,10 +74,12 @@ public function iniciar(Empresa $empresa, Plano $plano): Pagamento
+                     $subscricao = Subscricao::create([
+                         'empresa_id' => $empresaBloqueada->id,
+                         'plano_id' => $plano->id,
++                        'preco' => $plano->preco,
++                        'moeda' => $plano->moeda,
+                         'periodo_dias' => $plano->periodo_dias,
+                         'limites' => $plano->limites ?? [],
+                         'servicos' => $plano->servicos ?? [],
+-                        'estado' => 'pendente',
++                        'estado' => SubscricaoEstado::Pendente->value,
+                         'renovacao_automatica' => true,
+                     ]);
+ 
+@@ -108,7 +112,7 @@ public function iniciar(Empresa $empresa, Plano $plano): Pagamento
+                 $pagamento = $this->pedirReferenciaAoGateway($pagamento);
+             } catch (Throwable $e) {
+                 $this->tenantManager->semTenant(function () use ($subscricao) {
+-                    $subscricao->update(['estado' => 'cancelada', 'cancelada_em' => now()]);
++                    $subscricao->update(['estado' => SubscricaoEstado::Cancelada->value, 'cancelada_em' => now()]);
+                 });
+ 
+                 throw $e;
+@@ -156,7 +160,7 @@ public function gerarRenovacao(Subscricao $subscricao): Pagamento
+                 // administrador cancelar a renovação. Revalidar sob lock evita
+                 // criar uma cobrança depois de o cancelamento já ter sido gravado.
+                 if (
+-                    $subscricaoBloqueada->estado !== 'ativa'
++                    $subscricaoBloqueada->estado !== SubscricaoEstado::Ativa->value
+                     || ! $subscricaoBloqueada->renovacao_automatica
+                     || $subscricaoBloqueada->termina_em === null
+                     || $subscricaoBloqueada->termina_em->isPast()
+@@ -168,7 +172,7 @@ public function gerarRenovacao(Subscricao $subscricao): Pagamento
+ 
+                 $existente = Pagamento::query()
+                     ->where('subscricao_id', $subscricaoBloqueada->id)
+-                    ->where('estado', 'pendente')
++                    ->where('estado', PagamentoEstado::Pendente->value)
+                     ->where('expira_em', '>', now())
+                     ->latest('id')
+                     ->first();
+@@ -201,14 +205,14 @@ public function gerarRenovacao(Subscricao $subscricao): Pagamento
+                     $subscricaoAtual = Subscricao::query()->lockForUpdate()->findOrFail($pagamentoAtual->subscricao_id);
+ 
+                     if (
+-                        $pagamentoAtual->estado !== 'pendente'
+-                        || $subscricaoAtual->estado !== 'ativa'
++                        $pagamentoAtual->estado !== PagamentoEstado::Pendente->value
++                        || $subscricaoAtual->estado !== SubscricaoEstado::Ativa->value
+                         || ! $subscricaoAtual->renovacao_automatica
+                         || $subscricaoAtual->termina_em === null
+                         || $subscricaoAtual->termina_em->isPast()
+                     ) {
+-                        if ($pagamentoAtual->estado === 'pendente') {
+-                            $pagamentoAtual->update(['estado' => 'expirado']);
++                        if ($pagamentoAtual->estado === PagamentoEstado::Pendente->value) {
++                            $pagamentoAtual->update(['estado' => PagamentoEstado::Expirado->value]);
+                         }
+ 
+                         return false;
+@@ -294,13 +298,13 @@ public function cancelarRenovacao(Subscricao $subscricao): Subscricao
+         // depois de gravar o cancelamento para não inverter a ordem de locks.
+         $pendentes = $this->tenantManager->semTenant(fn () => Pagamento::query()
+             ->where('subscricao_id', $atualizada->id)
+-            ->where('estado', 'pendente')
++            ->where('estado', PagamentoEstado::Pendente->value)
+             ->get());
+ 
+         $this->tenantManager->semTenant(fn () => Pagamento::query()
+             ->where('subscricao_id', $atualizada->id)
+-            ->where('estado', 'pendente')
+-            ->update(['estado' => 'expirado']));
++            ->where('estado', PagamentoEstado::Pendente->value)
++            ->update(['estado' => PagamentoEstado::Expirado->value]));
+ 
+         foreach ($pendentes as $pendente) {
+             if (! $pendente->referencia_externa) {
+@@ -334,7 +338,7 @@ public function retomarRenovacao(Subscricao $subscricao): Subscricao
+                 ->findOrFail($subscricao->id);
+ 
+             if (
+-                $bloqueada->estado !== 'ativa'
++                $bloqueada->estado !== SubscricaoEstado::Ativa->value
+                 || $bloqueada->termina_em === null
+                 || $bloqueada->termina_em->isPast()
+             ) {
+@@ -365,13 +369,20 @@ protected function garantirEstadoPendenteSeNecessario(Empresa $empresa): void
+ 
+     protected function criarPagamento(Subscricao $subscricao, Plano $plano): Pagamento
+     {
++        // Por omissão, cada subscrição mantém o preço contratado também nas
++        // renovações. Com SUBSCRICOES_RENOVACAO_PRECO_CONTRATADO=false, as
++        // renovações passam a cobrar o preço atual do catálogo.
++        $contratado = (bool) Config::get('subscricoes.renovacao_usa_preco_contratado', true);
++        $preco = $contratado ? ($subscricao->preco ?? $plano->preco) : $plano->preco;
++        $moeda = $contratado ? ($subscricao->moeda ?? $plano->moeda) : $plano->moeda;
++
+         return Pagamento::create([
+             'empresa_id' => $subscricao->empresa_id,
+             'subscricao_id' => $subscricao->id,
+             'gateway' => $this->gateway->identificador(),
+-            'valor' => $plano->preco,
+-            'moeda' => $plano->moeda,
+-            'estado' => 'pendente',
++            'valor' => $preco,
++            'moeda' => $moeda,
++            'estado' => PagamentoEstado::Pendente->value,
+             'expira_em' => now()->addDays((int) Config::get('subscricoes.validade_referencia_dias', 3)),
+         ]);
+     }
+@@ -395,7 +406,7 @@ protected function pedirReferenciaAoGateway(Pagamento $pagamento): Pagamento
+ 
+             return $pagamento->fresh();
+         } catch (Throwable $e) {
+-            $pagamento->update(['estado' => 'expirado']);
++            $pagamento->update(['estado' => PagamentoEstado::Expirado->value]);
+ 
+             throw $e;
+         }
+diff --git a/Modules/Subscricoes/config/config.php b/Modules/Subscricoes/config/config.php
+index 61225c1..8e4b09b 100644
+--- a/Modules/Subscricoes/config/config.php
++++ b/Modules/Subscricoes/config/config.php
+@@ -44,6 +44,15 @@
+     */
+     'validade_referencia_dias' => (int) env('SUBSCRICOES_VALIDADE_REFERENCIA_DIAS', 3),
+ 
++    /*
++    |--------------------------------------------------------------------------
++    | Preço das renovações
++    |--------------------------------------------------------------------------
++    | true  = a renovação cobra o preço contratado na subscrição (snapshot).
++    | false = a renovação cobra o preço atual do plano no catálogo.
++    */
++    'renovacao_usa_preco_contratado' => (bool) env('SUBSCRICOES_RENOVACAO_PRECO_CONTRATADO', true),
++
+     /*
+     |--------------------------------------------------------------------------
+     | Aviso de renovação
+diff --git a/Modules/Subscricoes/database/migrations/2026_10_13_000002_add_preco_to_subscricoes_table.php b/Modules/Subscricoes/database/migrations/2026_10_13_000002_add_preco_to_subscricoes_table.php
+new file mode 100644
+index 0000000..dfa6145
+--- /dev/null
++++ b/Modules/Subscricoes/database/migrations/2026_10_13_000002_add_preco_to_subscricoes_table.php
+@@ -0,0 +1,45 @@
++<?php
++
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\DB;
++use Illuminate\Support\Facades\Schema;
++
++return new class extends Migration
++{
++    public function up(): void
++    {
++        Schema::table('subscricoes', function (Blueprint $table) {
++            // Preço contratado: complementa a fotografia dos termos (período,
++            // limites, serviços). Nulo = subscrição anterior a esta migration.
++            $table->decimal('preco', 12, 2)->nullable()->after('plano_id');
++            $table->string('moeda', 3)->nullable()->after('preco');
++        });
++
++        DB::table('subscricoes')
++            ->select(['id', 'plano_id'])
++            ->orderBy('id')
++            ->chunkById(100, function ($subscricoes): void {
++                foreach ($subscricoes as $subscricao) {
++                    $plano = DB::table('planos')
++                        ->where('id', $subscricao->plano_id)
++                        ->first(['preco', 'moeda']);
++
++                    if (! $plano) {
++                        continue;
++                    }
++
++                    DB::table('subscricoes')
++                        ->where('id', $subscricao->id)
++                        ->update(['preco' => $plano->preco, 'moeda' => $plano->moeda]);
++                }
++            });
++    }
++
++    public function down(): void
++    {
++        Schema::table('subscricoes', function (Blueprint $table) {
++            $table->dropColumn(['preco', 'moeda']);
++        });
++    }
++};
+diff --git a/Modules/Subscricoes/database/migrations/2026_10_13_000003_create_eventos_webhook_table.php b/Modules/Subscricoes/database/migrations/2026_10_13_000003_create_eventos_webhook_table.php
+new file mode 100644
+index 0000000..154c9ba
+--- /dev/null
++++ b/Modules/Subscricoes/database/migrations/2026_10_13_000003_create_eventos_webhook_table.php
+@@ -0,0 +1,33 @@
++<?php
++
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\Schema;
++
++return new class extends Migration
++{
++    public function up(): void
++    {
++        // Caixa de entrada de webhooks: o pedido fica gravado ANTES de ir para
++        // a fila. Se o worker estiver parado ou o job falhar, nada se perde e
++        // pode ser reprocessado (php artisan subscricoes:reprocessar-webhooks).
++        Schema::create('eventos_webhook', function (Blueprint $table) {
++            $table->id();
++            $table->string('gateway');
++            $table->string('referencia_externa')->nullable()->index();
++            $table->string('valor')->nullable();
++            $table->json('payload')->nullable();
++            $table->string('estado', 20)->default('recebido');
++            $table->text('erro')->nullable();
++            $table->timestamp('processado_em')->nullable();
++            $table->timestamps();
++
++            $table->index(['estado', 'created_at']);
++        });
++    }
++
++    public function down(): void
++    {
++        Schema::dropIfExists('eventos_webhook');
++    }
++};
+diff --git a/Modules/Subscricoes/resources/views/faturacao/pagamentos.blade.php b/Modules/Subscricoes/resources/views/faturacao/pagamentos.blade.php
+new file mode 100644
+index 0000000..21c471e
+--- /dev/null
++++ b/Modules/Subscricoes/resources/views/faturacao/pagamentos.blade.php
+@@ -0,0 +1,45 @@
++@extends('core::layouts.app')
++
++@section('titulo', 'Pagamentos')
++
++@section('conteudo')
++    <div class="mx-auto w-full max-w-4xl">
++        <h1 class="text-2xl font-semibold text-slate-900">Pagamentos</h1>
++        <p class="mt-1 text-sm text-slate-500">Histórico dos pagamentos da subscrição (referências Multicaixa).</p>
++
++        <div class="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
++            <table class="min-w-full divide-y divide-slate-200 text-sm">
++                <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
++                    <tr>
++                        <th class="px-4 py-3">Data</th>
++                        <th class="px-4 py-3">Plano</th>
++                        <th class="px-4 py-3">Referência</th>
++                        <th class="px-4 py-3">Valor</th>
++                        <th class="px-4 py-3">Estado</th>
++                        <th class="px-4 py-3"></th>
++                    </tr>
++                </thead>
++                <tbody class="divide-y divide-slate-100">
++                    @forelse ($pagamentos as $pagamento)
++                        <tr>
++                            <td class="px-4 py-3">{{ $pagamento->created_at?->format('d/m/Y') }}</td>
++                            <td class="px-4 py-3">{{ $pagamento->subscricao?->plano?->nome }}</td>
++                            <td class="px-4 py-3 font-mono">{{ $pagamento->referencia_externa ?? '—' }}</td>
++                            <td class="px-4 py-3">{{ number_format((float) $pagamento->valor, 2, ',', ' ') }} {{ $pagamento->moeda }}</td>
++                            <td class="px-4 py-3">@include('subscricoes::partials.estado-pagamento', ['estado' => $pagamento->estado])</td>
++                            <td class="px-4 py-3 text-right">
++                                @if ($pagamento->estado === 'pendente' && ! $pagamento->estaExpirado())
++                                    <a href="{{ route('subscricoes.pendente', $pagamento->id) }}" class="text-xs font-medium text-indigo-600 hover:text-indigo-500">Pagar</a>
++                                @endif
++                            </td>
++                        </tr>
++                    @empty
++                        <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">Ainda não há pagamentos.</td></tr>
++                    @endforelse
++                </tbody>
++            </table>
++        </div>
++
++        <div class="mt-4">{{ $pagamentos->links() }}</div>
++    </div>
++@endsection
+diff --git a/Modules/Subscricoes/resources/views/faturacao/resumo.blade.php b/Modules/Subscricoes/resources/views/faturacao/resumo.blade.php
+new file mode 100644
+index 0000000..51fd764
+--- /dev/null
++++ b/Modules/Subscricoes/resources/views/faturacao/resumo.blade.php
+@@ -0,0 +1,73 @@
++@extends('core::layouts.app')
++
++@section('titulo', 'Faturação do SaaS')
++
++@section('conteudo')
++    <div class="mx-auto w-full max-w-4xl">
++        <h1 class="text-2xl font-semibold text-slate-900">Faturação do SaaS</h1>
++        <p class="mt-1 text-sm text-slate-500">A tua subscrição, a próxima renovação e os pagamentos recentes.</p>
++
++        <div class="mt-6 grid gap-4 sm:grid-cols-3">
++            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
++                <p class="text-xs uppercase tracking-wide text-slate-500">Plano atual</p>
++                <p class="mt-1 text-lg font-semibold text-slate-900">{{ $subscricao?->plano?->nome ?? 'Sem plano ativo' }}</p>
++                @if ($subscricao?->preco)
++                    <p class="text-sm text-slate-500">
++                        {{ number_format((float) $subscricao->preco, 0, ',', ' ') }} {{ $subscricao->moeda }} / {{ $subscricao->periodo_dias }} dias
++                    </p>
++                @endif
++            </div>
++            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
++                <p class="text-xs uppercase tracking-wide text-slate-500">Próxima renovação</p>
++                <p class="mt-1 text-lg font-semibold text-slate-900">{{ $subscricao?->termina_em?->format('d/m/Y') ?? '—' }}</p>
++                <p class="text-sm text-slate-500">
++                    @if (! $subscricao)
++                        &nbsp;
++                    @elseif ($subscricao->renovacao_automatica)
++                        Renovação ativa
++                    @else
++                        Renovação cancelada
++                    @endif
++                </p>
++            </div>
++            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
++                <p class="text-xs uppercase tracking-wide text-slate-500">Total pago</p>
++                <p class="mt-1 text-lg font-semibold text-slate-900">{{ number_format((float) $totalPago, 0, ',', ' ') }} AOA</p>
++            </div>
++        </div>
++
++        @if ($pendente)
++            <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
++                Tens um pagamento por efetuar ({{ number_format((float) $pendente->valor, 0, ',', ' ') }} {{ $pendente->moeda }}),
++                válido até {{ $pendente->expira_em?->format('d/m/Y') }}.
++                <a href="{{ route('subscricoes.pendente', $pendente->id) }}" class="font-semibold underline">Ver referência</a>
++            </div>
++        @endif
++
++        <div class="mt-6 flex items-center justify-between">
++            <h2 class="text-sm font-semibold text-slate-900">Pagamentos recentes</h2>
++            <a href="{{ route('subscricoes.pagamentos') }}" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">Ver todos</a>
++        </div>
++
++        <div class="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
++            <table class="min-w-full divide-y divide-slate-200 text-sm">
++                <tbody class="divide-y divide-slate-100">
++                    @forelse ($recentes as $pagamento)
++                        <tr>
++                            <td class="px-4 py-3">{{ $pagamento->created_at?->format('d/m/Y') }}</td>
++                            <td class="px-4 py-3">{{ $pagamento->subscricao?->plano?->nome }}</td>
++                            <td class="px-4 py-3">{{ number_format((float) $pagamento->valor, 2, ',', ' ') }} {{ $pagamento->moeda }}</td>
++                            <td class="px-4 py-3">@include('subscricoes::partials.estado-pagamento', ['estado' => $pagamento->estado])</td>
++                        </tr>
++                    @empty
++                        <tr><td class="px-4 py-6 text-center text-slate-500">Ainda não há pagamentos.</td></tr>
++                    @endforelse
++                </tbody>
++            </table>
++        </div>
++
++        <p class="mt-6 text-sm">
++            <a href="{{ route('subscricoes.planos') }}" class="font-medium text-indigo-600 hover:text-indigo-500">Mudar de plano &rarr;</a>
++        </p>
++    </div>
++@endsection
+diff --git a/Modules/Subscricoes/resources/views/partials/estado-pagamento.blade.php b/Modules/Subscricoes/resources/views/partials/estado-pagamento.blade.php
+new file mode 100644
+index 0000000..d8de527
+--- /dev/null
++++ b/Modules/Subscricoes/resources/views/partials/estado-pagamento.blade.php
+@@ -0,0 +1,16 @@
++@php
++    $tom = match ($estado) {
++        'confirmado' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
++        'pendente' => 'bg-amber-50 text-amber-700 border-amber-200',
++        'falhado' => 'bg-red-50 text-red-700 border-red-200',
++        default => 'bg-slate-100 text-slate-600 border-slate-200',
++    };
++    $rotulo = match ($estado) {
++        'confirmado' => 'Pago',
++        'pendente' => 'Por pagar',
++        'falhado' => 'Falhado',
++        'expirado' => 'Expirado',
++        default => ucfirst($estado),
++    };
++@endphp
++<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium {{ $tom }}">{{ $rotulo }}</span>
+diff --git a/Modules/Subscricoes/routes/web.php b/Modules/Subscricoes/routes/web.php
+index 8de31c2..423a14b 100644
+--- a/Modules/Subscricoes/routes/web.php
++++ b/Modules/Subscricoes/routes/web.php
+@@ -2,6 +2,7 @@
+ 
+ use Illuminate\Support\Facades\Route;
+ use Modules\Subscricoes\Http\Controllers\Admin\PagamentoManualController;
++use Modules\Subscricoes\Http\Controllers\FaturacaoController;
+ use Modules\Subscricoes\Http\Controllers\PlanoController;
+ use Modules\Subscricoes\Http\Controllers\SubscricaoController;
+ 
+@@ -26,6 +27,9 @@
+         ->whereNumber('subscricao')
+         ->name('subscricoes.renovacao');
+ 
++    Route::get('/subscricao/faturacao', [FaturacaoController::class, 'resumo'])->name('subscricoes.faturacao');
++    Route::get('/subscricao/pagamentos', [FaturacaoController::class, 'pagamentos'])->name('subscricoes.pagamentos');
++
+     Route::get('/subscricao/pagamentos/{pagamento}', [SubscricaoController::class, 'pendente'])
+         ->whereNumber('pagamento')
+         ->name('subscricoes.pendente');
+diff --git a/Modules/Subscricoes/tests/Feature/FuncionalidadesCompletasTest.php b/Modules/Subscricoes/tests/Feature/FuncionalidadesCompletasTest.php
+new file mode 100644
+index 0000000..65de1de
+--- /dev/null
++++ b/Modules/Subscricoes/tests/Feature/FuncionalidadesCompletasTest.php
+@@ -0,0 +1,269 @@
++<?php
++
++namespace Modules\Subscricoes\Tests\Feature;
++
++use Illuminate\Foundation\Testing\RefreshDatabase;
++use Illuminate\Http\Request;
++use Illuminate\Support\Facades\Queue;
++use Modules\Core\Contracts\LimitesDaEmpresa;
++use Modules\Core\Models\Empresa;
++use Modules\Core\Models\User;
++use Modules\Subscricoes\Enums\EventoWebhookEstado;
++use Modules\Subscricoes\Jobs\ProcessarPagamentoConfirmadoJob;
++use Modules\Subscricoes\Models\EventoWebhook;
++use Modules\Subscricoes\Models\Pagamento;
++use Modules\Subscricoes\Models\Plano;
++use Modules\Subscricoes\Models\Subscricao;
++use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
++use Modules\Subscricoes\Services\PagamentoService;
++use Modules\Subscricoes\Services\SubscricaoService;
++use Tests\TestCase;
++
++class GatewayFalsoDoLote implements GatewayPagamentoInterface
++{
++    public function identificador(): string
++    {
++        return 'gateway-teste';
++    }
++
++    public function gerarReferencia(Pagamento $pagamento): array
++    {
++        return ['referencia_externa' => 'REF-'.$pagamento->id, 'payload' => ['entity_id' => '11223']];
++    }
++
++    public function validarPedidoWebhook(Request $request): bool
++    {
++        return true;
++    }
++
++    public function interpretarNotificacao(Request $request): array
++    {
++        return [
++            'referencia_externa' => (string) $request->input('reference'),
++            'estado' => 'confirmado',
++            'valor' => $request->input('amount'),
++            'payload' => $request->all(),
++        ];
++    }
++}
++
++class FuncionalidadesCompletasTest extends TestCase
++{
++    use RefreshDatabase;
++
++    protected function setUp(): void
++    {
++        parent::setUp();
++
++        $this->withoutVite();
++        $this->app->instance(GatewayPagamentoInterface::class, new GatewayFalsoDoLote);
++        $this->app->forgetInstance(SubscricaoService::class);
++    }
++
++    /** @return array{0: Empresa, 1: Plano} */
++    protected function cenario(string $nif, array $planoExtra = []): array
++    {
++        $empresa = Empresa::create(['nome_comercial' => 'Empresa '.$nif, 'nif' => $nif]);
++        $plano = Plano::create(array_merge([
++            'nome' => 'Plano '.$nif,
++            'slug' => 'plano-'.$nif,
++            'preco' => 9900,
++            'periodo_dias' => 30,
++        ], $planoExtra));
++
++        return [$empresa->fresh(), $plano];
++    }
++
++    protected function utilizador(Empresa $empresa, string $sufixo): User
++    {
++        return User::create([
++            'empresa_id' => $empresa->id,
++            'name' => 'Utilizador '.$sufixo,
++            'email' => 'u'.$sufixo.'@teste.test',
++            'password' => 'Senha-Forte-123!',
++            'ativo' => true,
++        ]);
++    }
++
++    protected function ativarSubscricao(Empresa $empresa, Plano $plano): Subscricao
++    {
++        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
++        app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
++
++        return Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->firstOrFail();
++    }
++
++    // ---------------------------------------------------------------- preço
++
++    public function test_renovacao_cobra_o_preco_contratado_por_omissao(): void
++    {
++        [$empresa, $plano] = $this->cenario('820000001');
++        $subscricao = $this->ativarSubscricao($empresa, $plano);
++
++        $plano->update(['preco' => 12000]);
++
++        $renovacao = app(SubscricaoService::class)->gerarRenovacao($subscricao->fresh());
++
++        $this->assertSame('9900.00', (string) $renovacao->valor);
++    }
++
++    public function test_renovacao_pode_cobrar_o_preco_atual_do_catalogo(): void
++    {
++        config(['subscricoes.renovacao_usa_preco_contratado' => false]);
++
++        [$empresa, $plano] = $this->cenario('820000002');
++        $subscricao = $this->ativarSubscricao($empresa, $plano);
++
++        $plano->update(['preco' => 12000]);
++
++        $renovacao = app(SubscricaoService::class)->gerarRenovacao($subscricao->fresh());
++
++        $this->assertSame('12000.00', (string) $renovacao->valor);
++    }
++
++    // ------------------------------------------------------ cache de limites
++
++    public function test_cache_de_limites_e_invalidada_quando_a_subscricao_muda(): void
++    {
++        [$empresa, $plano] = $this->cenario('820000003', ['limites' => ['max_utilizadores' => 5]]);
++        $subscricao = $this->ativarSubscricao($empresa, $plano);
++
++        $limites = app(LimitesDaEmpresa::class);
++        $this->assertSame(5, $limites->limite($empresa->fresh(), 'max_utilizadores'));
++
++        // Segunda leitura (vinda da memória) e depois alteração: tem de refletir.
++        $this->assertSame(5, $limites->limite($empresa->fresh(), 'max_utilizadores'));
++        $subscricao->update(['limites' => ['max_utilizadores' => 9]]);
++
++        $this->assertSame(9, $limites->limite($empresa->fresh(), 'max_utilizadores'));
++    }
++
++    // ------------------------------------------------- caixa de entrada
++
++    public function test_webhook_grava_o_evento_e_despacha_o_job(): void
++    {
++        Queue::fake();
++
++        $this->postJson(route('subscricoes.webhooks.proxypay'), ['reference' => '555', 'amount' => '9900.00'])
++            ->assertOk();
++
++        $evento = EventoWebhook::firstOrFail();
++        $this->assertSame('555', $evento->referencia_externa);
++        $this->assertSame(EventoWebhookEstado::Recebido->value, $evento->estado);
++
++        Queue::assertPushed(ProcessarPagamentoConfirmadoJob::class);
++    }
++
++    public function test_job_marca_o_evento_como_processado(): void
++    {
++        [$empresa, $plano] = $this->cenario('820000004');
++        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
++
++        $evento = EventoWebhook::create([
++            'gateway' => 'gateway-teste',
++            'referencia_externa' => $pagamento->referencia_externa,
++            'valor' => '9900.00',
++        ]);
++
++        (new ProcessarPagamentoConfirmadoJob('gateway-teste', (string) $pagamento->referencia_externa, [], '9900.00', $evento->id))
++            ->handle(app(PagamentoService::class));
++
++        $evento->refresh();
++        $this->assertSame(EventoWebhookEstado::Processado->value, $evento->estado);
++        $this->assertNotNull($evento->processado_em);
++    }
++
++    public function test_job_marca_o_evento_como_falhado_quando_o_valor_nao_bate(): void
++    {
++        [$empresa, $plano] = $this->cenario('820000005');
++        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
++
++        $evento = EventoWebhook::create([
++            'gateway' => 'gateway-teste',
++            'referencia_externa' => $pagamento->referencia_externa,
++            'valor' => '1.00',
++        ]);
++
++        (new ProcessarPagamentoConfirmadoJob('gateway-teste', (string) $pagamento->referencia_externa, [], '1.00', $evento->id))
++            ->handle(app(PagamentoService::class));
++
++        $this->assertSame(EventoWebhookEstado::Falhado->value, $evento->fresh()->estado);
++        $this->assertSame('pendente', Pagamento::withoutGlobalScopes()->find($pagamento->id)->estado);
++    }
++
++    public function test_comando_reenvia_eventos_recebidos_ha_mais_de_n_minutos(): void
++    {
++        Queue::fake();
++
++        $antigo = EventoWebhook::create(['gateway' => 'gateway-teste', 'referencia_externa' => 'A', 'valor' => '1.00']);
++        $antigo->forceFill(['created_at' => now()->subMinutes(30)])->save();
++        EventoWebhook::create(['gateway' => 'gateway-teste', 'referencia_externa' => 'B', 'valor' => '1.00']);
++
++        $this->artisan('subscricoes:reprocessar-webhooks')->assertExitCode(0);
++
++        Queue::assertPushed(ProcessarPagamentoConfirmadoJob::class, 1);
++    }
++
++    // ------------------------------------------- confirmação manual (admin)
++
++    public function test_super_admin_confirma_um_pagamento_manualmente(): void
++    {
++        [$empresa, $plano] = $this->cenario('820000006');
++        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
++
++        $superAdmin = User::factory()->superAdmin()->create();
++
++        $this->actingAs($superAdmin)->get(route('subscricoes.admin.pagamentos'))->assertOk();
++
++        $this->actingAs($superAdmin)
++            ->post(route('subscricoes.admin.confirmar', $pagamento->id))
++            ->assertRedirect();
++
++        $this->assertSame('confirmado', Pagamento::withoutGlobalScopes()->find($pagamento->id)->estado);
++        $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
++    }
++
++    public function test_utilizador_normal_nao_acede_a_reconciliacao_manual(): void
++    {
++        [$empresa, $plano] = $this->cenario('820000007');
++        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
++        $normal = $this->utilizador($empresa, '820000007');
++
++        $this->actingAs($normal)->get(route('subscricoes.admin.pagamentos'))->assertForbidden();
++        $this->actingAs($normal)->post(route('subscricoes.admin.confirmar', $pagamento->id))->assertForbidden();
++
++        $this->assertSame('pendente', Pagamento::withoutGlobalScopes()->find($pagamento->id)->estado);
++    }
++
++    // ------------------------------------------------------------- páginas
++
++    public function test_empresa_ve_a_sua_faturacao_e_pagamentos(): void
++    {
++        [$empresa, $plano] = $this->cenario('820000008');
++        $this->ativarSubscricao($empresa, $plano);
++        $utilizador = $this->utilizador($empresa, '820000008');
++
++        $this->actingAs($utilizador)
++            ->get(route('subscricoes.faturacao'))
++            ->assertOk()
++            ->assertSee('Plano 820000008');
++
++        $this->actingAs($utilizador)
++            ->get(route('subscricoes.pagamentos'))
++            ->assertOk()
++            ->assertSee('Pago');
++    }
++
++    public function test_pagina_de_pagamento_pendente_mostra_a_entidade(): void
++    {
++        [$empresa, $plano] = $this->cenario('820000009');
++        $pagamento = app(SubscricaoService::class)->iniciar($empresa, $plano);
++        $utilizador = $this->utilizador($empresa, '820000009');
++
++        $this->actingAs($utilizador)
++            ->get(route('subscricoes.pendente', $pagamento->id))
++            ->assertOk()
++            ->assertSee('11223')
++            ->assertSee((string) $pagamento->referencia_externa);
++    }
++}
+diff --git a/README.md b/README.md
+index 0637971..7426ceb 100644
+--- a/README.md
++++ b/README.md
+@@ -227,7 +227,7 @@ ## Variáveis de ambiente
+ | `FATURACAO_TAXA_IVA_GERAL`, `FATURACAO_TAXAS_IVA_PERMITIDAS` | Taxas de IVA aceites na emissão |
+ | `FATURACAO_SAFT_NUMERO_CERTIFICADO` | Em produção, o SAF-T fica bloqueado enquanto for `0` |
+ | `TRUSTED_PROXIES` | IPs do proxy/load balancer; vazio = não confiar em ninguém |
+-| `SUBSCRICOES_GATEWAY`, `PROXYPAY_BASE_URL`, `PROXYPAY_API_KEY`, `PROXYPAY_ENTITY_ID`, `PROXYPAY_WEBHOOK_TOKEN` | Gateway de pagamentos ProxyPay |
++| `SUBSCRICOES_GATEWAY`, `PROXYPAY_BASE_URL`, `PROXYPAY_API_KEY`, `PROXYPAY_ENTITY_ID`, `SUBSCRICOES_RENOVACAO_PRECO_CONTRATADO` | Gateway de pagamentos ProxyPay e política de preço das renovações |
+ 
+ ## Correr a aplicação
+ 
+@@ -285,7 +285,7 @@ ## Processos em segundo plano (obrigatórios em produção)
+ 
+ ### Webhook ProxyPay
+ 
+-URL a configurar no painel: `https://SEU-DOMINIO/api/webhooks/proxypay?token=<PROXYPAY_WEBHOOK_TOKEN>`.
++URL a configurar no painel: `https://SEU-DOMINIO/api/webhooks/proxypay` (sem token na query string; a autenticidade é validada por assinatura HMAC-SHA-256 com `PROXYPAY_API_KEY`). Os eventos ficam gravados em `eventos_webhook`; se o worker da fila esteve parado, usa `php artisan subscricoes:reprocessar-webhooks`.
+ Os pagamentos com valor inferior ao devido são rejeitados e ficam em `failed_jobs` para revisão manual
+ (`php artisan queue:failed`).
+ 
+-- 
+2.43.0
+

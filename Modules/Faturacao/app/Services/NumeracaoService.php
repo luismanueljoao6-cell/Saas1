@@ -5,6 +5,7 @@ namespace Modules\Faturacao\Services;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Modules\Core\Services\TenantManager;
+use Modules\Faturacao\Exceptions\AgtException;
 use Modules\Faturacao\Exceptions\CadeiaFiscalInterrompidaException;
 use Modules\Faturacao\Models\Serie;
 
@@ -38,12 +39,21 @@ class NumeracaoService
                 $serie = $this->obterOuCriarSerie($empresaId, $tipoDocumento, $prefixo, comLock: true);
 
                 $novoNumero = $serie->ultimo_numero + 1;
+
+                if ($serie->agt_codigo !== null
+                    && $serie->ultimo_numero_autorizado !== null
+                    && $novoNumero > $serie->ultimo_numero_autorizado) {
+                    throw AgtException::serieEsgotada($serie->agt_codigo, (int) $serie->ultimo_numero_autorizado);
+                }
+
                 $serie->update(['ultimo_numero' => $novoNumero]);
 
                 return [
                     'serie' => $serie,
                     'numero_sequencial' => $novoNumero,
-                    'numero_documento' => "{$tipoDocumento} {$prefixo}{$serie->ano}/{$novoNumero}",
+                    'numero_documento' => $serie->agt_codigo !== null
+                        ? "{$tipoDocumento} {$serie->agt_codigo}/{$novoNumero}"
+                        : "{$tipoDocumento} {$prefixo}{$serie->ano}/{$novoNumero}",
                 ];
             });
         });
@@ -62,6 +72,11 @@ class NumeracaoService
         return $this->tenantManager->semTenant(function () use ($empresaId, $tipoDocumento, $prefixo, $comLock) {
             $ano = now()->year;
 
+            // Com a comunicação à AGT ativa, só se numera em séries autorizadas por ela.
+            if (config('faturacao.agt.ativo')) {
+                return $this->serieAgtAtual($empresaId, $tipoDocumento, $ano, $comLock);
+            }
+
             $query = Serie::query()
                 ->where('empresa_id', $empresaId)
                 ->where('tipo_documento', $tipoDocumento)
@@ -72,6 +87,25 @@ class NumeracaoService
 
             return $serie ?? $this->criarSerieComSeguranca($empresaId, $tipoDocumento, $ano, $prefixo);
         });
+    }
+
+    /**
+     * Série autorizada pela AGT para o ano corrente (regime normal). Já corre
+     * dentro do semTenant() de quem chamou.
+     */
+    protected function serieAgtAtual(int $empresaId, string $tipoDocumento, int $ano, bool $comLock): Serie
+    {
+        $query = Serie::query()
+            ->where('empresa_id', $empresaId)
+            ->where('tipo_documento', $tipoDocumento)
+            ->where('ano', $ano)
+            ->whereNotNull('agt_codigo')
+            ->where('contingencia', 'N')
+            ->orderByDesc('id');
+
+        $serie = $comLock ? $query->lockForUpdate()->first() : $query->first();
+
+        return $serie ?? throw AgtException::serieIndisponivel($tipoDocumento, $ano);
     }
 
     /**

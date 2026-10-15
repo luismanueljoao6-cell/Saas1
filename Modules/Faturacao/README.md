@@ -227,3 +227,19 @@ especificação oficial da AGT (quiosque AGT > Facturação Electrónica):
 Ainda **não** feito (fases seguintes): pedido de séries à AGT, envio
 `registarFactura`, QR Code, tipos de operação, códigos de isenção e SAF-T(AO).
 Este módulo continua a não substituir a certificação do software pela AGT.
+
+
+## Séries da AGT (Fase 2a)
+
+Com `FATURACAO_AGT_ATIVO=true` o módulo deixa de numerar localmente: só emite em
+**séries autorizadas pela AGT**. O `documentNo` passa a ser `{tipo} {seriesCode}/{n}`
+(ex.: `FT FT6325S2C/10006`) e a numeração pára no último número autorizado.
+
+1. Pede as credenciais de produtor à AGT (e-mail a `produtores.dfe.dcrr.agt@minfin.gov.ao`
+   com o nome e o NIF da empresa) e regista o software/chave pública do software.
+2. Cada empresa adere à faturação eletrónica no Portal do Contribuinte e a sua chave
+   privada vai para `storage/app/faturacao/chaves/{NIF}.pem`.
+3. Pede a série: `php artisan faturacao:agt-solicitar-serie <empresa> FT`
+   (repete para NC, ND e RC; repetir o pedido para uma série existente é uma extensão).
+
+Ainda **não** feito (Fase 2b): envio `registarFactura`, consulta de estado, QR Code.

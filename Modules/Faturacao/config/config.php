@@ -86,4 +86,40 @@ return [
     */
     'taxas_iva_permitidas' => array_map('floatval', array_filter(explode(',', (string) env('FATURACAO_TAXAS_IVA_PERMITIDAS') ?: '14'), 'strlen')),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Comunicação com a AGT (Facturação Electrónica)
+    |--------------------------------------------------------------------------
+    | `ativo` desligado: o módulo numera localmente (desenvolvimento). Ligado:
+    | só se numera em séries autorizadas pela AGT e os pedidos usam Basic Auth
+    | com as credenciais pedidas por e-mail a produtores.dfe.dcrr.agt@minfin.gov.ao
+    | (nome e NIF da empresa produtora). Os endereços e caminhos são os da
+    | documentação oficial da AGT e ficam configuráveis porque a documentação de
+    | homologação tem inconsistências — confirma-os na homologação.
+    */
+    'agt' => [
+        'ativo' => (bool) env('FATURACAO_AGT_ATIVO', false),
+        'ambiente' => env('FATURACAO_AGT_AMBIENTE', 'homologacao'), // homologacao | producao
+        'urls' => [
+            'homologacao' => env('FATURACAO_AGT_URL_HOMOLOGACAO', 'https://sifphml.minfin.gov.ao/sigt/fe/v1'),
+            'producao' => env('FATURACAO_AGT_URL_PRODUCAO', 'https://sifp.minfin.gov.ao/sigt/fe/v1'),
+        ],
+        'caminhos' => [
+            'solicitar_serie' => '/solicitarSerie',
+            'registar_factura' => '/registarFactura',
+            'obter_estado' => '/obterEstado',
+        ],
+        'utilizador' => env('FATURACAO_AGT_UTILIZADOR'),
+        'palavra_passe' => env('FATURACAO_AGT_PALAVRA_PASSE'),
+        'timeout' => (int) env('FATURACAO_AGT_TIMEOUT', 20),
+        'estabelecimento_padrao' => env('FATURACAO_AGT_ESTABELECIMENTO', 'SEDE'),
+        'software' => [
+            'product_id' => env('FATURACAO_AGT_PRODUCT_ID', 'Saas1'),
+            'product_version' => env('FATURACAO_AGT_PRODUCT_VERSION', '1.0.0'),
+            // O número de certificação é o 'saft_numero_certificado' (acima).
+            'signature_version' => env('FATURACAO_AGT_SIGNATURE_VERSION'),
+            'chave_privada_path' => env('FATURACAO_AGT_CHAVE_SOFTWARE') ?: storage_path('app/faturacao/chave-software.pem'),
+        ],
+    ],
+
 ];
