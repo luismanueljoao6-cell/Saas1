@@ -268,9 +268,9 @@ Um documento `invalido`/`rejeitado` só se corrige com um documento novo (regra 
   assinado, mostrado ou enviado à AGT. Documentos anteriores (sem estes campos) usam os dados atuais.
 - **QR Code:** com `FATURACAO_AGT_ATIVO=true`, a fatura mostra o QR Code da AGT
   (`.../consultar-fe?emissor={NIF}&document={documentNo}`, espaços => `%20`), PNG 350x350
-  (SVG se a extensão GD faltar). A AGT indica "versão 4 (33x33)", mas o URL tem ~120 bytes e a
+  (escrito sem GD nem zlib, por isso funciona em qualquer PHP). A AGT indica "versão 4 (33x33)", mas o URL tem ~120 bytes e a
   versão 4 só comporta 62 com correção M: usa-se a menor versão que o comporta. O logótipo da AGT
-  no centro (opcional, <20%) não está incluído. Requer `bacon/qr-code` (`composer require bacon/qr-code`); sem ele o QR não é desenhado e a fatura mostra só o URL.
+  no centro (opcional, <20%) não está incluído. O QR é gerado por `Support/QrEncoder` (PHP puro, sem dependências), validado módulo a módulo contra a biblioteca de referência python-qrcode (versões 1 a 10, correção M).
 
 **Bloqueado (SAF-T):** o exportador SAF-T grava o JWS completo (~750 caracteres) no campo `Hash`.
 O esquema SAF-T(AO) público (SAFTAO1.01_01, 2020) limita esse campo a 172 caracteres. Falta a
