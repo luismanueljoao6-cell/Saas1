@@ -38,6 +38,11 @@ class AssinaturaFiscalService
     ): void {
         $documento->prepararParaEmissao($numeroSequencial, $numeroDocumento, $dataHoraSistema, $hashAnterior);
 
+        // Congela NIF, nome e país do cliente no documento antes de construir o objecto assinado.
+        if (method_exists($documento, 'congelarCliente')) {
+            $documento->congelarCliente();
+        }
+
         $jws = $this->assinar($documento->construirStringParaAssinar(), $documento->getEmpresaId());
 
         $documento->confirmarEmissao($jws, (int) config('faturacao.chave_versao'));

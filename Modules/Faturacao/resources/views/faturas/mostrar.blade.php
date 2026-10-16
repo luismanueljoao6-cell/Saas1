@@ -9,7 +9,13 @@
                 <h1 class="text-xl font-semibold text-slate-900">
                     {{ $fatura->numero_documento ?? 'Rascunho #'.$fatura->id }}
                 </h1>
-                <p class="text-sm text-slate-500">{{ $fatura->cliente->nome }} @if($fatura->cliente->nif) — NIF {{ $fatura->cliente->nif }} @endif</p>
+                <p class="text-sm text-slate-500">
+                    @php
+                        $clienteNome = $fatura->cliente_nome ?? $fatura->cliente->nome;
+                        $clienteNif = $fatura->cliente_nome !== null ? $fatura->cliente_nif : $fatura->cliente->nif;
+                    @endphp
+                    {{ $clienteNome }} @if($clienteNif) — NIF {{ $clienteNif }} @endif
+                </p>
             </div>
             <span class="rounded-full px-3 py-1 text-xs font-medium {{ $fatura->estado === 'emitida' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' }}">
                 {{ ucfirst($fatura->estado) }}
@@ -53,6 +59,18 @@
                 <div class="flex justify-between border-t border-slate-200 pt-1 font-semibold"><span>Total</span><span>{{ number_format((float) $fatura->valor_total, 2, ',', ' ') }} {{ $fatura->moeda }}</span></div>
             </div>
         </div>
+
+        @if (config('faturacao.agt.ativo') && $fatura->urlQrAgt())
+            @php
+                $qrImagem = \Modules\Faturacao\Support\QrCodeAgt::dataUri($fatura->urlQrAgt());
+            @endphp
+            <div class="mt-6 flex items-center gap-4 border-t border-slate-200 pt-4">
+                @if ($qrImagem)
+                    <img src="{{ $qrImagem }}" alt="QR Code da AGT" width="175" height="175">
+                @endif
+                <p class="text-xs text-slate-500">Consulte este documento no portal da AGT: {{ $fatura->urlQrAgt() }}</p>
+            </div>
+        @endif
 
         @if ($fatura->estado === 'rascunho')
             <form method="POST" action="{{ route('faturacao.faturas.emitir', $fatura) }}" class="mt-6">

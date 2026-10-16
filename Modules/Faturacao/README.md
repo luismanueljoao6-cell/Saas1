@@ -259,3 +259,20 @@ IVA 0% / isenções (falta o código do Anexo 6.4), recibos sem fatura (adiantam
 documentos em divisa, notas de crédito sem fatura original. `operationType` é `SG` para
 todas as linhas e só a taxa de 14% (`NOR`) está mapeada em `agt.codigos_taxa`.
 Um documento `invalido`/`rejeitado` só se corrige com um documento novo (regra E46) — fluxo ainda por fazer.
+
+
+## Cliente congelado e QR Code (Fase 3a)
+
+- **Cliente congelado:** na emissão, o NIF, o nome e o país do cliente ficam gravados no documento
+  (`cliente_nif`, `cliente_nome`, `cliente_pais`). Editar o cliente depois já não altera o que foi
+  assinado, mostrado ou enviado à AGT. Documentos anteriores (sem estes campos) usam os dados atuais.
+- **QR Code:** com `FATURACAO_AGT_ATIVO=true`, a fatura mostra o QR Code da AGT
+  (`.../consultar-fe?emissor={NIF}&document={documentNo}`, espaços => `%20`), PNG 350x350
+  (SVG se a extensão GD faltar). A AGT indica "versão 4 (33x33)", mas o URL tem ~120 bytes e a
+  versão 4 só comporta 62 com correção M: usa-se a menor versão que o comporta. O logótipo da AGT
+  no centro (opcional, <20%) não está incluído. Requer `bacon/qr-code` (`composer require bacon/qr-code`); sem ele o QR não é desenhado e a fatura mostra só o URL.
+
+**Bloqueado (SAF-T):** o exportador SAF-T grava o JWS completo (~750 caracteres) no campo `Hash`.
+O esquema SAF-T(AO) público (SAFTAO1.01_01, 2020) limita esse campo a 172 caracteres. Falta a
+especificação atual da AGT para o SAF-T com faturação eletrónica; até a haver, não uses o SAF-T
+exportado para submissões.
