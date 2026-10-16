@@ -16,7 +16,10 @@ use Modules\Core\Services\TenantManager;
  * Corre na fila, onde não há tenant definido: por isso o acesso a Cliente
  * (que usa TenantScope, fail-closed) é feito dentro de semTenant(), tal como
  * os Jobs do módulo. $afterCommit garante que o worker só corre depois de o
- * novo estado estar gravado (o evento é disparado dentro de uma transação).
+ * novo estado estar gravado.
+ *
+ * O motivo do cancelamento é uma nota INTERNA (pode conter observações que
+ * o cliente não deve ler) — nunca é enviado na mensagem ao cliente.
  */
 class EnviarNotificacaoMudancaEstado implements ShouldQueue
 {
@@ -58,7 +61,7 @@ class EnviarNotificacaoMudancaEstado implements ShouldQueue
             'ajustes' => 'A sua peça está em fase de ajustes finais.',
             'pronto_para_retirada' => $this->mensagemProntoParaRetirada($pedido),
             'entregue' => 'A sua peça foi entregue. Obrigado por confiar no nosso atelier!',
-            'cancelado' => 'O seu pedido foi cancelado.'.($pedido->motivo_cancelamento ? " Motivo: {$pedido->motivo_cancelamento}" : ''),
+            'cancelado' => 'O seu pedido foi cancelado. Contacte-nos se tiver alguma dúvida.',
             default => null,
         };
     }

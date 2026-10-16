@@ -25,6 +25,8 @@ use Throwable;
  * - Toda a emissão de Recibos passa pelo ReciboService (caminho único).
  * - Cada operação relê o Pedido com lock: um duplo clique não emite dois
  *   recibos nem gera duas faturas finais.
+ * - Um pedido CANCELADO nunca recebe sinal, fatura nem pagamento novos; o
+ *   sinal só se regista enquanto o pedido não está entregue/cancelado.
  */
 class PedidoFaturacaoService
 {
@@ -44,6 +46,10 @@ class PedidoFaturacaoService
         return DB::transaction(function () use ($pedido, $valor, $meioPagamento) {
             $original = $pedido;
             $pedido = $this->bloquear($pedido);
+
+            if ($pedido->estaFinalizado()) {
+                throw new PedidoException('Não é possível registar o sinal de um pedido entregue ou cancelado.');
+            }
 
             if ($pedido->jaTemSinalRegistado()) {
                 throw PedidoException::sinalJaRegistado();
@@ -87,6 +93,10 @@ class PedidoFaturacaoService
         return DB::transaction(function () use ($pedido, $observacoes) {
             $original = $pedido;
             $pedido = $this->bloquear($pedido);
+
+            if ($pedido->status === 'cancelado') {
+                throw new PedidoException('Não é possível gerar a fatura final de um pedido cancelado.');
+            }
 
             if ($pedido->jaTemFaturaFinal()) {
                 throw PedidoException::faturaFinalJaGerada();
@@ -137,6 +147,10 @@ class PedidoFaturacaoService
         return DB::transaction(function () use ($pedido, $meioPagamento) {
             $original = $pedido;
             $pedido = $this->bloquear($pedido);
+
+            if ($pedido->status === 'cancelado') {
+                throw new PedidoException('Não é possível registar pagamentos num pedido cancelado.');
+            }
 
             if (! $pedido->jaTemFaturaFinal()) {
                 throw new PedidoException('É preciso gerar e emitir a fatura final antes de registar o pagamento do saldo.');

@@ -2,7 +2,9 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Atelier\Http\Controllers\Admin\CampanhaController;
+use Modules\Atelier\Http\Controllers\Admin\ClienteCrmController;
 use Modules\Atelier\Http\Controllers\Admin\EquipaController;
+use Modules\Atelier\Http\Controllers\Admin\FotoController;
 use Modules\Atelier\Http\Controllers\Admin\MedidaController;
 use Modules\Atelier\Http\Controllers\Admin\OrcamentoController;
 use Modules\Atelier\Http\Controllers\Admin\PedidoController;
@@ -33,12 +35,19 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:atelier'])
         Route::post('pedidos/{pedido}/fatura-final', [PedidoController::class, 'gerarFaturaFinal'])->name('pedidos.gerar-fatura-final');
         Route::post('pedidos/{pedido}/pagamento-final', [PedidoController::class, 'registarPagamentoFinal'])->name('pedidos.registar-pagamento-final');
 
+        // Fotos de pedidos: dados pessoais, servidas só a utilizadores autorizados.
+        Route::get('pedidos/fotos/{foto}', [FotoController::class, 'mostrar'])->name('pedidos.foto');
+
         Route::post('pedidos/{pedido}/provas', [ProvaController::class, 'guardar'])->name('provas.guardar');
         Route::put('provas/{prova}', [ProvaController::class, 'atualizarEstado'])->name('provas.atualizar-estado');
 
         Route::get('clientes/{cliente}/medidas', [MedidaController::class, 'historico'])->name('medidas.historico');
         Route::get('clientes/{cliente}/medidas/criar', [MedidaController::class, 'criar'])->name('medidas.criar');
         Route::post('medidas', [MedidaController::class, 'guardar'])->name('medidas.guardar');
+
+        // Consentimento de marketing e data de nascimento do cliente.
+        Route::get('clientes/{cliente}/crm', [ClienteCrmController::class, 'editar'])->name('crm.editar');
+        Route::put('clientes/{cliente}/crm', [ClienteCrmController::class, 'atualizar'])->name('crm.atualizar');
 
         Route::get('equipa', [EquipaController::class, 'index'])->name('equipa.index');
         Route::post('equipa/atribuir', [EquipaController::class, 'atribuir'])->name('equipa.atribuir');
@@ -66,15 +75,20 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:atelier'])
 | Portal do cliente (requisito E) — SEM 'auth'/'tenant'. O acesso é a
 | assinatura da própria URL (middleware nativo 'signed'); ver
 | PortalLinkService e o aviso no README sobre as limitações deste modelo.
+| 'throttle' limita tentativas de adivinhar/abusar dos links.
 |--------------------------------------------------------------------------
 */
-Route::middleware(['signed'])
+Route::middleware(['throttle:30,1', 'signed'])
     ->prefix('portal/atelier')
     ->name('atelier.portal.')
     ->group(function () {
         Route::get('{cliente}', [PortalController::class, 'mostrar'])->name('mostrar');
         Route::match(['get', 'post'], '{cliente}/provas/{prova}/reagendar', [PortalController::class, 'reagendar'])
             ->name('provas.reagendar');
+
+        // "Deixar de receber marketing" — link sem expiração, só revoga o consentimento.
+        Route::match(['get', 'post'], '{cliente}/marketing/cancelar', [PortalController::class, 'cancelarMarketing'])
+            ->name('marketing.cancelar');
     });
 
 /*

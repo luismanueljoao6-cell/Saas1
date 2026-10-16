@@ -21,6 +21,11 @@ class ProvaController extends Controller
     {
         $pedido = Pedido::findOrFail($pedido);
 
+        // Uma prova num pedido entregue/cancelado geraria lembretes sem sentido ao cliente.
+        if ($pedido->estaFinalizado()) {
+            return back()->with('erro', 'Não é possível agendar provas num pedido entregue ou cancelado.');
+        }
+
         $pedido->provas()->create([
             'empresa_id' => $pedido->empresa_id,
             'tipo' => $request->validated('tipo'),

@@ -2,6 +2,7 @@
 
 namespace Modules\Atelier\Services;
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\URL;
 use Modules\Faturacao\Models\Cliente;
 
@@ -12,6 +13,10 @@ use Modules\Faturacao\Models\Cliente;
  * 'signed' nativo. Isto é deliberadamente mais simples que uma sessão
  * autenticada tradicional — ver o aviso no README sobre as suas limitações
  * (um link partilhado dá acesso a quem o tiver, até expirar).
+ *
+ * Os links gerados a partir de uma página do portal já aberta com um link
+ * assinado NUNCA expiram depois desse link: sem isto, quem tivesse um link
+ * conseguia renová-lo indefinidamente (cada ação devolvia um link novo).
  */
 class PortalLinkService
 {
@@ -19,7 +24,7 @@ class PortalLinkService
     {
         return URL::temporarySignedRoute(
             'atelier.portal.mostrar',
-            now()->addDays((int) config('atelier.portal_link_validade_dias')),
+            $this->expiracao(),
             ['cliente' => $cliente->id],
         );
     }
@@ -34,8 +39,34 @@ class PortalLinkService
     {
         return URL::temporarySignedRoute(
             'atelier.portal.provas.reagendar',
-            now()->addDays((int) config('atelier.portal_link_validade_dias')),
+            $this->expiracao(),
             ['cliente' => $cliente->id, 'prova' => $provaId],
         );
+    }
+
+    /**
+     * Link de "deixar de receber marketing": sem expiração (tem de funcionar
+     * em mensagens antigas) e só permite revogar o consentimento — não dá
+     * acesso a dados nem a qualquer outra ação.
+     */
+    public function gerarLinkCancelarMarketing(Cliente $cliente): string
+    {
+        return URL::signedRoute('atelier.portal.marketing.cancelar', ['cliente' => $cliente->id]);
+    }
+
+    protected function expiracao(): Carbon
+    {
+        $padrao = now()->addDays((int) config('atelier.portal_link_validade_dias'));
+        $atual = request()->query('expires');
+
+        if (is_numeric($atual)) {
+            $limite = Carbon::createFromTimestamp((int) $atual);
+
+            if ($limite->isFuture() && $limite->lessThan($padrao)) {
+                return $limite;
+            }
+        }
+
+        return $padrao;
     }
 }

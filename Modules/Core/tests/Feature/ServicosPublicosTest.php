@@ -103,7 +103,7 @@ class ServicosPublicosTest extends TestCase
     public function test_remover_o_servico_fecha_a_landing_do_atelier(): void
     {
         $empresa = $this->atelierPublicado('700000005', 'atelier-aberto', ['atelier']);
-        $dados = ['nome' => 'Visitante', 'contacto' => '900000000'];
+        $dados = ['nome' => 'Visitante', 'contacto' => '900000000', 'consentimento' => '1'];
 
         $this->post(route('atelier.landing.solicitar-orcamento', ['empresa' => 'atelier-aberto']), $dados)
             ->assertRedirect();

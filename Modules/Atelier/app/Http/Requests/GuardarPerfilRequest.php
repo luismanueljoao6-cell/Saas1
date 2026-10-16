@@ -16,7 +16,7 @@ class GuardarPerfilRequest extends FormRequest
         return [
             'historia' => ['nullable', 'string', 'max:5000'],
             'especialidades' => ['nullable', 'string', 'max:2000'],
-            'equipa' => ['nullable', 'array'],
+            'equipa' => ['nullable', 'array', 'max:20'],
             'equipa.*.nome' => ['required_with:equipa', 'string', 'max:255'],
             'equipa.*.funcao' => ['nullable', 'string', 'max:255'],
             'redes_sociais.instagram' => ['nullable', 'string', 'max:255'],

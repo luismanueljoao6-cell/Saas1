@@ -13,6 +13,12 @@ use Modules\Faturacao\Models\Cliente;
  * Consulta sempre a partir de Pedido/ClienteCrm (models do Atelier) e nunca
  * acrescenta relações a Modules\Faturacao\Models\Cliente — mantém o módulo
  * Faturacao intocado (ver ClienteCrm e a migration correspondente).
+ *
+ * CONSENTIMENTO (Lei n.º 22/11): marketing é OPT-IN. Só recebe quem tem um
+ * ClienteCrm com consentimento válido (aceita_marketing, data de
+ * consentimento registada e sem revogação). Cliente sem linha CRM = sem
+ * consentimento. Todas as consultas filtram explicitamente por empresa_id
+ * porque estes métodos também correm em jobs, sem tenant definido.
  */
 class CrmService
 {
@@ -20,60 +26,75 @@ class CrmService
     {
         $hoje = now();
 
-        $clienteIds = ClienteCrm::query()
-            ->where('empresa_id', $empresaId)
-            ->where('aceita_marketing', true)
+        $clienteIds = $this->consentimentos($empresaId)
             ->whereNotNull('data_nascimento')
-            ->whereMonth('data_nascimento', $hoje->month)
-            ->whereDay('data_nascimento', $hoje->day)
+            ->where(function ($q) use ($hoje) {
+                $q->where(fn ($d) => $d->whereMonth('data_nascimento', $hoje->month)->whereDay('data_nascimento', $hoje->day));
+
+                // Quem faz anos a 29/02 celebra a 28/02 nos anos não bissextos.
+                if ($hoje->month === 2 && $hoje->day === 28 && ! $hoje->isLeapYear()) {
+                    $q->orWhere(fn ($d) => $d->whereMonth('data_nascimento', 2)->whereDay('data_nascimento', 29));
+                }
+            })
             ->pluck('cliente_id');
 
-        return Cliente::whereIn('id', $clienteIds)->get();
+        return $this->clientes($empresaId, $clienteIds);
     }
 
-    /** Clientes com pelo menos um pedido, mas nenhum nos últimos $meses. */
+    /** Clientes com pelo menos um pedido, mas nenhum nos últimos $meses (e com consentimento). */
     public function clientesInativos(int $empresaId, int $meses): Collection
     {
         $dataLimite = now()->subMonths($meses);
 
-        $todosComPedido = Pedido::where('empresa_id', $empresaId)->pluck('cliente_id')->unique();
-        $comPedidoRecente = Pedido::where('empresa_id', $empresaId)
-            ->where('created_at', '>=', $dataLimite)
-            ->pluck('cliente_id')
-            ->unique();
+        $idsInativos = Pedido::query()
+            ->where('empresa_id', $empresaId)
+            ->select('cliente_id')
+            ->groupBy('cliente_id')
+            ->havingRaw('MAX(created_at) < ?', [$dataLimite])
+            ->pluck('cliente_id');
 
-        $idsInativos = $todosComPedido->diff($comPedidoRecente);
+        $comConsentimento = $this->consentimentos($empresaId)->pluck('cliente_id');
 
-        return $this->filtrarOptIn(Cliente::whereIn('id', $idsInativos)->get());
+        return $this->clientes($empresaId, $idsInativos->intersect($comConsentimento));
     }
 
     public function resolverSegmento(Campanha $campanha): Collection
     {
+        $empresaId = (int) $campanha->empresa_id;
+
         return match ($campanha->segmento) {
-            'todos' => $this->filtrarOptIn(Cliente::where('empresa_id', $campanha->empresa_id)->get()),
-            'aniversariantes_mes' => $this->filtrarOptIn($this->clientesComAniversarioNoMes($campanha->empresa_id)),
-            'inativos' => $this->clientesInativos($campanha->empresa_id, (int) config('atelier.meses_inatividade_reativacao')),
+            'todos' => $this->clientes($empresaId, $this->consentimentos($empresaId)->pluck('cliente_id')),
+            'aniversariantes_mes' => $this->clientes(
+                $empresaId,
+                $this->consentimentos($empresaId)
+                    ->whereNotNull('data_nascimento')
+                    ->whereMonth('data_nascimento', now()->month)
+                    ->pluck('cliente_id'),
+            ),
+            'inativos' => $this->clientesInativos($empresaId, (int) config('atelier.meses_inatividade_reativacao')),
             default => collect(),
         };
     }
 
-    protected function clientesComAniversarioNoMes(int $empresaId): Collection
+    /** Registos CRM com consentimento de marketing válido (data registada, não revogado). */
+    protected function consentimentos(int $empresaId)
     {
-        $clienteIds = ClienteCrm::query()
+        return ClienteCrm::query()
             ->where('empresa_id', $empresaId)
-            ->whereNotNull('data_nascimento')
-            ->whereMonth('data_nascimento', now()->month)
-            ->pluck('cliente_id');
-
-        return Cliente::whereIn('id', $clienteIds)->get();
+            ->where('aceita_marketing', true)
+            ->whereNotNull('consentimento_em')
+            ->whereNull('consentimento_revogado_em');
     }
 
-    protected function filtrarOptIn(Collection $clientes): Collection
+    protected function clientes(int $empresaId, Collection $ids): Collection
     {
-        $optOutIds = ClienteCrm::whereIn('cliente_id', $clientes->pluck('id'))
-            ->where('aceita_marketing', false)
-            ->pluck('cliente_id');
+        if ($ids->isEmpty()) {
+            return collect();
+        }
 
-        return $clientes->whereNotIn('id', $optOutIds)->values();
+        return Cliente::query()
+            ->where('empresa_id', $empresaId)
+            ->whereIn('id', $ids->unique()->values())
+            ->get();
     }
 }

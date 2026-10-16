@@ -2,10 +2,13 @@
 
 namespace Modules\Atelier\Services\Notificacoes;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Modules\Atelier\Exceptions\NotificacaoException;
 use Modules\Atelier\Services\Notificacoes\Contracts\CanalNotificacaoInterface;
+use Modules\Atelier\Support\NumeroTelefone;
 
 /**
  * Genérico de propósito: o requisito não especifica qual gateway de SMS
@@ -13,7 +16,7 @@ use Modules\Atelier\Services\Notificacoes\Contracts\CanalNotificacaoInterface;
  * já tinha escolhido ProxyPay/Multicaixa). Assume um endpoint REST simples
  * (destino + mensagem + api_key) — troca o corpo do pedido pelo formato
  * exato do fornecedor escolhido antes de usar. Ver aviso equivalente em
- * WhatsAppCanal.
+ * WhatsAppCanal (incluindo o cuidado de não registar números completos).
  */
 class SmsCanal implements CanalNotificacaoInterface
 {
@@ -31,17 +34,26 @@ class SmsCanal implements CanalNotificacaoInterface
             throw NotificacaoException::naoConfigurado('sms');
         }
 
-        $resposta = Http::withToken($apiKey)
-            ->post($baseUrl, [
-                'remetente' => config('atelier.sms.remetente'),
-                'destino' => $destino,
-                'mensagem' => $mensagem,
-            ]);
+        try {
+            $resposta = Http::withToken($apiKey)
+                ->timeout((int) config('atelier.http_timeout_segundos', 15))
+                ->post($baseUrl, [
+                    'remetente' => config('atelier.sms.remetente'),
+                    'destino' => $destino,
+                    'mensagem' => $mensagem,
+                ]);
+        } catch (ConnectionException $e) {
+            Log::error('Falha de ligação ao enviar SMS', ['destino' => NumeroTelefone::mascarar($destino)]);
+
+            throw NotificacaoException::falhaNoEnvio('sms', 'Sem ligação ao fornecedor (tempo esgotado ou rede indisponível).');
+        }
 
         if ($resposta->failed()) {
-            Log::error('Falha ao enviar SMS', ['destino' => $destino, 'resposta' => $resposta->body()]);
+            $corpo = Str::limit($resposta->body(), 300);
 
-            throw NotificacaoException::falhaNoEnvio('sms', $resposta->body());
+            Log::error('Falha ao enviar SMS', ['destino' => NumeroTelefone::mascarar($destino), 'resposta' => $corpo]);
+
+            throw NotificacaoException::falhaNoEnvio('sms', $corpo);
         }
     }
 }

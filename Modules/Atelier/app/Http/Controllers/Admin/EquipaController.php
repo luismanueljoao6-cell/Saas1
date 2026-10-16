@@ -19,6 +19,10 @@ class EquipaController extends Controller
 
     public function index(): View
     {
+        // A lista de utilizadores e papéis é só para Administradores
+        // (atribuir/remover já exigem isso no AtribuirPapelRequest).
+        abort_unless(request()->user()?->hasRole('Administrador'), 403);
+
         return view('atelier::equipa.index', [
             'utilizadores' => request()->user()->empresa->utilizadores()->with('roles')->orderBy('name')->get(),
             'papelSecretaria' => config('atelier.papel_secretaria'),

@@ -2,10 +2,13 @@
 
 namespace Modules\Atelier\Services\Notificacoes;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Modules\Atelier\Exceptions\NotificacaoException;
 use Modules\Atelier\Services\Notificacoes\Contracts\CanalNotificacaoInterface;
+use Modules\Atelier\Support\NumeroTelefone;
 
 /**
  * IMPORTANTE — À SEMELHANÇA DA ProxyPayGateway (módulo Subscricoes): esta
@@ -18,6 +21,9 @@ use Modules\Atelier\Services\Notificacoes\Contracts\CanalNotificacaoInterface;
  *     janela de 24h de conversa (mensagens de lembrete/notificação
  *     tipicamente exigem template, não texto livre);
  *   - o formato exato do número (com/sem "+", código do país).
+ *
+ * Os logs nunca incluem o número completo (dado pessoal) e o corpo da
+ * resposta do fornecedor é truncado.
  */
 class WhatsAppCanal implements CanalNotificacaoInterface
 {
@@ -36,20 +42,29 @@ class WhatsAppCanal implements CanalNotificacaoInterface
             throw NotificacaoException::naoConfigurado('whatsapp');
         }
 
-        // TODO: confirmar o formato exato do payload (texto livre vs.
-        // template) contra a documentação atual antes de usar em produção.
-        $resposta = Http::withToken($token)
-            ->post("{$baseUrl}/{$numeroId}/messages", [
-                'messaging_product' => 'whatsapp',
-                'to' => $destino,
-                'type' => 'text',
-                'text' => ['body' => $mensagem],
-            ]);
+        try {
+            // TODO: confirmar o formato exato do payload (texto livre vs.
+            // template) contra a documentação atual antes de usar em produção.
+            $resposta = Http::withToken($token)
+                ->timeout((int) config('atelier.http_timeout_segundos', 15))
+                ->post("{$baseUrl}/{$numeroId}/messages", [
+                    'messaging_product' => 'whatsapp',
+                    'to' => $destino,
+                    'type' => 'text',
+                    'text' => ['body' => $mensagem],
+                ]);
+        } catch (ConnectionException $e) {
+            Log::error('Falha de ligação ao enviar WhatsApp', ['destino' => NumeroTelefone::mascarar($destino)]);
+
+            throw NotificacaoException::falhaNoEnvio('whatsapp', 'Sem ligação ao fornecedor (tempo esgotado ou rede indisponível).');
+        }
 
         if ($resposta->failed()) {
-            Log::error('Falha ao enviar WhatsApp', ['destino' => $destino, 'resposta' => $resposta->body()]);
+            $corpo = Str::limit($resposta->body(), 300);
 
-            throw NotificacaoException::falhaNoEnvio('whatsapp', $resposta->body());
+            Log::error('Falha ao enviar WhatsApp', ['destino' => NumeroTelefone::mascarar($destino), 'resposta' => $corpo]);
+
+            throw NotificacaoException::falhaNoEnvio('whatsapp', $corpo);
         }
     }
 }

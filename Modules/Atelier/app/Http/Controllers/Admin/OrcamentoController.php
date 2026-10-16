@@ -17,11 +17,16 @@ use Modules\Atelier\Models\PedidoOrcamento;
  * tipado (route model binding implícito). O Laravel resolve o binding
  * ANTES do middleware 'tenant' correr — nessa altura ainda não há empresa
  * definida, e a TenantScope (fail-closed) faria o binding devolver 404.
+ *
+ * Os leads têm dados pessoais (nome, contacto): só Administrador e
+ * Secretária os veem ou alteram.
  */
 class OrcamentoController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
+        abort_unless($request->user()?->hasAnyRole(['Administrador', 'Secretária']), 403);
+
         return view('atelier::orcamentos.index', [
             'orcamentos' => PedidoOrcamento::latest('id')->paginate(20),
         ]);

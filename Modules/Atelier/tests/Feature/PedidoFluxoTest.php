@@ -58,7 +58,7 @@ class PedidoFluxoTest extends TestCase
         $servico = app(PedidoStatusService::class);
 
         foreach (['em_corte', 'em_costura', 'primeira_prova', 'ajustes', 'pronto_para_retirada', 'entregue'] as $estado) {
-            $servico->avancarPara($pedido, $estado);
+            $servico->avancarPara($pedido, $estado, null, false);
         }
 
         $this->assertSame('entregue', $pedido->fresh()->status);
@@ -73,12 +73,12 @@ class PedidoFluxoTest extends TestCase
         $servico = app(PedidoStatusService::class);
 
         foreach (['em_corte', 'em_costura', 'primeira_prova', 'pronto_para_retirada'] as $estado) {
-            $servico->avancarPara($pedido, $estado);
+            $servico->avancarPara($pedido, $estado, null, false);
         }
 
         // A instância ainda está "pendente", mas a linha persistida já está
         // pronta para retirada. A transição tem de validar o estado real.
-        $servico->avancarPara($instanciaObsoleta, 'entregue');
+        $servico->avancarPara($instanciaObsoleta, 'entregue', null, false);
 
         $this->assertSame('entregue', $pedido->fresh()->status);
         $this->assertSame('entregue', $instanciaObsoleta->status);

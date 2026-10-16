@@ -10,6 +10,9 @@ use Modules\Core\Traits\BelongsToTenant;
  * criado sem autenticação: quando não há tenant definido, a trait respeita
  * o empresa_id explícito (vindo do slug da landing page) em vez de o
  * ignorar — ver o comentário na migration e em BelongsToTenant.
+ *
+ * consentimento_em: momento em que o visitante aceitou o tratamento dos
+ * dados para responder ao pedido.
  */
 class PedidoOrcamento extends Model
 {
@@ -24,9 +27,17 @@ class PedidoOrcamento extends Model
         'categoria_interesse',
         'mensagem',
         'estado',
+        'consentimento_em',
     ];
 
     protected $attributes = [
         'estado' => 'novo',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'consentimento_em' => 'datetime',
+        ];
+    }
 }

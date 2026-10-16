@@ -12,11 +12,11 @@
             <h1 class="text-lg font-semibold text-slate-900">{{ $campanha->nome }}</h1>
             <p class="text-sm text-slate-500">{{ strtoupper($campanha->canal) }} · {{ $campanha->segmentoRotulo() }} · {{ ucfirst($campanha->estado) }}</p>
         </div>
-        @if ($campanha->estado !== 'enviada')
+        @if ($campanha->estado !== 'enviada' || $campanha->envios->contains('estado', 'falhou'))
             <form method="POST" action="{{ route('atelier.campanhas.enviar-agora', $campanha) }}" onsubmit="return confirm('Enviar esta campanha agora?')">
                 @csrf
                 <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
-                    Enviar agora
+                    {{ $campanha->estado === 'enviada' ? 'Reenviar falhados' : 'Enviar agora' }}
                 </button>
             </form>
         @endif

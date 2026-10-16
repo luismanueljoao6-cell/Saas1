@@ -66,6 +66,7 @@ class NotificacoesELandingTest extends TestCase
         $this->post(route('atelier.landing.solicitar-orcamento', ['empresa' => 'atelier-privado']), [
             'nome' => 'Visitante',
             'contacto' => '900000000',
+            'consentimento' => '1',
         ])->assertNotFound();
 
         $this->assertSame(0, PedidoOrcamento::withoutGlobalScopes()->count());
@@ -81,6 +82,7 @@ class NotificacoesELandingTest extends TestCase
         $this->post(route('atelier.landing.solicitar-orcamento', ['empresa' => 'atelier-publico']), [
             'nome' => 'Visitante',
             'contacto' => '900000000',
+            'consentimento' => '1',
         ])->assertRedirect();
 
         $this->assertSame(1, PedidoOrcamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->count());
