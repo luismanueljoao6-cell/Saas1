@@ -65,4 +65,15 @@ return [
         'max_faturas_mes' => (int) env('SUBSCRICOES_TRIAL_MAX_FATURAS_MES', 50),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Preço aplicado nas renovações
+    |--------------------------------------------------------------------------
+    | 'contratado': a renovação mantém o preço da compra (snapshot na
+    |               subscrição). Alterar o plano só afeta novas subscrições.
+    | 'atual':      a renovação usa o preço atual do plano (exige comunicar a
+    |               alteração ao cliente antes da renovação).
+    */
+    'renovacao_preco' => env('SUBSCRICOES_RENOVACAO_PRECO', 'contratado'),
+
 ];

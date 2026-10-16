@@ -7,6 +7,8 @@ use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Services\MenuRegistry;
+use Modules\Subscricoes\Console\ReconciliarPagamentosCommand;
+use Modules\Subscricoes\Console\SaudeSubscricoesCommand;
 use Modules\Subscricoes\Console\VerificarSubscricoesCommand;
 use Modules\Subscricoes\Http\Middleware\VerificarAssinaturaWebhook;
 use Modules\Subscricoes\Jobs\VerificarSubscricoesExpiradasJob;
@@ -66,7 +68,11 @@ class SubscricoesServiceProvider extends ServiceProvider
         ], 'subscricoes-config');
 
         if ($this->app->runningInConsole()) {
-            $this->commands([VerificarSubscricoesCommand::class]);
+            $this->commands([
+                VerificarSubscricoesCommand::class,
+                ReconciliarPagamentosCommand::class,
+                SaudeSubscricoesCommand::class,
+            ]);
         }
 
         $this->agendarVerificacaoDiaria();
@@ -87,6 +93,16 @@ class SubscricoesServiceProvider extends ServiceProvider
             $schedule->call(fn () => VerificarSubscricoesExpiradasJob::dispatchSync())
                 ->dailyAt('02:00')
                 ->name('subscricoes:verificar-expiradas')
+                ->withoutOverlapping();
+
+            $schedule->command('subscricoes:reconciliar')
+                ->everyTenMinutes()
+                ->name('subscricoes:reconciliar')
+                ->withoutOverlapping();
+
+            $schedule->command('subscricoes:saude')
+                ->hourly()
+                ->name('subscricoes:saude')
                 ->withoutOverlapping();
         });
     }

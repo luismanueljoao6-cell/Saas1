@@ -72,6 +72,8 @@ class SubscricaoService
                         'empresa_id' => $empresaBloqueada->id,
                         'plano_id' => $plano->id,
                         'periodo_dias' => $plano->periodo_dias,
+                        'preco' => $plano->preco,
+                        'moeda' => $plano->moeda,
                         'limites' => $plano->limites ?? [],
                         'servicos' => $plano->servicos ?? [],
                         'estado' => 'pendente',
@@ -222,6 +224,7 @@ class SubscricaoService
                             $this->gateway->cancelarReferencia($pagamento);
                         }
                     } catch (Throwable $e) {
+                        $this->registarFalhaCancelamentoRemoto($pagamento, $e);
                         Log::critical('Referência localmente invalidada, mas o cancelamento remoto falhou', [
                             'subscricao_id' => $pagamento->subscricao_id,
                             'pagamento_id' => $pagamento->id,
@@ -310,6 +313,7 @@ class SubscricaoService
                     $this->gateway->cancelarReferencia($pendente);
                 }
             } catch (Throwable $e) {
+                $this->registarFalhaCancelamentoRemoto($pendente, $e);
                 Log::critical('Pagamento expirado localmente, mas a referência externa não foi cancelada', [
                     'subscricao_id' => $atualizada->id,
                     'pagamento_id' => $pendente->id,
@@ -354,6 +358,36 @@ class SubscricaoService
         return $atualizada;
     }
 
+    protected function precoAplicavel(Subscricao $subscricao, Plano $plano): mixed
+    {
+        if (Config::get('subscricoes.renovacao_preco', 'contratado') === 'atual') {
+            return $plano->preco;
+        }
+
+        return $subscricao->preco ?? $plano->preco;
+    }
+
+    /**
+     * Marca a referência para o cancelamento remoto ser repetido pela
+     * reconciliação (php artisan subscricoes:reconciliar).
+     */
+    protected function registarFalhaCancelamentoRemoto(Pagamento $pagamento, Throwable $e): void
+    {
+        try {
+            $this->tenantManager->semTenant(fn () => Pagamento::query()
+                ->whereKey($pagamento->id)
+                ->update([
+                    'cancelamento_remoto_pendente' => true,
+                    'cancelamento_remoto_erro' => mb_substr($e->getMessage(), 0, 500),
+                ]));
+        } catch (Throwable $inner) {
+            Log::error('Não foi possível marcar o cancelamento remoto como pendente', [
+                'pagamento_id' => $pagamento->id,
+                'erro' => $inner->getMessage(),
+            ]);
+        }
+    }
+
     protected function garantirEstadoPendenteSeNecessario(Empresa $empresa): void
     {
         $this->tenantManager->semTenant(function () use ($empresa) {
@@ -367,8 +401,10 @@ class SubscricaoService
             'empresa_id' => $subscricao->empresa_id,
             'subscricao_id' => $subscricao->id,
             'gateway' => $this->gateway->identificador(),
-            'valor' => $plano->preco,
-            'moeda' => $plano->moeda,
+            // Política de renovação (config subscricoes.renovacao_preco):
+            // 'contratado' (omissão) mantém o preço da compra; 'atual' usa o do plano.
+            'valor' => $this->precoAplicavel($subscricao, $plano),
+            'moeda' => $subscricao->moeda ?? $plano->moeda,
             'estado' => 'pendente',
             'expira_em' => now()->addDays((int) Config::get('subscricoes.validade_referencia_dias', 3)),
         ]);
@@ -376,6 +412,8 @@ class SubscricaoService
 
     protected function pedirReferenciaAoGateway(Pagamento $pagamento): Pagamento
     {
+        $resultado = null;
+
         try {
             $resultado = $this->gateway->gerarReferencia($pagamento);
 
@@ -393,6 +431,16 @@ class SubscricaoService
 
             return $pagamento->fresh();
         } catch (Throwable $e) {
+            if (is_array($resultado) && ! empty($resultado['referencia_externa'])) {
+                // O gateway criou a referência mas a gravação local falhou:
+                // referência órfã — só a reconciliação manual a recupera.
+                Log::critical('Referência criada no gateway mas não gravada localmente', [
+                    'pagamento_id' => $pagamento->id,
+                    'referencia_externa' => $resultado['referencia_externa'],
+                    'erro' => $e->getMessage(),
+                ]);
+            }
+
             $pagamento->update(['estado' => 'expirado']);
 
             throw $e;

@@ -52,7 +52,7 @@ class ProxyPayGateway implements GatewayPagamentoInterface
 
     public function gerarReferencia(Pagamento $pagamento): array
     {
-        $this->garantirCredenciaisConfiguradas();
+        $this->garantirConfiguracaoDeCobranca();
 
         try {
             // 1) ID de referência livre (corpo: número, por vezes entre aspas).
@@ -186,6 +186,39 @@ class ProxyPayGateway implements GatewayPagamentoInterface
             'Authorization' => 'Token '.$this->apiKey,
             'Accept' => 'application/vnd.proxypay.v2+json',
         ])->asJson()->timeout(10);
+    }
+
+    /**
+     * Antes de emitir uma cobrança o cliente tem de receber todos os dados
+     * para pagar: sem entidade Multicaixa a referência é inútil. Impede
+     * também misturar sandbox e produção.
+     */
+    protected function garantirConfiguracaoDeCobranca(): void
+    {
+        $this->garantirCredenciaisConfiguradas();
+
+        if (! $this->entityId || ! preg_match('/^\d{3,10}$/', (string) $this->entityId)) {
+            throw GatewayPagamentoException::falhaAoGerarReferencia(
+                $this->identificador(),
+                'PROXYPAY_ENTITY_ID não está configurada (ou é inválida)'
+            );
+        }
+
+        $emSandbox = str_contains($this->baseUrl, 'sandbox');
+
+        if (app()->environment('production') && $emSandbox) {
+            throw GatewayPagamentoException::falhaAoGerarReferencia(
+                $this->identificador(),
+                'PROXYPAY_BASE_URL aponta para a sandbox em ambiente de produção'
+            );
+        }
+
+        if (! app()->environment('production') && ! $emSandbox && ! app()->runningUnitTests()) {
+            Log::warning('ProxyPay: a usar a URL de PRODUÇÃO fora do ambiente de produção — cobranças reais possíveis.', [
+                'base_url' => $this->baseUrl,
+                'ambiente' => app()->environment(),
+            ]);
+        }
     }
 
     protected function garantirCredenciaisConfiguradas(): void

@@ -9,6 +9,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Modules\Subscricoes\Models\WebhookEvento;
 use Modules\Subscricoes\Services\PagamentoService;
 use Throwable;
 
@@ -32,6 +33,7 @@ class ProcessarPagamentoConfirmadoJob implements ShouldQueue
         protected string $referenciaExterna,
         protected array $payloadBruto,
         protected ?string $valorRecebido = null,
+        protected ?int $webhookEventoId = null,
     ) {}
 
     public function handle(PagamentoService $pagamentoService): void
@@ -54,6 +56,8 @@ class ProcessarPagamentoConfirmadoJob implements ShouldQueue
             }
 
             $pagamentoService->confirmar($pagamento, $this->payloadBruto, null, $this->valorRecebido);
+
+            $this->atualizarEvento(WebhookEvento::PROCESSADO);
         } catch (DomainException $e) {
             // Regra de negócio violada (ex.: valor pago inferior ao devido):
             // repetir não resolve — falha de vez e fica para revisão manual.
@@ -64,6 +68,8 @@ class ProcessarPagamentoConfirmadoJob implements ShouldQueue
                 'erro' => $e->getMessage(),
             ]);
 
+            $this->atualizarEvento(WebhookEvento::REJEITADO, $e->getMessage());
+
             $this->fail($e);
         } catch (Throwable $e) {
             Log::error('ProcessarPagamentoConfirmadoJob falhou', [
@@ -73,7 +79,54 @@ class ProcessarPagamentoConfirmadoJob implements ShouldQueue
                 'erro' => $e->getMessage(),
             ]);
 
+            $this->atualizarEvento(WebhookEvento::FALHADO, $e->getMessage());
+
             throw $e; // permite ao Laravel gerir novas tentativas / backoff
+        }
+    }
+
+    /**
+     * Estado final de um job esgotado. Só toca em eventos ainda "em aberto":
+     * um evento já marcado como processado/rejeitado não deve ser sobrescrito.
+     */
+    public function failed(?Throwable $e): void
+    {
+        if ($this->webhookEventoId === null) {
+            return;
+        }
+
+        try {
+            WebhookEvento::query()
+                ->whereKey($this->webhookEventoId)
+                ->whereIn('estado', [WebhookEvento::RECEBIDO, WebhookEvento::FALHADO])
+                ->update([
+                    'estado' => WebhookEvento::FALHADO,
+                    'motivo_falha' => mb_substr((string) $e?->getMessage(), 0, 1000),
+                ]);
+        } catch (Throwable $inner) {
+            Log::warning('Não foi possível atualizar o evento de webhook falhado', ['erro' => $inner->getMessage()]);
+        }
+    }
+
+    protected function atualizarEvento(string $estado, ?string $motivo = null): void
+    {
+        if ($this->webhookEventoId === null) {
+            return;
+        }
+
+        try {
+            $dados = [
+                'estado' => $estado,
+                'motivo_falha' => $motivo !== null ? mb_substr($motivo, 0, 1000) : null,
+            ];
+
+            if (in_array($estado, [WebhookEvento::PROCESSADO, WebhookEvento::REJEITADO], true)) {
+                $dados['processado_em'] = now();
+            }
+
+            WebhookEvento::query()->whereKey($this->webhookEventoId)->increment('tentativas', 1, $dados);
+        } catch (Throwable $e) {
+            Log::warning('Não foi possível atualizar o evento de webhook', ['erro' => $e->getMessage()]);
         }
     }
 }

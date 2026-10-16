@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -40,6 +41,9 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
+    /** Falhas isoladas nesta execução (cada uma é apanhada para não parar as restantes). */
+    protected int $falhas = 0;
+
     /**
      * Injeção via handle(), não via construtor: um Job ShouldQueue é
      * serializado para ir para a fila, e os serviços não devem viajar nesse
@@ -55,6 +59,16 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
             $this->expirarPeriodosDeTolerancia($tenantService);
             $this->gerarRenovacoes();
         });
+
+        // Heartbeat lido por `php artisan subscricoes:saude`.
+        Cache::forever('subscricoes:ultima_verificacao', [
+            'em' => now()->toIso8601String(),
+            'falhas' => $this->falhas,
+        ]);
+
+        if ($this->falhas > 0) {
+            Log::critical('Rotina diária de subscrições terminou com falhas isoladas', ['falhas' => $this->falhas]);
+        }
     }
 
     protected function expirarPagamentosPendentes(): void
@@ -98,6 +112,7 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
                             }
                         });
                     } catch (Throwable $e) {
+                        $this->falhas++;
                         Log::error('Falha ao cancelar subscrição sem pagamento vivo', [
                             'subscricao_id' => $subscricao->id,
                             'erro' => $e->getMessage(),
@@ -132,6 +147,7 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
                             }
                         });
                     } catch (Throwable $e) {
+                        $this->falhas++;
                         Log::error('Falha ao terminar o trial de uma empresa', [
                             'empresa_id' => $empresa->id,
                             'erro' => $e->getMessage(),
@@ -188,6 +204,7 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
                             $subscricaoAtual->update(['estado' => 'expirada']);
                         });
                     } catch (Throwable $e) {
+                        $this->falhas++;
                         Log::error('Falha ao suspender subscrição vencida', [
                             'subscricao_id' => $subscricao->id,
                             'erro' => $e->getMessage(),
@@ -219,6 +236,7 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
                             }
                         });
                     } catch (Throwable $e) {
+                        $this->falhas++;
                         Log::error('Falha ao expirar empresa após período de tolerância', [
                             'empresa_id' => $empresa->id,
                             'erro' => $e->getMessage(),
@@ -254,6 +272,7 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
                             $subscricaoService->gerarRenovacao($subscricao);
                         }
                     } catch (Throwable $e) {
+                        $this->falhas++;
                         Log::error('Falha ao gerar a renovação de uma subscrição', [
                             'subscricao_id' => $subscricao->id,
                             'erro' => $e->getMessage(),

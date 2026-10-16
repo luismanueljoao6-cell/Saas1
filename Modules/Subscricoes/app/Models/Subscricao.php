@@ -31,6 +31,8 @@ class Subscricao extends Model
         'empresa_id',
         'plano_id',
         'periodo_dias',
+        'preco',
+        'moeda',
         'limites',
         'servicos',
         'estado',
@@ -48,6 +50,7 @@ class Subscricao extends Model
             'cancelada_em' => 'datetime',
             'renovacao_automatica' => 'boolean',
             'periodo_dias' => 'integer',
+            'preco' => 'decimal:2',
             'limites' => 'array',
             'servicos' => 'array',
         ];

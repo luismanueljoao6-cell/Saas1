@@ -178,3 +178,11 @@ fechado. A partir daqui, tanto o **Atelier de Costura** como o **Estúdio
 de Música** são módulos de negócio "normais" (cada um só precisa de
 `BelongsToTenant` nos seus models), sem mais nenhuma peça de infraestrutura
 em falta. Diz qual preferes.
+
+## Operação e reconciliação
+
+- **Caixa de entrada de webhooks** (`webhook_eventos`): todo o webhook autenticado é guardado antes de ser confirmado ao gateway; reenvios idênticos são deduplicados.
+- `php artisan subscricoes:reconciliar` — reprocessa webhooks pendentes, repete cancelamentos remotos falhados e lista anomalias (código de saída 1 se houver). Corre de 10 em 10 min no scheduler. Use `--resolver=ID` para marcar um evento tratado manualmente.
+- `php artisan subscricoes:saude` — verifica scheduler, fila e webhooks por processar (de hora a hora).
+- Requer `php artisan queue:work` e `php artisan schedule:run` (cron) ativos.
+- Renovações: `SUBSCRICOES_RENOVACAO_PRECO=contratado|atual`.
