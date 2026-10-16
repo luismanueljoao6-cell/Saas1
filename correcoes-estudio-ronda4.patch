@@ -1,0 +1,2728 @@
+diff --git a/.env.example b/.env.example
+index dc0b593..33092a6 100644
+--- a/.env.example
++++ b/.env.example
+@@ -113,3 +113,7 @@ FATURACAO_AGT_ESTABELECIMENTO=SEDE
+ 
+ # Pré-visualizações do portal (precisa de ffmpeg instalado no servidor)
+ ESTUDIOMUSICA_FFMPEG_BIN=ffmpeg
++# Transferência internacional (WhatsApp/SMS) — Lei 22/11: canais bloqueados até haver autorização da APD
++ESTUDIOMUSICA_EXIGIR_AUTORIZACAO_APD=true
++# ESTUDIOMUSICA_APD_AUTORIZACAO=
++# ESTUDIOMUSICA_APD_REGISTO=
+diff --git a/Modules/EstudioMusica/README.md b/Modules/EstudioMusica/README.md
+index 6604372..bb24c13 100644
+--- a/Modules/EstudioMusica/README.md
++++ b/Modules/EstudioMusica/README.md
+@@ -34,6 +34,17 @@ ## Ativar
+   qualidade gerada com **ffmpeg** (instala-o no servidor; `ESTUDIOMUSICA_FFMPEG_BIN`). O original só sai após quitação.
+ - **Consentimento de marketing** (Lei 22/11 e 23/11): as campanhas só chegam a clientes com `aceita_marketing`
+   (ficha do artista) — por omissão ninguém. Cada mensagem promocional leva uma ligação assinada para sair.
++- **Direitos do titular e retenção** (Lei 22/11): `php artisan estudiomusica:exportar-dados-artista {empresa} {cliente}`
++  exporta o que o Estúdio guarda; `estudiomusica:limpar-dados-artista` apaga ficha, consentimentos, cupões e pedidos
++  (nunca o cliente nem documentos fiscais). Pedidos de orçamento com mais de 12 meses (`retencao_solicitacoes_meses`)
++  são apagados semanalmente.
++- **Conformidade com a lei angolana**: ver `docs/CONFORMIDADE-ANGOLA.md` (o que o módulo faz, o que exige ação
++  humana — APD, contratos, Livro de Reclamações — e o dossier para o advogado). WhatsApp/SMS ficam bloqueados até
++  `ESTUDIOMUSICA_APD_AUTORIZACAO` estar definido.
++- **Termos de Serviço**: versionados, publicados em *Termos e Privacidade*; o cliente aceita no portal antes de aprovar/descarregar.
++- **Reclamações**: canal digital na landing + lista em *Reclamações* (não substitui o Livro de Reclamações físico).
++- **Pagamentos**: na página do projeto, "Registar pagamento" emite o recibo; é isto que quita o projeto e liberta o download.
++- **Pedidos de orçamento**: "Converter em cliente" cria (ou reaproveita) o cliente e leva o consentimento de marketing.
+ - **valor_pacote é SEM IVA**: o IVA é acrescentado nas faturas de sinal/saldo.
+ - **Upload de áudio**: o limite do módulo é 50 MB, mas o PHP por omissão só aceita 2 MB — sobe
+   `upload_max_filesize` e `post_max_size` no `php.ini`.
+diff --git a/Modules/EstudioMusica/app/Console/Commands/ExportarDadosArtistaCommand.php b/Modules/EstudioMusica/app/Console/Commands/ExportarDadosArtistaCommand.php
+new file mode 100644
+index 0000000..3734ad6
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Console/Commands/ExportarDadosArtistaCommand.php
+@@ -0,0 +1,44 @@
++<?php
++
++namespace Modules\EstudioMusica\Console\Commands;
++
++use Illuminate\Console\Command;
++use Modules\Core\Models\Empresa;
++use Modules\Core\Services\TenantManager;
++use Modules\EstudioMusica\Services\DadosPessoaisService;
++use Modules\Faturacao\Models\Cliente;
++
++/**
++ * Direito de acesso (Lei n.º 22/11): exporta em JSON o que o Estúdio
++ * guarda sobre um artista.
++ *
++ *   php artisan estudiomusica:exportar-dados-artista 1 42 --saida=/tmp/artista-42.json
++ */
++class ExportarDadosArtistaCommand extends Command
++{
++    protected $signature = 'estudiomusica:exportar-dados-artista
++        {empresa : ID da empresa}
++        {cliente : ID do cliente (artista)}
++        {--saida= : Caminho do ficheiro JSON (por omissão escreve no ecrã)}';
++
++    protected $description = 'Exporta (JSON) os dados pessoais que o Estúdio guarda sobre um artista.';
++
++    public function handle(TenantManager $tenantManager, DadosPessoaisService $dados): int
++    {
++        $empresa = Empresa::findOrFail((int) $this->argument('empresa'));
++        $tenantManager->set($empresa->id);
++
++        $cliente = Cliente::withTrashed()->findOrFail((int) $this->argument('cliente'));
++
++        $json = json_encode($dados->exportar($cliente), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
++
++        if ($saida = $this->option('saida')) {
++            file_put_contents($saida, $json);
++            $this->info("Exportação gravada em {$saida}.");
++        } else {
++            $this->line($json);
++        }
++
++        return self::SUCCESS;
++    }
++}
+diff --git a/Modules/EstudioMusica/app/Console/Commands/LimparDadosArtistaCommand.php b/Modules/EstudioMusica/app/Console/Commands/LimparDadosArtistaCommand.php
+new file mode 100644
+index 0000000..b9f34c1
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Console/Commands/LimparDadosArtistaCommand.php
+@@ -0,0 +1,47 @@
++<?php
++
++namespace Modules\EstudioMusica\Console\Commands;
++
++use Illuminate\Console\Command;
++use Modules\Core\Models\Empresa;
++use Modules\Core\Services\TenantManager;
++use Modules\EstudioMusica\Services\DadosPessoaisService;
++use Modules\Faturacao\Models\Cliente;
++
++/**
++ * Direito de eliminação (Lei n.º 22/11) dos dados do Estúdio. NÃO apaga o
++ * cliente nem documentos fiscais (conservação obrigatória por lei) nem os
++ * ficheiros de áudio dos projetos — ver Services\DadosPessoaisService.
++ *
++ *   php artisan estudiomusica:limpar-dados-artista 1 42
++ */
++class LimparDadosArtistaCommand extends Command
++{
++    protected $signature = 'estudiomusica:limpar-dados-artista
++        {empresa : ID da empresa}
++        {cliente : ID do cliente (artista)}
++        {--force : Não pedir confirmação}';
++
++    protected $description = 'Apaga a ficha do artista, consentimentos, cupões, registo de campanhas e pedidos de orçamento de um cliente.';
++
++    public function handle(TenantManager $tenantManager, DadosPessoaisService $dados): int
++    {
++        $empresa = Empresa::findOrFail((int) $this->argument('empresa'));
++        $tenantManager->set($empresa->id);
++
++        $cliente = Cliente::withTrashed()->findOrFail((int) $this->argument('cliente'));
++
++        if (! $this->option('force') && ! $this->confirm("Limpar os dados do Estúdio de \"{$cliente->nome}\"? Não pode ser desfeito.")) {
++            $this->warn('Cancelado.');
++
++            return self::FAILURE;
++        }
++
++        $r = $dados->limpar($cliente);
++
++        $this->info("Ficha limpa. Removidos: {$r['pedidos_orcamento']} pedido(s) de orçamento, {$r['reclamacoes']} reclamação(ões), {$r['mensagens']} registo(s) de campanhas, {$r['cupons']} cupão(ões).");
++        $this->line('Mantidos por obrigação legal: cliente e documentos fiscais. Os ficheiros de áudio dos projetos não foram apagados.');
++
++        return self::SUCCESS;
++    }
++}
+diff --git a/Modules/EstudioMusica/app/Http/Controllers/LandingController.php b/Modules/EstudioMusica/app/Http/Controllers/LandingController.php
+index ee4c0bb..7bfa384 100644
+--- a/Modules/EstudioMusica/app/Http/Controllers/LandingController.php
++++ b/Modules/EstudioMusica/app/Http/Controllers/LandingController.php
+@@ -11,8 +11,10 @@
+ use Modules\Core\Models\Empresa;
+ use Modules\Core\Services\TenantManager;
+ use Modules\EstudioMusica\Models\ProjetoMusical;
++use Modules\EstudioMusica\Models\Reclamacao;
+ use Modules\EstudioMusica\Models\SalaEstudio;
+ use Modules\EstudioMusica\Models\SolicitacaoOrcamento;
++use Modules\EstudioMusica\Services\NotificacaoEstudioService;
+ use Modules\Faturacao\Models\Cliente;
+ 
+ /**
+@@ -34,7 +36,7 @@ public function mostrar(Empresa $empresa): View
+     {
+         [$salas, $destaques] = $this->tenantManager->semTenant(fn () => [
+             SalaEstudio::where('empresa_id', $empresa->id)->ativas()->orderBy('nome')->get(),
+-            ProjetoMusical::where('empresa_id', $empresa->id)->destaquesPortfolio()->latest()->get(),
++            ProjetoMusical::where('empresa_id', $empresa->id)->destaquesPortfolio()->latest()->limit(12)->get(),
+         ]);
+ 
+         return view('estudiomusica::landing.index', [
+@@ -103,4 +105,48 @@ public function cancelarMarketing(Empresa $empresa, int $cliente): Response
+             ['Content-Type' => 'text/plain; charset=UTF-8'],
+         );
+     }
++
++    /** Política de Privacidade pública (dever de informar — Lei n.º 22/11). */
++    public function privacidade(Empresa $empresa): View
++    {
++        return view('estudiomusica::landing.privacidade', ['empresa' => $empresa]);
++    }
++
++    /**
++     * Canal digital de reclamações. Complementa — não substitui — o Livro
++     * de Reclamações físico exigido nos estabelecimentos (Decreto
++     * Presidencial n.º 234/16).
++     */
++    public function registrarReclamacao(Request $request, Empresa $empresa, NotificacaoEstudioService $notificacao): RedirectResponse
++    {
++        if ($request->filled('website')) {
++            return back()->with('sucesso', 'Reclamação registada.');
++        }
++
++        // Bag próprio: a página tem dois formulários e os erros não se misturam.
++        $dados = $request->validateWithBag('reclamacao', [
++            'nome' => ['required', 'string', 'max:255'],
++            'email' => ['nullable', 'email', 'max:255', 'required_without:telefone'],
++            'telefone' => ['nullable', 'string', 'max:30', 'required_without:email'],
++            'assunto' => ['required', 'string', 'max:150'],
++            'descricao' => ['required', 'string', 'min:10', 'max:3000'],
++            'aceita_politica' => ['accepted'],
++        ], [
++            'aceita_politica.accepted' => 'Tens de aceitar o tratamento dos teus dados para registar a reclamação.',
++        ]);
++
++        $reclamacao = $this->tenantManager->semTenant(fn () => Reclamacao::create([
++            'empresa_id' => $empresa->id,
++            'nome' => $dados['nome'],
++            'email' => $dados['email'] ?? null,
++            'telefone' => $dados['telefone'] ?? null,
++            'assunto' => $dados['assunto'],
++            'descricao' => $dados['descricao'],
++            'consentimento_dados_em' => now(),
++        ]));
++
++        $notificacao->reclamacaoRecebida($empresa, $reclamacao);
++
++        return back()->with('sucesso', "Reclamação registada (ref. #{$reclamacao->id}). Vamos responder o mais depressa possível.");
++    }
+ }
+diff --git a/Modules/EstudioMusica/app/Http/Controllers/PortalClienteController.php b/Modules/EstudioMusica/app/Http/Controllers/PortalClienteController.php
+index 44afb4b..92eb448 100644
+--- a/Modules/EstudioMusica/app/Http/Controllers/PortalClienteController.php
++++ b/Modules/EstudioMusica/app/Http/Controllers/PortalClienteController.php
+@@ -9,7 +9,9 @@
+ use Illuminate\View\View;
+ use Modules\EstudioMusica\Models\ProjetoMusical;
+ use Modules\EstudioMusica\Models\VersaoAudio;
++use Modules\EstudioMusica\Services\NotificacaoEstudioService;
+ use Modules\EstudioMusica\Services\PreviewAudioService;
++use Modules\EstudioMusica\Services\TermosEstudioService;
+ use Symfony\Component\HttpFoundation\BinaryFileResponse;
+ use Symfony\Component\HttpFoundation\StreamedResponse;
+ 
+@@ -27,7 +29,10 @@
+  */
+ class PortalClienteController extends Controller
+ {
+-    public function __construct(protected PreviewAudioService $previews) {}
++    public function __construct(
++        protected PreviewAudioService $previews,
++        protected TermosEstudioService $termos,
++    ) {}
+ 
+     public function mostrar(Request $request): View
+     {
+@@ -38,12 +43,39 @@ public function mostrar(Request $request): View
+             ->latest()
+             ->get();
+ 
++        $termos = $this->termos->atual($cliente->empresa_id);
++
+         return view('estudiomusica::portal.mostrar', [
+             'cliente' => $cliente,
+             'projetos' => $projetos,
++            'termos' => $termos,
++            'termosAceites' => $this->termos->aceitou($cliente, $termos),
+         ]);
+     }
+ 
++    /**
++     * O cliente aceita a versão em vigor dos Termos de Serviço (data, IP em
++     * hash e browser ficam registados). Sem isto não aprova nem descarrega.
++     */
++    public function aceitarTermos(Request $request): RedirectResponse
++    {
++        $cliente = $request->attributes->get('cliente_portal');
++
++        $this->termos->registarAceite($cliente, $this->termos->atual($cliente->empresa_id), $request);
++
++        return back()->with('sucesso', 'Termos de Serviço aceites. Obrigado!');
++    }
++
++    /** Mensagem de bloqueio se o cliente ainda não aceitou a versão em vigor dos termos. */
++    protected function termosPendentes(Request $request): ?string
++    {
++        $cliente = $request->attributes->get('cliente_portal');
++
++        return $this->termos->aceitou($cliente, $this->termos->atual($cliente->empresa_id))
++            ? null
++            : 'Antes de continuares, lê e aceita os Termos de Serviço no topo da página.';
++    }
++
+     /**
+      * Reprodução inline no player — livre para o dono do projeto (o
+      * cliente tem de poder ouvir para aprovar ou pedir ajustes antes de
+@@ -90,6 +122,12 @@ public function descarregar(Request $request, int $versao): StreamedResponse|Red
+             return back()->with('erro', 'O download fica disponível assim que o saldo do projeto estiver quitado.');
+         }
+ 
++        // O original só sai depois de o cliente aceitar os Termos de Serviço
++        // (propriedade dos masters, direitos de autor).
++        if ($erro = $this->termosPendentes($request)) {
++            return back()->with('erro', $erro);
++        }
++
+         $extensao = pathinfo($versao->caminho_ficheiro, PATHINFO_EXTENSION);
+ 
+         return Storage::disk('local')->download($versao->caminho_ficheiro, "{$versao->rotulo}.{$extensao}");
+@@ -114,20 +152,21 @@ public function comentar(Request $request, int $versao): RedirectResponse
+         return back()->with('sucesso', 'Comentário adicionado.');
+     }
+ 
+-    public function aprovar(Request $request, int $versao): RedirectResponse
++    public function aprovar(Request $request, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
+     {
+         $versao = $this->autorizarVersao($request, $versao);
+ 
+-        if ($erro = $this->motivoParaNaoDecidir($versao)) {
++        if ($erro = $this->termosPendentes($request) ?? $this->motivoParaNaoDecidir($versao)) {
+             return back()->with('erro', $erro);
+         }
+ 
+         $versao->update(['estado' => 'aprovada']);
++        $notificacao->equipaDecisaoCliente($versao, 'aprovada');
+ 
+         return back()->with('sucesso', 'Versão aprovada!');
+     }
+ 
+-    public function solicitarAjustes(Request $request, int $versao): RedirectResponse
++    public function solicitarAjustes(Request $request, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
+     {
+         $versao = $this->autorizarVersao($request, $versao);
+ 
+@@ -136,6 +175,7 @@ public function solicitarAjustes(Request $request, int $versao): RedirectRespons
+         }
+ 
+         $versao->update(['estado' => 'ajustes_solicitados']);
++        $notificacao->equipaDecisaoCliente($versao, 'ajustes_solicitados');
+ 
+         return back()->with('sucesso', 'Pedido de ajustes enviado à equipa.');
+     }
+diff --git a/Modules/EstudioMusica/app/Http/Controllers/ProjetoMusicalController.php b/Modules/EstudioMusica/app/Http/Controllers/ProjetoMusicalController.php
+index d3b1751..eada036 100644
+--- a/Modules/EstudioMusica/app/Http/Controllers/ProjetoMusicalController.php
++++ b/Modules/EstudioMusica/app/Http/Controllers/ProjetoMusicalController.php
+@@ -7,6 +7,7 @@
+ use Illuminate\Routing\Controller;
+ use Illuminate\Validation\Rule;
+ use Illuminate\View\View;
++use DomainException;
+ use InvalidArgumentException;
+ use Modules\Core\Models\User;
+ use Modules\EstudioMusica\Http\Requests\GuardarProjetoMusicalRequest;
+@@ -15,6 +16,7 @@
+ use Modules\EstudioMusica\Services\NotificacaoEstudioService;
+ use Modules\EstudioMusica\Services\PerfilArtistaService;
+ use Modules\Faturacao\Models\Cliente;
++use Modules\Faturacao\Models\Fatura;
+ 
+ /**
+  * Nota sobre os parâmetros de rota: recebem sempre o id (int), nunca o
+@@ -94,6 +96,36 @@ public function atualizarEstado(Request $request, int $projeto, NotificacaoEstud
+         return back()->with('sucesso', 'Estado do projeto atualizado.');
+     }
+ 
++    /**
++     * Regista o recebimento de um pagamento contra uma fatura do projeto
++     * (emite o Recibo). É o que faz o projeto passar a "quitado" e libertar
++     * o download no portal — até aqui só era possível por código/tinker.
++     */
++    public function registrarPagamento(Request $request, int $projeto): RedirectResponse
++    {
++        $dados = $request->validate([
++            'fatura_id' => ['required', 'integer'],
++            'meio_pagamento' => ['required', Rule::in(['dinheiro', 'transferencia', 'multicaixa', 'outro'])],
++            'valor' => ['nullable', 'numeric', 'gt:0', 'max:999999999999'],
++        ]);
++
++        $projeto = ProjetoMusical::findOrFail($projeto);
++        $fatura = Fatura::findOrFail($dados['fatura_id']);
++
++        try {
++            $recibo = $this->faturacaoEstudio->registrarRecibo(
++                $projeto,
++                $fatura,
++                $dados['meio_pagamento'],
++                isset($dados['valor']) ? (float) $dados['valor'] : null,
++            );
++        } catch (InvalidArgumentException|DomainException $e) {
++            return back()->with('erro', $e->getMessage());
++        }
++
++        return back()->with('sucesso', "Pagamento registado (recibo {$recibo->numero_documento}).");
++    }
++
+     public function gerarSinal(int $projeto): RedirectResponse
+     {
+         $projeto = ProjetoMusical::findOrFail($projeto);
+diff --git a/Modules/EstudioMusica/app/Http/Controllers/ReclamacaoController.php b/Modules/EstudioMusica/app/Http/Controllers/ReclamacaoController.php
+new file mode 100644
+index 0000000..abe01b6
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Http/Controllers/ReclamacaoController.php
+@@ -0,0 +1,45 @@
++<?php
++
++namespace Modules\EstudioMusica\Http\Controllers;
++
++use Illuminate\Http\RedirectResponse;
++use Illuminate\Http\Request;
++use Illuminate\Routing\Controller;
++use Illuminate\Validation\Rule;
++use Illuminate\View\View;
++use Modules\EstudioMusica\Models\Reclamacao;
++use Modules\EstudioMusica\Services\NotificacaoEstudioService;
++
++/** Reclamações recebidas pela landing: ver (equipa do estúdio) e responder (gerir-sessoes). */
++class ReclamacaoController extends Controller
++{
++    public function index(): View
++    {
++        return view('estudiomusica::reclamacoes.index', [
++            'reclamacoes' => Reclamacao::query()->latest()->paginate(20),
++        ]);
++    }
++
++    public function atualizar(Request $request, int $reclamacao, NotificacaoEstudioService $notificacao): RedirectResponse
++    {
++        $dados = $request->validate([
++            'estado' => ['required', Rule::in(['recebida', 'em_analise', 'resolvida'])],
++            'resposta' => ['nullable', 'string', 'max:3000'],
++        ]);
++
++        $reclamacao = Reclamacao::findOrFail($reclamacao);
++        $respostaNova = filled($dados['resposta'] ?? null) && $dados['resposta'] !== $reclamacao->resposta;
++
++        $reclamacao->fill([
++            'estado' => $dados['estado'],
++            'resposta' => $dados['resposta'] ?? null,
++            'respondida_em' => $respostaNova ? now() : $reclamacao->respondida_em,
++        ])->save();
++
++        if ($respostaNova) {
++            $notificacao->reclamacaoRespondida($reclamacao);
++        }
++
++        return back()->with('sucesso', $respostaNova ? 'Resposta enviada ao cliente.' : 'Reclamação atualizada.');
++    }
++}
+diff --git a/Modules/EstudioMusica/app/Http/Controllers/SolicitacaoOrcamentoController.php b/Modules/EstudioMusica/app/Http/Controllers/SolicitacaoOrcamentoController.php
+index 32cb7f6..922473f 100644
+--- a/Modules/EstudioMusica/app/Http/Controllers/SolicitacaoOrcamentoController.php
++++ b/Modules/EstudioMusica/app/Http/Controllers/SolicitacaoOrcamentoController.php
+@@ -5,9 +5,11 @@
+ use Illuminate\Http\RedirectResponse;
+ use Illuminate\Http\Request;
+ use Illuminate\Routing\Controller;
++use Illuminate\Support\Facades\DB;
+ use Illuminate\Validation\Rule;
+ use Illuminate\View\View;
+ use Modules\EstudioMusica\Models\SolicitacaoOrcamento;
++use Modules\Faturacao\Models\Cliente;
+ 
+ /**
+  * Gestão, pela Receção, dos leads recebidos no formulário público da
+@@ -36,4 +38,56 @@ public function atualizarEstado(Request $request, int $solicitacao): RedirectRes
+ 
+         return back()->with('sucesso', 'Pedido atualizado.');
+     }
++
++    /**
++     * Converte o pedido num Cliente (ou reaproveita o que já existe com o
++     * mesmo e-mail/telefone) levando consigo o consentimento de marketing
++     * dado no formulário — assim o consentimento não se perde na passagem
++     * de lead a cliente e a Receção não tem de voltar a perguntar.
++     */
++    public function converter(int $solicitacao): RedirectResponse
++    {
++        $solicitacao = SolicitacaoOrcamento::findOrFail($solicitacao);
++
++        if ($solicitacao->estado === 'convertido') {
++            return back()->with('erro', 'Este pedido já foi convertido em cliente.');
++        }
++
++        $cliente = DB::transaction(function () use ($solicitacao) {
++            $existente = null;
++
++            if ($solicitacao->email || $solicitacao->telefone) {
++                $existente = Cliente::query()->where(function ($q) use ($solicitacao) {
++                    if ($solicitacao->email) {
++                        $q->orWhere('email', $solicitacao->email);
++                    }
++
++                    if ($solicitacao->telefone) {
++                        $q->orWhere('telefone', $solicitacao->telefone);
++                    }
++                })->first();
++            }
++
++            $cliente = $existente ?? (new Cliente)->forceFill([
++                'empresa_id' => $solicitacao->empresa_id,
++                'nome' => $solicitacao->nome,
++                'email' => $solicitacao->email,
++                'telefone' => $solicitacao->telefone,
++            ]);
++
++            if ($solicitacao->aceita_marketing && ! $cliente->aceita_marketing) {
++                $cliente->forceFill([
++                    'aceita_marketing' => true,
++                    'aceita_marketing_em' => $solicitacao->consentimento_dados_em ?? now(),
++                ]);
++            }
++
++            $cliente->save();
++            $solicitacao->update(['estado' => 'convertido']);
++
++            return $cliente;
++        });
++
++        return back()->with('sucesso', "Cliente \"{$cliente->nome}\" pronto — já podes criar o projeto ou agendar a sessão.");
++    }
+ }
+diff --git a/Modules/EstudioMusica/app/Http/Controllers/TermosEstudioController.php b/Modules/EstudioMusica/app/Http/Controllers/TermosEstudioController.php
+new file mode 100644
+index 0000000..f80ad7b
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Http/Controllers/TermosEstudioController.php
+@@ -0,0 +1,44 @@
++<?php
++
++namespace Modules\EstudioMusica\Http\Controllers;
++
++use Illuminate\Http\RedirectResponse;
++use Illuminate\Http\Request;
++use Illuminate\Routing\Controller;
++use Illuminate\View\View;
++use Modules\Core\Models\Empresa;
++use Modules\EstudioMusica\Models\TermosEstudio;
++use Modules\EstudioMusica\Services\TermosEstudioService;
++
++/**
++ * Termos de Serviço do estúdio — só o Administrador (ver as rotas). Cada
++ * publicação cria uma NOVA versão; as antigas ficam para provar o que cada
++ * cliente aceitou e quando.
++ */
++class TermosEstudioController extends Controller
++{
++    public function __construct(protected TermosEstudioService $termos) {}
++
++    public function index(Request $request): View
++    {
++        $empresa = Empresa::findOrFail($request->user()->empresa_id);
++
++        return view('estudiomusica::termos.index', [
++            'empresa' => $empresa,
++            'atual' => $this->termos->atual($empresa->id, $empresa->nome_comercial),
++            'historico' => TermosEstudio::withCount('aceites')->orderByDesc('versao')->get(),
++        ]);
++    }
++
++    public function publicar(Request $request): RedirectResponse
++    {
++        $dados = $request->validate([
++            'titulo' => ['required', 'string', 'max:150'],
++            'conteudo' => ['required', 'string', 'min:100', 'max:30000'],
++        ]);
++
++        $termos = $this->termos->publicar($request->user()->empresa_id, $dados['titulo'], $dados['conteudo']);
++
++        return back()->with('sucesso', "Versão {$termos->versao} publicada. Os clientes vão ter de a aceitar no portal.");
++    }
++}
+diff --git a/Modules/EstudioMusica/app/Http/Middleware/VerificarTokenPortalCliente.php b/Modules/EstudioMusica/app/Http/Middleware/VerificarTokenPortalCliente.php
+index d0c3bc5..57eb560 100644
+--- a/Modules/EstudioMusica/app/Http/Middleware/VerificarTokenPortalCliente.php
++++ b/Modules/EstudioMusica/app/Http/Middleware/VerificarTokenPortalCliente.php
+@@ -28,7 +28,8 @@ public function __construct(protected TenantManager $tenantManager) {}
+ 
+     public function handle(Request $request, Closure $next): Response
+     {
+-        $token = $request->route('token') ?? $request->query('token');
++        // Só o token da rota: aceitá-lo também em ?token= espalhava-o por logs e Referer.
++        $token = $request->route('token');
+ 
+         if (! $token) {
+             abort(404);
+@@ -51,6 +52,13 @@ public function handle(Request $request, Closure $next): Response
+         $this->tenantManager->set($cliente->empresa_id);
+         $request->attributes->set('cliente_portal', $cliente);
+ 
+-        return $next($request);
++        $resposta = $next($request);
++
++        // O token vive no URL: não pode vazar por Referer, cache nem motores de busca.
++        $resposta->headers->set('Referrer-Policy', 'no-referrer');
++        $resposta->headers->set('Cache-Control', 'private, no-store');
++        $resposta->headers->set('X-Robots-Tag', 'noindex, nofollow');
++
++        return $resposta;
+     }
+ }
+diff --git a/Modules/EstudioMusica/app/Http/Requests/AtualizarPerfilArtistaRequest.php b/Modules/EstudioMusica/app/Http/Requests/AtualizarPerfilArtistaRequest.php
+index ad6d643..6738de2 100644
+--- a/Modules/EstudioMusica/app/Http/Requests/AtualizarPerfilArtistaRequest.php
++++ b/Modules/EstudioMusica/app/Http/Requests/AtualizarPerfilArtistaRequest.php
+@@ -16,9 +16,9 @@ public function rules(): array
+         return [
+             'nome_artistico' => ['nullable', 'string', 'max:255'],
+             'genero_musical' => ['nullable', 'string', 'max:255'],
+-            'integrantes_banda' => ['nullable', 'array'],
++            'integrantes_banda' => ['nullable', 'array', 'max:30'],
+             'integrantes_banda.*' => ['string', 'max:255'],
+-            'links_redes_sociais' => ['nullable', 'array'],
++            'links_redes_sociais' => ['nullable', 'array', 'max:15'],
+             'links_redes_sociais.*' => ['nullable', 'string', 'max:255'],
+             'data_nascimento' => ['nullable', 'date', 'before:today'],
+             // Consentimento para mensagens promocionais (Lei n.º 22/11 / 23/11).
+diff --git a/Modules/EstudioMusica/app/Jobs/EnviarMensagemClienteJob.php b/Modules/EstudioMusica/app/Jobs/EnviarMensagemClienteJob.php
+index ecdda11..1b7959c 100644
+--- a/Modules/EstudioMusica/app/Jobs/EnviarMensagemClienteJob.php
++++ b/Modules/EstudioMusica/app/Jobs/EnviarMensagemClienteJob.php
+@@ -13,6 +13,7 @@
+ use RuntimeException;
+ use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
+ use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
++use Modules\EstudioMusica\Support\TransferenciaInternacional;
+ use Throwable;
+ 
+ /**
+@@ -20,7 +21,8 @@
+  * Services\NotificacaoEstudioService.
+  *
+  * Estratégia de entrega (cada mensagem chega UMA vez por pessoa, não três):
+- *  - telefone: WhatsApp; só se falhar, SMS (que é pago);
++ *  - telefone: WhatsApp; só se falhar, SMS (que é pago) — e só se a transferência
++ *    internacional estiver autorizada (Support\TransferenciaInternacional);
+  *  - e-mail: enviado sempre que existir.
+  * Se NENHUM canal entregar, o job lança exceção e a queue repete (3
+  * tentativas com espera crescente) — antes, os canais devolviam `false` em
+@@ -57,9 +59,17 @@ public function handle(CanalWhatsAppInterface $canalWhatsapp, CanalSmsInterface
+         $entregue = false;
+ 
+         if ($this->telefone) {
+-            $tentou = true;
+-            $entregue = $canalWhatsapp->enviar($this->telefone, $this->mensagem)
+-                || $canalSms->enviar($this->telefone, $this->mensagem);
++            // Canais que levam o contacto para fora de Angola só com autorização da APD.
++            $whatsappPermitido = TransferenciaInternacional::permitida($canalWhatsapp);
++            $smsPermitido = TransferenciaInternacional::permitida($canalSms);
++
++            if ($whatsappPermitido || $smsPermitido) {
++                $tentou = true;
++                $entregue = ($whatsappPermitido && $canalWhatsapp->enviar($this->telefone, $this->mensagem))
++                    || ($smsPermitido && $canalSms->enviar($this->telefone, $this->mensagem));
++            } else {
++                Log::notice('EstudioMusica: envio por telefone bloqueado — falta a autorização da APD para a transferência internacional (ESTUDIOMUSICA_APD_AUTORIZACAO).');
++            }
+         }
+ 
+         if ($this->email) {
+diff --git a/Modules/EstudioMusica/app/Jobs/PurgarSolicitacoesAntigasJob.php b/Modules/EstudioMusica/app/Jobs/PurgarSolicitacoesAntigasJob.php
+new file mode 100644
+index 0000000..fa6d34d
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Jobs/PurgarSolicitacoesAntigasJob.php
+@@ -0,0 +1,44 @@
++<?php
++
++namespace Modules\EstudioMusica\Jobs;
++
++use Illuminate\Bus\Queueable;
++use Illuminate\Contracts\Queue\ShouldQueue;
++use Illuminate\Foundation\Bus\Dispatchable;
++use Illuminate\Queue\InteractsWithQueue;
++use Illuminate\Support\Facades\Log;
++use Modules\Core\Services\TenantManager;
++use Modules\EstudioMusica\Models\Reclamacao;
++use Modules\EstudioMusica\Models\SolicitacaoOrcamento;
++
++/**
++ * Limitação da conservação (Lei n.º 22/11): pedidos de orçamento da
++ * landing page são dados pessoais de quem NÃO chegou a ser cliente, por
++ * isso não se guardam para sempre. Apaga os pedidos mais antigos que
++ * `estudiomusica.retencao_solicitacoes_meses` (por omissão 12) e as
++ * reclamações mais antigas que `retencao_reclamacoes_meses` (24), em todas
++ * as empresas. Quem foi convertido em cliente já tem os dados na ficha.
++ */
++class PurgarSolicitacoesAntigasJob implements ShouldQueue
++{
++    use Dispatchable;
++    use InteractsWithQueue;
++    use Queueable;
++
++    public function handle(TenantManager $tenantManager): void
++    {
++        $meses = max(1, (int) config('estudiomusica.retencao_solicitacoes_meses', 12));
++
++        $mesesReclamacoes = max(1, (int) config('estudiomusica.retencao_reclamacoes_meses', 24));
++
++        [$apagados, $reclamacoes] = $tenantManager->semTenant(fn () => [
++            SolicitacaoOrcamento::query()->where('created_at', '<', now()->subMonths($meses))->delete(),
++            Reclamacao::query()->where('created_at', '<', now()->subMonths($mesesReclamacoes))->delete(),
++        ]);
++
++        Log::info('EstudioMusica: dados antigos eliminados', [
++            'pedidos_orcamento' => $apagados, 'meses_pedidos' => $meses,
++            'reclamacoes' => $reclamacoes, 'meses_reclamacoes' => $mesesReclamacoes,
++        ]);
++    }
++}
+diff --git a/Modules/EstudioMusica/app/Models/AceiteTermos.php b/Modules/EstudioMusica/app/Models/AceiteTermos.php
+new file mode 100644
+index 0000000..115c45a
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Models/AceiteTermos.php
+@@ -0,0 +1,20 @@
++<?php
++
++namespace Modules\EstudioMusica\Models;
++
++use Illuminate\Database\Eloquent\Model;
++use Modules\Core\Traits\BelongsToTenant;
++
++class AceiteTermos extends Model
++{
++    use BelongsToTenant;
++
++    protected $table = 'aceites_termos_estudio';
++
++    protected $fillable = ['empresa_id', 'cliente_id', 'termos_estudio_id', 'aceite_em', 'ip_hash', 'user_agent'];
++
++    protected function casts(): array
++    {
++        return ['aceite_em' => 'datetime'];
++    }
++}
+diff --git a/Modules/EstudioMusica/app/Models/Reclamacao.php b/Modules/EstudioMusica/app/Models/Reclamacao.php
+new file mode 100644
+index 0000000..f5d4962
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Models/Reclamacao.php
+@@ -0,0 +1,26 @@
++<?php
++
++namespace Modules\EstudioMusica\Models;
++
++use Illuminate\Database\Eloquent\Model;
++use Modules\Core\Traits\BelongsToTenant;
++
++class Reclamacao extends Model
++{
++    use BelongsToTenant;
++
++    protected $table = 'reclamacoes_estudio';
++
++    protected $fillable = [
++        'empresa_id', 'nome', 'email', 'telefone', 'assunto', 'descricao',
++        'estado', 'resposta', 'respondida_em', 'consentimento_dados_em',
++    ];
++
++    protected function casts(): array
++    {
++        return [
++            'respondida_em' => 'datetime',
++            'consentimento_dados_em' => 'datetime',
++        ];
++    }
++}
+diff --git a/Modules/EstudioMusica/app/Models/TermosEstudio.php b/Modules/EstudioMusica/app/Models/TermosEstudio.php
+new file mode 100644
+index 0000000..58db375
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Models/TermosEstudio.php
+@@ -0,0 +1,26 @@
++<?php
++
++namespace Modules\EstudioMusica\Models;
++
++use Illuminate\Database\Eloquent\Model;
++use Illuminate\Database\Eloquent\Relations\HasMany;
++use Modules\Core\Traits\BelongsToTenant;
++
++class TermosEstudio extends Model
++{
++    use BelongsToTenant;
++
++    protected $table = 'termos_estudio';
++
++    protected $fillable = ['empresa_id', 'versao', 'titulo', 'conteudo', 'publicado_em'];
++
++    protected function casts(): array
++    {
++        return ['publicado_em' => 'datetime'];
++    }
++
++    public function aceites(): HasMany
++    {
++        return $this->hasMany(AceiteTermos::class, 'termos_estudio_id');
++    }
++}
+diff --git a/Modules/EstudioMusica/app/Providers/EstudioMusicaServiceProvider.php b/Modules/EstudioMusica/app/Providers/EstudioMusicaServiceProvider.php
+index 8715fab..fa88d0d 100644
+--- a/Modules/EstudioMusica/app/Providers/EstudioMusicaServiceProvider.php
++++ b/Modules/EstudioMusica/app/Providers/EstudioMusicaServiceProvider.php
+@@ -3,15 +3,21 @@
+ namespace Modules\EstudioMusica\Providers;
+ 
+ use Illuminate\Console\Scheduling\Schedule;
++use Illuminate\Cache\RateLimiting\Limit;
++use Illuminate\Http\Request;
+ use Illuminate\Routing\Router;
++use Illuminate\Support\Facades\RateLimiter;
+ use Illuminate\Support\ServiceProvider;
+ use Modules\Core\Services\MenuRegistry;
+ use Modules\Core\Services\TenantProvisionerRegistry;
+ use Modules\EstudioMusica\Console\Commands\EnviarCampanhaGenericaCommand;
++use Modules\EstudioMusica\Console\Commands\ExportarDadosArtistaCommand;
++use Modules\EstudioMusica\Console\Commands\LimparDadosArtistaCommand;
+ use Modules\EstudioMusica\Http\Middleware\VerificarTokenPortalCliente;
+ use Modules\EstudioMusica\Jobs\EnviarCampanhaAniversarioJob;
+ use Modules\EstudioMusica\Jobs\EnviarFollowUpPosLancamentoJob;
+ use Modules\EstudioMusica\Jobs\EnviarLembretesSessaoJob;
++use Modules\EstudioMusica\Jobs\PurgarSolicitacoesAntigasJob;
+ use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
+ use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
+ use Modules\EstudioMusica\Notifications\Channels\LogChannel;
+@@ -67,6 +73,7 @@ public function boot(): void
+         $this->app->register(RouteServiceProvider::class);
+ 
+         $this->registerMenuItems();
++        $this->registarLimitadores();
+         $this->registarProvisionador();
+ 
+         $this->publishes([
+@@ -74,7 +81,11 @@ public function boot(): void
+         ], 'estudiomusica-config');
+ 
+         if ($this->app->runningInConsole()) {
+-            $this->commands([EnviarCampanhaGenericaCommand::class]);
++            $this->commands([
++                EnviarCampanhaGenericaCommand::class,
++                ExportarDadosArtistaCommand::class,
++                LimparDadosArtistaCommand::class,
++            ]);
+         }
+ 
+         $this->agendarTarefas();
+@@ -96,20 +107,40 @@ protected function registerMenuItems(): void
+     {
+         $menu = $this->app->make(MenuRegistry::class);
+ 
+-        $menu->adicionar('estudiomusica.projetos.index', 'Projetos Musicais', 60);
+-        $menu->adicionar('estudiomusica.sessoes.index', 'Sessões de Estúdio', 61);
+-        $menu->adicionar('estudiomusica.salas.index', 'Salas', 62);
++        // Só mostra as entradas a quem as rotas deixam abrir (qualquer permissão do Estúdio).
++        $equipaEstudio = fn () => auth()->user()?->hasAnyPermission(PapeisEstudio::PERMISSOES) ?? false;
++        $administrador = fn () => auth()->user()?->hasRole('Administrador') ?? false;
++
++        $menu->adicionar('estudiomusica.projetos.index', 'Projetos Musicais', 60, null, $equipaEstudio);
++        $menu->adicionar('estudiomusica.sessoes.index', 'Sessões de Estúdio', 61, null, $equipaEstudio);
++        $menu->adicionar('estudiomusica.salas.index', 'Salas', 62, null, $equipaEstudio);
+         $menu->adicionar(
+             'estudiomusica.equipa.index',
+             'Equipa do Estúdio',
+             63,
+             null,
+-            fn () => auth()->user()?->hasRole('Administrador') ?? false,
++            $administrador,
+         );
++        $menu->adicionar('estudiomusica.reclamacoes.index', 'Reclamações', 64, null, $equipaEstudio);
++        $menu->adicionar('estudiomusica.termos.index', 'Termos e Privacidade', 65, null, $administrador);
++    }
++
++    /**
++     * Limite do portal POR TOKEN (e um teto por IP). Só por IP, várias
++     * pessoas atrás do mesmo IP (redes móveis com CGNAT) partilhavam o
++     * limite e o player — que faz vários pedidos Range por faixa — era
++     * bloqueado com falsos positivos.
++     */
++    protected function registarLimitadores(): void
++    {
++        RateLimiter::for('estudiomusica-portal', fn (Request $request) => [
++            Limit::perMinute(300)->by('token:'.hash('sha256', (string) $request->route('token'))),
++            Limit::perMinute(600)->by('ip:'.$request->ip()),
++        ]);
+     }
+ 
+     /**
+-     * Regista os 3 Jobs agendados do módulo (secções D e F). Usa
++     * Regista os 4 Jobs agendados do módulo (secções D e F). Usa
+      * callAfterResolving() — a forma segura para pacotes/módulos — em vez
+      * de $this->app->make(Schedule::class) diretamente: assim os jobs são
+      * sempre acrescentados à instância de Schedule que o Laravel de facto
+@@ -127,16 +158,26 @@ protected function agendarTarefas(): void
+             $schedule->job(new EnviarLembretesSessaoJob)
+                 ->hourly()
+                 ->name('estudiomusica:lembretes-sessao')
++                ->onOneServer()
+                 ->withoutOverlapping();
+ 
+             $schedule->job(new EnviarCampanhaAniversarioJob)
+                 ->dailyAt('08:00')
+                 ->name('estudiomusica:campanha-aniversario')
++                ->onOneServer()
+                 ->withoutOverlapping();
+ 
+             $schedule->job(new EnviarFollowUpPosLancamentoJob)
+                 ->dailyAt('09:00')
+                 ->name('estudiomusica:follow-up-lancamento')
++                ->onOneServer()
++                ->withoutOverlapping();
++
++            // Retenção de dados: apaga pedidos de orçamento antigos (Lei n.º 22/11).
++            $schedule->job(new PurgarSolicitacoesAntigasJob)
++                ->weeklyOn(0, '03:00')
++                ->name('estudiomusica:purgar-solicitacoes')
++                ->onOneServer()
+                 ->withoutOverlapping();
+         });
+     }
+diff --git a/Modules/EstudioMusica/app/Services/AgendamentoService.php b/Modules/EstudioMusica/app/Services/AgendamentoService.php
+index 24553f9..942f2a1 100644
+--- a/Modules/EstudioMusica/app/Services/AgendamentoService.php
++++ b/Modules/EstudioMusica/app/Services/AgendamentoService.php
+@@ -48,7 +48,10 @@ public function criarSessao(array $dados): SessaoEstudio
+                 throw ConflitoAgendamentoException::paraSala($sala, $inicio->format('d/m H:i'), $fim->format('d/m H:i'));
+             }
+ 
+-            return SessaoEstudio::create($dados);
++            // Estado inicial explícito: antes dependia do default da coluna, e o
++            // objeto devolvido ficava com `estado` = null até ser relido da BD
++            // (o que fazia o check-in/cancelamento recusar a sessão acabada de criar).
++            return SessaoEstudio::create(array_merge(['estado' => 'agendada'], $dados));
+         });
+     }
+ 
+diff --git a/Modules/EstudioMusica/app/Services/CampanhaMarketingService.php b/Modules/EstudioMusica/app/Services/CampanhaMarketingService.php
+index 053e3aa..432f71f 100644
+--- a/Modules/EstudioMusica/app/Services/CampanhaMarketingService.php
++++ b/Modules/EstudioMusica/app/Services/CampanhaMarketingService.php
+@@ -9,6 +9,7 @@
+ use Modules\EstudioMusica\Models\CampanhaEnviada;
+ use Modules\EstudioMusica\Models\CupomDesconto;
+ use Modules\EstudioMusica\Models\ProjetoMusical;
++use Modules\EstudioMusica\Support\Aniversario;
+ use Modules\Faturacao\Models\Cliente;
+ 
+ /**
+@@ -49,7 +50,7 @@ public function enviarAniversarios(TenantManager $tenantManager): int
+                 ->where('aceita_marketing', true)
+                 ->chunkById(100, function ($clientes) use ($hoje, &$enviados): void {
+                     foreach ($clientes as $cliente) {
+-                        if (! Carbon::parse($cliente->data_nascimento)->isBirthday($hoje)) {
++                        if (! Aniversario::hoje($cliente->data_nascimento, $hoje)) {
+                             continue;
+                         }
+ 
+diff --git a/Modules/EstudioMusica/app/Services/DadosPessoaisService.php b/Modules/EstudioMusica/app/Services/DadosPessoaisService.php
+new file mode 100644
+index 0000000..4f0c910
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Services/DadosPessoaisService.php
+@@ -0,0 +1,147 @@
++<?php
++
++namespace Modules\EstudioMusica\Services;
++
++use Illuminate\Support\Facades\DB;
++use Modules\EstudioMusica\Models\AceiteTermos;
++use Modules\EstudioMusica\Models\CampanhaEnviada;
++use Modules\EstudioMusica\Models\CupomDesconto;
++use Modules\EstudioMusica\Models\ProjetoMusical;
++use Modules\EstudioMusica\Models\Reclamacao;
++use Modules\EstudioMusica\Models\SessaoEstudio;
++use Modules\EstudioMusica\Models\SolicitacaoOrcamento;
++use Modules\Faturacao\Models\Cliente;
++
++/**
++ * Direitos do titular dos dados (Lei n.º 22/11): acesso e eliminação do
++ * que o MÓDULO ESTÚDIO guarda sobre um artista. Corre dentro do tenant
++ * já definido (ver os comandos `estudiomusica:exportar-dados-artista` e
++ * `estudiomusica:limpar-dados-artista`).
++ *
++ * Nunca apaga o Cliente nem documentos fiscais (faturas, recibos): a lei
++ * fiscal obriga a conservá-los. Também não apaga os ficheiros de áudio
++ * dos projetos — são trabalho entregue/contratado, e o seu destino é uma
++ * decisão do estúdio com o artista.
++ */
++class DadosPessoaisService
++{
++    /** Colunas que nunca saem numa exportação (credenciais). */
++    protected const OCULTAS = ['token_portal', 'token_portal_expira_em'];
++
++    /**
++     * @return array<string, mixed>
++     */
++    public function exportar(Cliente $cliente): array
++    {
++        $ficha = collect($cliente->getAttributes())->except(self::OCULTAS)->all();
++
++        return [
++            'gerado_em' => now()->toIso8601String(),
++            'cliente' => $ficha,
++            'projetos' => ProjetoMusical::query()
++                ->where('cliente_id', $cliente->id)
++                ->with('faixas.versoes')
++                ->get()
++                ->map(fn (ProjetoMusical $p) => [
++                    'nome' => $p->nome,
++                    'estado' => $p->estado,
++                    'tipo_cobranca' => $p->tipo_cobranca,
++                    'faixas' => $p->faixas->map(fn ($f) => [
++                        'nome' => $f->nome,
++                        'versoes' => $f->versoes->map(fn ($v) => [
++                            'rotulo' => $v->rotulo,
++                            'estado' => $v->estado,
++                            'enviada_em' => $v->enviada_em?->toIso8601String(),
++                        ])->all(),
++                    ])->all(),
++                ])->all(),
++            'sessoes' => SessaoEstudio::query()
++                ->where('cliente_id', $cliente->id)
++                ->get(['tipo_servico', 'inicio_previsto', 'fim_previsto', 'inicio_real', 'fim_real', 'estado'])
++                ->toArray(),
++            'pedidos_orcamento' => $this->solicitacoesDe($cliente)->get()->toArray(),
++            'reclamacoes' => $this->reclamacoesDe($cliente)->get(['id', 'assunto', 'descricao', 'estado', 'resposta', 'created_at'])->toArray(),
++            'termos_aceites' => AceiteTermos::query()->where('cliente_id', $cliente->id)->get(['termos_estudio_id', 'aceite_em'])->toArray(),
++            'mensagens_promocionais_enviadas' => CampanhaEnviada::query()
++                ->where('cliente_id', $cliente->id)
++                ->get(['tipo', 'referencia', 'enviada_em'])
++                ->toArray(),
++            'cupons' => CupomDesconto::query()
++                ->where('cliente_id', $cliente->id)
++                ->get(['codigo', 'percentual_desconto', 'motivo', 'valido_ate', 'usado_em'])
++                ->toArray(),
++        ];
++    }
++
++    /**
++     * @return array{pedidos_orcamento: int, reclamacoes: int, mensagens: int, cupons: int}
++     */
++    public function limpar(Cliente $cliente): array
++    {
++        return DB::transaction(function () use ($cliente) {
++            $cliente->forceFill([
++                'nome_artistico' => null,
++                'genero_musical' => null,
++                'integrantes_banda' => null,
++                'links_redes_sociais' => null,
++                'data_nascimento' => null,
++                'aceita_marketing' => false,
++                'aceita_marketing_em' => null,
++                // Revoga o acesso ao portal.
++                'token_portal' => null,
++                'token_portal_expira_em' => null,
++            ])->save();
++
++            return [
++                'pedidos_orcamento' => $this->solicitacoesDe($cliente)->delete(),
++                'reclamacoes' => $this->reclamacoesDe($cliente)->delete(),
++                'mensagens' => CampanhaEnviada::query()->where('cliente_id', $cliente->id)->delete(),
++                'cupons' => CupomDesconto::query()->where('cliente_id', $cliente->id)->delete(),
++            ];
++        });
++    }
++
++    /** Reclamações feitas com o mesmo e-mail ou telefone do cliente (vazio se não houver nenhum dos dois). */
++    protected function reclamacoesDe(Cliente $cliente)
++    {
++        $query = Reclamacao::query();
++
++        if (! $cliente->email && ! $cliente->telefone) {
++            return $query->whereRaw('1 = 0');
++        }
++
++        return $query->where(function ($q) use ($cliente) {
++            if ($cliente->email) {
++                $q->orWhere('email', $cliente->email);
++            }
++
++            if ($cliente->telefone) {
++                $q->orWhere('telefone', $cliente->telefone);
++            }
++        });
++    }
++
++    /**
++     * Pedidos de orçamento feitos com o mesmo e-mail ou telefone do cliente.
++     * Sem nenhum dos dois não há como associar — devolve uma query vazia
++     * (e não "todos os pedidos").
++     */
++    protected function solicitacoesDe(Cliente $cliente)
++    {
++        $query = SolicitacaoOrcamento::query();
++
++        if (! $cliente->email && ! $cliente->telefone) {
++            return $query->whereRaw('1 = 0');
++        }
++
++        return $query->where(function ($q) use ($cliente) {
++            if ($cliente->email) {
++                $q->orWhere('email', $cliente->email);
++            }
++
++            if ($cliente->telefone) {
++                $q->orWhere('telefone', $cliente->telefone);
++            }
++        });
++    }
++}
+diff --git a/Modules/EstudioMusica/app/Services/NotificacaoEstudioService.php b/Modules/EstudioMusica/app/Services/NotificacaoEstudioService.php
+index 9479488..3f4dcf9 100644
+--- a/Modules/EstudioMusica/app/Services/NotificacaoEstudioService.php
++++ b/Modules/EstudioMusica/app/Services/NotificacaoEstudioService.php
+@@ -6,6 +6,8 @@
+ use Modules\EstudioMusica\Models\FaixaMusical;
+ use Modules\EstudioMusica\Models\ProjetoMusical;
+ use Modules\EstudioMusica\Models\SessaoEstudio;
++use Modules\Core\Models\Empresa;
++use Modules\EstudioMusica\Models\Reclamacao;
+ use Modules\EstudioMusica\Models\VersaoAudio;
+ use Modules\Faturacao\Models\Cliente;
+ 
+@@ -93,6 +95,63 @@ public function projetoConcluido(ProjetoMusical $projeto): void
+         );
+     }
+ 
++    /**
++     * Avisa a EQUIPA (produtor/engenheiro do projeto) quando o cliente
++     * aprova ou pede ajustes no portal — antes, a decisão ficava invisível
++     * até alguém abrir o projeto. Só e-mail (os utilizadores não têm
++     * telefone registado).
++     */
++    public function equipaDecisaoCliente(VersaoAudio $versao, string $decisao): void
++    {
++        $faixa = $versao->faixaMusical;
++        $projeto = $faixa->projetoMusical;
++        $cliente = $projeto->cliente;
++        $nome = $cliente->nome_artistico ?: $cliente->nome;
++        $acao = $decisao === 'aprovada' ? 'aprovou' : 'pediu ajustes à';
++
++        collect([$projeto->produtor, $projeto->engenheiro])
++            ->filter()
++            ->pluck('email')
++            ->filter()
++            ->unique()
++            ->each(fn (string $email) => EnviarMensagemClienteJob::dispatch(
++                null,
++                $email,
++                'Decisão do cliente no portal',
++                "{$nome} {$acao} versão \"{$versao->rotulo}\" da faixa \"{$faixa->nome}\" (projeto \"{$projeto->nome}\")."
++            ));
++    }
++
++    /** Avisa o estúdio (e-mail da empresa) e confirma a receção a quem reclamou. */
++    public function reclamacaoRecebida(Empresa $empresa, Reclamacao $reclamacao): void
++    {
++        if ($empresa->email) {
++            EnviarMensagemClienteJob::dispatch(
++                null,
++                $empresa->email,
++                'Nova reclamação recebida',
++                "Reclamação #{$reclamacao->id} de {$reclamacao->nome}: {$reclamacao->assunto}. Consulta e responde em Estúdio > Reclamações."
++            );
++        }
++
++        EnviarMensagemClienteJob::dispatch(
++            $reclamacao->telefone,
++            $reclamacao->email,
++            'Recebemos a tua reclamação',
++            "Recebemos a tua reclamação (ref. #{$reclamacao->id}) sobre \"{$reclamacao->assunto}\". Vamos responder o mais depressa possível."
++        );
++    }
++
++    public function reclamacaoRespondida(Reclamacao $reclamacao): void
++    {
++        EnviarMensagemClienteJob::dispatch(
++            $reclamacao->telefone,
++            $reclamacao->email,
++            'Resposta à tua reclamação',
++            "Resposta à tua reclamação #{$reclamacao->id}: {$reclamacao->resposta}"
++        );
++    }
++
+     public function aprovacaoPendente(VersaoAudio $versao): void
+     {
+         $faixa = $versao->faixaMusical;
+diff --git a/Modules/EstudioMusica/app/Services/TermosEstudioService.php b/Modules/EstudioMusica/app/Services/TermosEstudioService.php
+new file mode 100644
+index 0000000..506f0ae
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Services/TermosEstudioService.php
+@@ -0,0 +1,111 @@
++<?php
++
++namespace Modules\EstudioMusica\Services;
++
++use Illuminate\Database\QueryException;
++use Illuminate\Http\Request;
++use Illuminate\Support\Facades\DB;
++use Modules\EstudioMusica\Models\AceiteTermos;
++use Modules\EstudioMusica\Models\TermosEstudio;
++use Modules\Faturacao\Models\Cliente;
++
++/**
++ * Termos de Serviço versionados e prova do aceite pelo cliente (portal).
++ * Corre com o tenant já definido (staff autenticado ou portal por token).
++ *
++ * O texto-modelo cobre os pontos que costumam dar conflito num estúdio —
++ * direitos de autor e propriedade dos masters (Lei n.º 15/14), pagamento,
++ * entrega, cancelamentos, dados pessoais — mas é um PONTO DE PARTIDA: o
++ * estúdio deve validá-lo com o seu advogado antes de o publicar/adaptar.
++ */
++class TermosEstudioService
++{
++    /** Versão em vigor; cria a versão 1 (texto-modelo) se ainda não houver nenhuma. */
++    public function atual(int $empresaId, string $nomeEstudio = 'o Estúdio'): TermosEstudio
++    {
++        $atual = TermosEstudio::query()->where('empresa_id', $empresaId)->orderByDesc('versao')->first();
++
++        if ($atual) {
++            return $atual;
++        }
++
++        try {
++            return $this->publicar($empresaId, 'Termos de Serviço', $this->textoModelo($nomeEstudio));
++        } catch (QueryException) {
++            // Dois pedidos em simultâneo tentaram criar a versão 1: ganha o primeiro.
++            return TermosEstudio::query()->where('empresa_id', $empresaId)->orderByDesc('versao')->firstOrFail();
++        }
++    }
++
++    public function publicar(int $empresaId, string $titulo, string $conteudo): TermosEstudio
++    {
++        return DB::transaction(function () use ($empresaId, $titulo, $conteudo) {
++            $proxima = (int) TermosEstudio::query()->where('empresa_id', $empresaId)->max('versao') + 1;
++
++            return TermosEstudio::create([
++                'empresa_id' => $empresaId,
++                'versao' => $proxima,
++                'titulo' => $titulo,
++                'conteudo' => $conteudo,
++                'publicado_em' => now(),
++            ]);
++        });
++    }
++
++    public function aceitou(Cliente $cliente, TermosEstudio $termos): bool
++    {
++        return AceiteTermos::query()
++            ->where('cliente_id', $cliente->id)
++            ->where('termos_estudio_id', $termos->id)
++            ->exists();
++    }
++
++    /** Idempotente: aceitar duas vezes a mesma versão não duplica o registo. */
++    public function registarAceite(Cliente $cliente, TermosEstudio $termos, Request $request): AceiteTermos
++    {
++        return AceiteTermos::query()->firstOrCreate(
++            ['cliente_id' => $cliente->id, 'termos_estudio_id' => $termos->id],
++            [
++                'empresa_id' => $termos->empresa_id,
++                'aceite_em' => now(),
++                'ip_hash' => $request->ip() ? hash('sha256', $request->ip().config('app.key')) : null,
++                'user_agent' => mb_substr((string) $request->userAgent(), 0, 255) ?: null,
++            ],
++        );
++    }
++
++    public function textoModelo(string $nomeEstudio): string
++    {
++        return <<<TEXTO
++        1. Objeto
++        Estes termos regulam a prestação de serviços de gravação, mistura, masterização, produção e serviços conexos por {$nomeEstudio} ("o Estúdio") ao artista ou cliente ("o Cliente").
++
++        2. Direitos de autor e conexos
++        As composições, letras, arranjos e interpretações pertencem aos respetivos autores e artistas e não são transferidos para o Estúdio. O Cliente declara ser titular, ou ter autorização, de todo o material que entrega ao Estúdio (incluindo beats, samples e instrumentais de terceiros) e responde perante terceiros por esse material. Salvo acordo escrito em contrário, depois do pagamento integral o Cliente fica com os direitos de utilização dos ficheiros finais entregues (masters). O Estúdio não utiliza trabalhos do Cliente em portfólio, redes sociais ou publicidade sem autorização expressa.
++
++        3. Preços e pagamento
++        Os preços constam da proposta ou da tabela em vigor e não incluem IVA, que é acrescentado à taxa legal. Nos projetos por pacote pode ser exigido um sinal, e o saldo é faturado no final. O Estúdio emite fatura e recibo dos valores recebidos.
++
++        4. Entrega e pré-visualização
++        Enquanto o projeto não estiver integralmente pago, o Cliente tem acesso apenas a pré-visualizações em qualidade reduzida. Os ficheiros originais em qualidade total são disponibilizados depois do pagamento integral.
++
++        5. Aprovações e ajustes
++        O Cliente ouve cada versão no portal, comenta e aprova ou pede ajustes. Uma versão aprovada considera-se aceite; pedidos adicionais podem ser orçamentados à parte.
++
++        6. Marcação, reagendamento e cancelamento
++        O Cliente deve avisar com antecedência razoável se não puder comparecer. O Estúdio pode cobrar as horas reservadas e não utilizadas, nos termos acordados com o Cliente.
++
++        7. Conservação de ficheiros
++        O Estúdio conserva os ficheiros do projeto por um período razoável após a entrega. O Cliente deve guardar uma cópia própria dos ficheiros que lhe forem entregues.
++
++        8. Proteção de dados pessoais
++        O tratamento dos dados pessoais do Cliente é feito nos termos da Política de Privacidade do Estúdio e da Lei n.º 22/11, de 17 de junho.
++
++        9. Reclamações
++        O Estúdio dispõe de Livro de Reclamações no seu estabelecimento e de um canal de reclamações na sua página.
++
++        10. Lei aplicável
++        Estes termos regem-se pela lei angolana.
++        TEXTO;
++    }
++}
+diff --git a/Modules/EstudioMusica/app/Support/Aniversario.php b/Modules/EstudioMusica/app/Support/Aniversario.php
+new file mode 100644
+index 0000000..1225e49
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Support/Aniversario.php
+@@ -0,0 +1,24 @@
++<?php
++
++namespace Modules\EstudioMusica\Support;
++
++use Carbon\Carbon;
++
++/**
++ * Quem nasceu a 29 de fevereiro festeja a 28 de fevereiro nos anos não
++ * bissextos (antes, ficava sem mensagem e sem cupão 3 anos em cada 4).
++ */
++final class Aniversario
++{
++    public static function hoje(Carbon|string $nascimento, ?Carbon $hoje = null): bool
++    {
++        $nascimento = Carbon::parse($nascimento);
++        $hoje ??= now();
++
++        if ($nascimento->month === 2 && $nascimento->day === 29 && ! $hoje->isLeapYear()) {
++            return $hoje->month === 2 && $hoje->day === 28;
++        }
++
++        return $nascimento->month === $hoje->month && $nascimento->day === $hoje->day;
++    }
++}
+diff --git a/Modules/EstudioMusica/app/Support/TransferenciaInternacional.php b/Modules/EstudioMusica/app/Support/TransferenciaInternacional.php
+new file mode 100644
+index 0000000..8441b03
+--- /dev/null
++++ b/Modules/EstudioMusica/app/Support/TransferenciaInternacional.php
+@@ -0,0 +1,30 @@
++<?php
++
++namespace Modules\EstudioMusica\Support;
++
++use Modules\EstudioMusica\Notifications\Channels\LogChannel;
++
++/**
++ * Porta de segurança para a transferência internacional de dados
++ * pessoais (Lei n.º 22/11): WhatsApp (Meta) e SMS (Twilio) levam o
++ * contacto do cliente para fora de Angola. Enquanto não houver o número
++ * da autorização da APD (ESTUDIOMUSICA_APD_AUTORIZACAO) esses canais não
++ * enviam — a menos que o responsável desligue a exigência de propósito
++ * (ESTUDIOMUSICA_EXIGIR_AUTORIZACAO_APD=false). O canal `log` nunca sai
++ * do servidor, por isso nunca é bloqueado.
++ */
++final class TransferenciaInternacional
++{
++    public static function permitida(object $canal): bool
++    {
++        if ($canal instanceof LogChannel) {
++            return true;
++        }
++
++        if (! config('estudiomusica.exigir_autorizacao_apd', true)) {
++            return true;
++        }
++
++        return filled(config('estudiomusica.apd_autorizacao_transferencia'));
++    }
++}
+diff --git a/Modules/EstudioMusica/config/config.php b/Modules/EstudioMusica/config/config.php
+index 018b3a9..dd7f4ef 100644
+--- a/Modules/EstudioMusica/config/config.php
++++ b/Modules/EstudioMusica/config/config.php
+@@ -76,6 +76,26 @@
+     | Validade do token de acesso temporário (secção C). Gerado de novo
+     | sempre que a Receção reenvia o link ao artista.
+     */
++    // Pedidos de orçamento da landing são apagados passado este tempo (Lei n.º 22/11).
++    'retencao_solicitacoes_meses' => 12,
++
++    // Mostrar o preço por hora (sem IVA) das salas na landing page.
++    'landing_mostrar_precos' => true,
++
++    // Reclamações recebidas pela landing são apagadas passado este tempo.
++    'retencao_reclamacoes_meses' => 24,
++
++    // ---- Transferência internacional de dados (Lei n.º 22/11) -------------
++    // WhatsApp (Meta) e SMS (Twilio) enviam os contactos dos clientes para
++    // fora de Angola. Por omissão estes canais ficam BLOQUEADOS até haver o nº
++    // da autorização/notificação da APD (ou até assumires a responsabilidade
++    // pondo ESTUDIOMUSICA_EXIGIR_AUTORIZACAO_APD=false). O e-mail e o canal
++    // `log` não são afetados. Ver docs/CONFORMIDADE-ANGOLA.md.
++    'exigir_autorizacao_apd' => (bool) env('ESTUDIOMUSICA_EXIGIR_AUTORIZACAO_APD', true),
++    'apd_autorizacao_transferencia' => env('ESTUDIOMUSICA_APD_AUTORIZACAO'),
++    // Nº de registo/notificação do tratamento na APD (mostrado na Política de Privacidade).
++    'apd_registo' => env('ESTUDIOMUSICA_APD_REGISTO'),
++
+     // Quantas horas antes do início marcado já se pode fazer check-in.
+     'checkin_antecedencia_max_horas' => 12,
+ 
+diff --git a/Modules/EstudioMusica/database/migrations/2026_10_15_000001_create_termos_estudio_tables.php b/Modules/EstudioMusica/database/migrations/2026_10_15_000001_create_termos_estudio_tables.php
+new file mode 100644
+index 0000000..84db45b
+--- /dev/null
++++ b/Modules/EstudioMusica/database/migrations/2026_10_15_000001_create_termos_estudio_tables.php
+@@ -0,0 +1,49 @@
++<?php
++
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\Schema;
++
++return new class extends Migration
++{
++    /**
++     * Termos de Serviço do estúdio (inclui a propriedade dos masters e dos
++     * direitos de autor — Lei n.º 15/14) com VERSÕES, e o registo de quem
++     * aceitou cada versão (prova do aceite: data, IP em hash, browser).
++     * Ao publicar uma versão nova, os clientes voltam a ter de aceitar.
++     */
++    public function up(): void
++    {
++        Schema::create('termos_estudio', function (Blueprint $table) {
++            $table->id();
++            $table->foreignId('empresa_id')->constrained('empresas')->cascadeOnDelete();
++            $table->unsignedInteger('versao');
++            $table->string('titulo');
++            $table->longText('conteudo');
++            $table->timestamp('publicado_em');
++            $table->timestamps();
++
++            $table->unique(['empresa_id', 'versao']);
++        });
++
++        Schema::create('aceites_termos_estudio', function (Blueprint $table) {
++            $table->id();
++            $table->foreignId('empresa_id')->constrained('empresas')->cascadeOnDelete();
++            $table->foreignId('cliente_id')->constrained('clientes')->cascadeOnDelete();
++            $table->foreignId('termos_estudio_id')->constrained('termos_estudio')->cascadeOnDelete();
++            $table->timestamp('aceite_em');
++            // IP guardado só em hash (não é preciso o IP em claro para provar o aceite).
++            $table->string('ip_hash', 64)->nullable();
++            $table->string('user_agent', 255)->nullable();
++            $table->timestamps();
++
++            $table->unique(['cliente_id', 'termos_estudio_id']);
++        });
++    }
++
++    public function down(): void
++    {
++        Schema::dropIfExists('aceites_termos_estudio');
++        Schema::dropIfExists('termos_estudio');
++    }
++};
+diff --git a/Modules/EstudioMusica/database/migrations/2026_10_15_000002_create_reclamacoes_estudio_table.php b/Modules/EstudioMusica/database/migrations/2026_10_15_000002_create_reclamacoes_estudio_table.php
+new file mode 100644
+index 0000000..c2ea4d7
+--- /dev/null
++++ b/Modules/EstudioMusica/database/migrations/2026_10_15_000002_create_reclamacoes_estudio_table.php
+@@ -0,0 +1,41 @@
++<?php
++
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\Schema;
++
++return new class extends Migration
++{
++    /**
++     * Canal digital de reclamações da landing page. NÃO substitui o Livro
++     * de Reclamações físico, que o Decreto Presidencial n.º 234/16 exige
++     * nos estabelecimentos — é um canal adicional, com registo e resposta.
++     */
++    public function up(): void
++    {
++        Schema::create('reclamacoes_estudio', function (Blueprint $table) {
++            $table->id();
++            $table->foreignId('empresa_id')->constrained('empresas')->cascadeOnDelete();
++
++            $table->string('nome');
++            $table->string('email')->nullable();
++            $table->string('telefone')->nullable();
++            $table->string('assunto', 150);
++            $table->text('descricao');
++
++            $table->enum('estado', ['recebida', 'em_analise', 'resolvida'])->default('recebida');
++            $table->text('resposta')->nullable();
++            $table->timestamp('respondida_em')->nullable();
++            $table->timestamp('consentimento_dados_em')->nullable();
++
++            $table->timestamps();
++
++            $table->index(['empresa_id', 'estado']);
++        });
++    }
++
++    public function down(): void
++    {
++        Schema::dropIfExists('reclamacoes_estudio');
++    }
++};
+diff --git a/Modules/EstudioMusica/docs/CONFORMIDADE-ANGOLA.md b/Modules/EstudioMusica/docs/CONFORMIDADE-ANGOLA.md
+new file mode 100644
+index 0000000..6d397c6
+--- /dev/null
++++ b/Modules/EstudioMusica/docs/CONFORMIDADE-ANGOLA.md
+@@ -0,0 +1,71 @@
++# Conformidade com a lei angolana — Módulo Estúdio
++
++> Guia técnico-organizacional, **não é aconselhamento jurídico**. Os pontos marcados **[ADVOGADO]**
++> devem ser validados por um advogado angolano antes de entrarem em produção. Leis de referência:
++> Lei n.º 22/11 (Proteção de Dados Pessoais), Lei n.º 23/11 (Comunicações Eletrónicas e Sociedade da
++> Informação), Lei n.º 15/03 (Defesa do Consumidor), Decreto Presidencial n.º 234/16 (Livro de
++> Reclamações), Lei n.º 15/14 (Direito de Autor e Direitos Conexos), Código do IVA (Lei n.º 7/19) e
++> o regime das faturas (Decreto Presidencial n.º 71/25, tratado no módulo Faturação).
++
++## 1. O que o módulo já faz
++
++| Tema | Implementação |
++|---|---|
++| Consentimento de marketing | `clientes.aceita_marketing` (por omissão **não**). Campanhas, aniversário e follow-up só chegam a quem aceitou. Cada mensagem promocional leva uma ligação assinada para sair (`/estudio/{empresa}/marketing/sair/{cliente}`), que funciona mesmo que o serviço do estúdio seja desativado. |
++| Dever de informar | Política de Privacidade pública (`/estudio/{empresa}/privacidade`), ligada ao formulário da landing. O formulário exige aceite expresso e guarda a data (`consentimento_dados_em`). |
++| Direitos do titular | `php artisan estudiomusica:exportar-dados-artista {empresa} {cliente}` (acesso) e `estudiomusica:limpar-dados-artista {empresa} {cliente}` (eliminação). Os campos da ficha podem ser limpos pela interface (retificação). |
++| Limitação da conservação | Job semanal apaga pedidos de orçamento > 12 meses e reclamações > 24 meses (`retencao_*_meses`). |
++| Transferência internacional | WhatsApp (Meta) e SMS (Twilio) ficam **bloqueados** até existir `ESTUDIOMUSICA_APD_AUTORIZACAO` (ver 2.1). O e-mail e o canal `log` não são afetados. |
++| Segurança | Portal por token (guardado em hash, expira, nunca em query string), cabeçalhos `no-store`/`no-referrer`/`noindex`, limite de pedidos por token, jobs com payload cifrado, números mascarados nos logs, ficheiros de áudio privados (pré-visualização até haver pagamento), leitura restrita a quem tem papel do estúdio. |
++| Direito de autor / contrato | Termos de Serviço **versionados** (propriedade dos masters, material de terceiros, portfólio só com autorização). O cliente aceita no portal (data, IP em hash, browser) antes de aprovar ou descarregar. Administrador edita em *Termos e Privacidade*. |
++| Consumidor | Preço/hora (sem IVA) visível na landing (`landing_mostrar_precos`); cupão de aniversário aplicado de facto nas faturas; canal digital de reclamações com resposta; aviso do Livro de Reclamações. |
++| Fiscal | IVA correto no sinal/saldo (`valor_pacote` é sem IVA); recibos pela interface. A comunicação à AGT é do módulo Faturação. |
++
++## 2. O que continua a exigir ação humana
++
++### 2.1 APD — notificação/autorização e transferências **[ADVOGADO]**
++1. Confirmar com o advogado se o tratamento tem de ser **notificado ou autorizado** pela APD (a Lei 22/11 prevê
++   notificação prévia/autorização conforme o tipo de dados e de tratamento). Guardar o nº em `ESTUDIOMUSICA_APD_REGISTO`.
++2. Pedir a **autorização de transferência internacional** para os prestadores que recebem contactos
++   (Meta/WhatsApp, Twilio, fornecedor de SMTP e alojamento, se fora de Angola). Quando existir, definir
++   `ESTUDIOMUSICA_APD_AUTORIZACAO=<nº>`: os canais WhatsApp/SMS passam a enviar. Sem isto, só e-mail.
++   (`ESTUDIOMUSICA_EXIGIR_AUTORIZACAO_APD=false` desliga a trava — decisão e risco do responsável.)
++3. Papéis: cada **estúdio é o responsável pelo tratamento**; a plataforma é **subcontratante**. É preciso um
++   contrato/cláusulas de subcontratação entre a plataforma e cada estúdio (ver 3).
++
++### 2.2 Registo das atividades de tratamento (modelo)
++| Atividade | Dados | Fundamento | Conservação |
++|---|---|---|---|
++| Pedidos de orçamento | nome, contactos, mensagem | pedido do titular | 12 meses (`retencao_solicitacoes_meses`) |
++| Prestação do serviço | ficha do artista, projetos, sessões, áudio, comentários | contrato | duração da relação |
++| Faturação | nome, NIF, valores | obrigação legal | prazo fiscal legal |
++| Avisos do serviço | contactos | execução do contrato | duração da relação |
++| Marketing | contactos, data de nascimento | consentimento | até retirar |
++| Reclamações | nome, contactos, descrição | obrigação legal / interesse legítimo | 24 meses (`retencao_reclamacoes_meses`) |
++| Aceite de termos | cliente, data, IP em hash | contrato (prova) | duração da relação + prazo de prescrição **[ADVOGADO]** |
++
++### 2.3 Livro de Reclamações
++O Decreto Presidencial n.º 234/16 exige o **Livro de Reclamações físico** nos estabelecimentos. O canal digital
++do módulo é um complemento: **o estúdio tem de ter o livro (com selo) no local**.
++
++### 2.4 Direitos sobre masters
++O texto-modelo dos Termos é só um ponto de partida. **[ADVOGADO]** deve confirmar: quem é titular do fonograma,
++cessão/licença ao estúdio (se houver), uso em portfólio, material de terceiros e prazo de conservação dos ficheiros.
++
++### 2.5 Menores
++Artistas menores de 18 anos não contratam sozinhos: recolher autorização do representante legal.
++A data de nascimento é guardada (aniversário). **[ADVOGADO]** para o procedimento concreto.
++
++## 3. Dossier para o advogado
++1. A plataforma como subcontratante: modelo de contrato e deveres (segurança, confidencialidade, apoio aos direitos).
++2. Notificação/autorização na APD: o que, quando, por quem, com que prazo.
++3. Fundamento e documentação da transferência internacional (Meta, Twilio, e-mail, alojamento).
++4. Texto final dos Termos de Serviço e da Política de Privacidade.
++5. Prazos de conservação (fiscal, contratual, reclamações, aceites).
++6. Cupões/descontos e publicidade (Lei 15/03).
++7. Tratamento de dados de menores e autorização parental.
++
++## 4. Variáveis de ambiente relevantes
++`ESTUDIOMUSICA_EXIGIR_AUTORIZACAO_APD`, `ESTUDIOMUSICA_APD_AUTORIZACAO`, `ESTUDIOMUSICA_APD_REGISTO`,
++`ESTUDIOMUSICA_FFMPEG_BIN` e, em `config/config.php`, `retencao_solicitacoes_meses`, `retencao_reclamacoes_meses`,
++`landing_mostrar_precos`, `checkin_antecedencia_max_horas`.
+diff --git a/Modules/EstudioMusica/resources/views/landing/index.blade.php b/Modules/EstudioMusica/resources/views/landing/index.blade.php
+index 4560203..f28a5b2 100644
+--- a/Modules/EstudioMusica/resources/views/landing/index.blade.php
++++ b/Modules/EstudioMusica/resources/views/landing/index.blade.php
+@@ -23,6 +23,13 @@
+                 <div class="rounded-lg border border-slate-200 bg-white p-4">
+                     <h3 class="font-medium text-slate-900">{{ $sala->nome }}</h3>
+                     <p class="mt-1 text-sm text-slate-600">{{ $sala->descricao ?: 'Equipamento profissional de gravação e produção.' }}</p>
++                    @if (config('estudiomusica.landing_mostrar_precos', true) && (float) $sala->preco_hora > 0)
++                        {{-- Indicação de preço (Lei de Defesa do Consumidor). O preço da sala é sem IVA. --}}
++                        <p class="mt-2 text-sm font-medium text-slate-900">
++                            {{ number_format((float) $sala->preco_hora, 2, ',', '.') }} Kz/hora
++                            <span class="text-xs font-normal text-slate-500">(+ IVA)</span>
++                        </p>
++                    @endif
+                 </div>
+             @endforeach
+         </div>
+@@ -80,11 +87,11 @@ class="grid gap-3 rounded-lg border border-slate-200 bg-white p-6 sm:grid-cols-2
+             <select name="tipo_servico_desejado" class="rounded-md border-slate-300 text-sm sm:col-span-2">
+                 <option value="">O que precisas?</option>
+                 @foreach ($tiposServico as $chave => $rotulo)
+-                    <option value="{{ $chave }}">{{ $rotulo }}</option>
++                    <option value="{{ $chave }}" @selected(old('tipo_servico_desejado') === $chave)>{{ $rotulo }}</option>
+                 @endforeach
+             </select>
+             <input type="date" name="data_preferida" value="{{ old('data_preferida') }}" min="{{ now()->toDateString() }}" class="rounded-md border-slate-300 text-sm sm:col-span-2">
+-            <textarea name="mensagem" placeholder="Conta-nos mais sobre o teu projeto" rows="3" class="rounded-md border-slate-300 text-sm sm:col-span-2"></textarea>
++            <textarea name="mensagem" placeholder="Conta-nos mais sobre o teu projeto" rows="3" class="rounded-md border-slate-300 text-sm sm:col-span-2">{{ old('mensagem') }}</textarea>
+             <div class="space-y-2 text-xs text-slate-600 sm:col-span-2">
+                 <label class="flex items-start gap-2">
+                     <input type="checkbox" name="aceita_politica" value="1" required class="mt-0.5 rounded border-slate-300">
+@@ -92,6 +99,7 @@ class="grid gap-3 rounded-lg border border-slate-200 bg-white p-6 sm:grid-cols-2
+                         Autorizo que {{ $empresa->nome_comercial }} trate o meu nome e contactos para responder a este
+                         pedido (Lei n.º 22/11, da Proteção de Dados Pessoais). Posso pedir o acesso, a retificação ou
+                         a eliminação dos meus dados a qualquer momento, contactando o estúdio.
++                        Ver a <a href="{{ route('estudiomusica.landing.privacidade', $empresa->id) }}" target="_blank" rel="noopener" class="underline">Política de Privacidade</a>.
+                     </span>
+                 </label>
+                 <label class="flex items-start gap-2">
+@@ -104,5 +112,39 @@ class="grid gap-3 rounded-lg border border-slate-200 bg-white p-6 sm:grid-cols-2
+             </button>
+         </form>
+     </section>
++
++    {{-- Reclamações: canal digital; o Livro de Reclamações físico continua a ser obrigatório no estabelecimento. --}}
++    <section class="space-y-3 rounded-lg border border-slate-200 bg-white p-5">
++        <h2 class="text-lg font-semibold text-slate-900">Reclamações</h2>
++        <p class="text-sm text-slate-600">
++            Tens à tua disposição o Livro de Reclamações no nosso estabelecimento (Decreto Presidencial n.º 234/16).
++            Se preferires, regista aqui a tua reclamação e respondemos-te.
++        </p>
++        <form method="POST" action="{{ route('estudiomusica.landing.reclamacao', $empresa->id) }}" class="grid gap-3 sm:grid-cols-2">
++            @csrf
++            @if ($errors->reclamacao->any())
++                <div class="sm:col-span-2 rounded-md bg-red-50 p-3 text-sm text-red-700">
++                    @foreach ($errors->reclamacao->all() as $erro)
++                        <p>{{ $erro }}</p>
++                    @endforeach
++                </div>
++            @endif
++            <div class="hidden" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
++            <input type="text" name="nome" value="{{ old('nome') }}" placeholder="O teu nome" required class="rounded-md border-slate-300 text-sm sm:col-span-2">
++            <input type="email" name="email" placeholder="E-mail" class="rounded-md border-slate-300 text-sm">
++            <input type="tel" name="telefone" placeholder="Telefone" class="rounded-md border-slate-300 text-sm">
++            <input type="text" name="assunto" placeholder="Assunto" required maxlength="150" class="rounded-md border-slate-300 text-sm sm:col-span-2">
++            <textarea name="descricao" rows="4" placeholder="Descreve o que aconteceu" required minlength="10" class="rounded-md border-slate-300 text-sm sm:col-span-2"></textarea>
++            <label class="flex items-start gap-2 text-xs text-slate-600 sm:col-span-2">
++                <input type="checkbox" name="aceita_politica" value="1" required class="mt-0.5 rounded border-slate-300">
++                <span>Autorizo o tratamento dos meus dados para tratar esta reclamação (<a href="{{ route('estudiomusica.landing.privacidade', $empresa->id) }}" target="_blank" rel="noopener" class="underline">Política de Privacidade</a>).</span>
++            </label>
++            <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 sm:col-span-2">Registar reclamação</button>
++        </form>
++    </section>
++
++    <footer class="pb-6 text-center text-xs text-slate-500">
++        <a href="{{ route('estudiomusica.landing.privacidade', $empresa->id) }}" class="underline">Política de Privacidade</a>
++    </footer>
+ </main>
+ @endsection
+diff --git a/Modules/EstudioMusica/resources/views/landing/privacidade.blade.php b/Modules/EstudioMusica/resources/views/landing/privacidade.blade.php
+new file mode 100644
+index 0000000..4a3abaf
+--- /dev/null
++++ b/Modules/EstudioMusica/resources/views/landing/privacidade.blade.php
+@@ -0,0 +1,85 @@
++@extends('estudiomusica::layouts.publico')
++
++@section('titulo', 'Política de Privacidade — '.$empresa->nome_comercial)
++
++@section('conteudo')
++@php
++    $responsavel = $empresa->nome_legal ?: $empresa->nome_comercial;
++    $mesesPedidos = (int) config('estudiomusica.retencao_solicitacoes_meses', 12);
++    $mesesReclamacoes = (int) config('estudiomusica.retencao_reclamacoes_meses', 24);
++    $autorizacaoApd = config('estudiomusica.apd_autorizacao_transferencia');
++    $registoApd = config('estudiomusica.apd_registo');
++@endphp
++<main class="mx-auto max-w-3xl space-y-6 px-4 py-10 text-sm leading-relaxed text-slate-700">
++    <header>
++        <h1 class="text-xl font-semibold text-slate-900">Política de Privacidade</h1>
++        <p class="text-slate-500">{{ $empresa->nome_comercial }} &middot; ao abrigo da Lei n.º 22/11, de 17 de junho (Proteção de Dados Pessoais)</p>
++    </header>
++
++    <section class="space-y-1">
++        <h2 class="font-semibold text-slate-900">1. Quem é o responsável</h2>
++        <p>
++            {{ $responsavel }}@if ($empresa->nif), NIF {{ $empresa->nif }}@endif
++            @if ($empresa->morada), {{ $empresa->morada }}@endif
++            @if ($empresa->municipio), {{ $empresa->municipio }}@endif
++            @if ($empresa->provincia), {{ $empresa->provincia }}@endif.
++            @if ($empresa->email) E-mail: {{ $empresa->email }}.@endif
++            @if ($empresa->telefone) Telefone: {{ $empresa->telefone }}.@endif
++        </p>
++        @if ($registoApd)
++            <p>Tratamento notificado à Agência de Proteção de Dados (APD) com o n.º {{ $registoApd }}.</p>
++        @endif
++        <p>O programa informático que usamos para gerir o estúdio trata os dados por nossa conta, como subcontratante.</p>
++    </section>
++
++    <section class="space-y-2">
++        <h2 class="font-semibold text-slate-900">2. Que dados tratamos e para quê</h2>
++        <ul class="list-disc space-y-1 pl-5">
++            <li><strong>Pedidos de orçamento e reservas</strong> (nome, e-mail/telefone, mensagem): para responder ao teu pedido. Conservamos até {{ $mesesPedidos }} meses.</li>
++            <li><strong>Serviços de estúdio</strong> (ficha do artista, projetos, sessões, ficheiros de áudio, comentários e aprovações no portal): para prestar o serviço contratado, durante a relação com o estúdio.</li>
++            <li><strong>Faturação</strong> (nome, NIF, valores): obrigação legal fiscal, pelos prazos que a lei impõe.</li>
++            <li><strong>Avisos do serviço</strong> (lembretes de sessão, novas versões para ouvir): para executar o serviço.</li>
++            <li><strong>Mensagens promocionais</strong> (novidades, aniversário, campanhas): só se tiveres dado o teu consentimento. Podes retirá-lo a qualquer momento — cada mensagem traz uma ligação para deixares de as receber.</li>
++            <li><strong>Reclamações</strong> (nome, contactos, descrição): para as tratar e responder. Conservamos até {{ $mesesReclamacoes }} meses.</li>
++        </ul>
++    </section>
++
++    <section class="space-y-1">
++        <h2 class="font-semibold text-slate-900">3. Com quem partilhamos</h2>
++        <p>
++            Com os prestadores que nos permitem comunicar contigo (e-mail, WhatsApp, SMS) e alojar o sistema.
++            Alguns podem estar fora de Angola. As comunicações por WhatsApp e SMS só são enviadas quando
++            existe autorização para a transferência internacional de dados
++            @if ($autorizacaoApd) (autorização da APD n.º {{ $autorizacaoApd }}) @endif
++            — caso contrário contactamos-te por e-mail.
++            Não vendemos os teus dados.
++        </p>
++    </section>
++
++    <section class="space-y-1">
++        <h2 class="font-semibold text-slate-900">4. Os teus direitos</h2>
++        <p>
++            Podes pedir o acesso, a retificação, a eliminação e a oposição ao tratamento dos teus dados,
++            contactando o estúdio pelos contactos acima. Podes ainda apresentar queixa à Agência de Proteção de
++            Dados (APD). Os documentos fiscais têm de ser conservados pelo prazo legal, mesmo que peças a eliminação.
++        </p>
++    </section>
++
++    <section class="space-y-1">
++        <h2 class="font-semibold text-slate-900">5. Segurança</h2>
++        <p>
++            O acesso ao portal é feito por uma ligação pessoal temporária; os ficheiros de áudio não são públicos;
++            o acesso da equipa depende do papel de cada pessoa; e as mensagens com ligações pessoais circulam cifradas
++            dentro do sistema.
++        </p>
++    </section>
++
++    <section class="space-y-1">
++        <h2 class="font-semibold text-slate-900">6. Cookies</h2>
++        <p>Usamos apenas cookies técnicos, necessários ao funcionamento das páginas. Não usamos cookies de publicidade.</p>
++    </section>
++
++    <p class="text-xs text-slate-400">Última atualização: {{ now()->format('d/m/Y') }}.</p>
++    <p><a href="{{ route('estudiomusica.landing.mostrar', $empresa->id) }}" class="underline">&larr; Voltar</a></p>
++</main>
++@endsection
+diff --git a/Modules/EstudioMusica/resources/views/layouts/publico.blade.php b/Modules/EstudioMusica/resources/views/layouts/publico.blade.php
+index 65b4e25..565c16d 100644
+--- a/Modules/EstudioMusica/resources/views/layouts/publico.blade.php
++++ b/Modules/EstudioMusica/resources/views/layouts/publico.blade.php
+@@ -1,14 +1,15 @@
+ <!DOCTYPE html>
+-<html lang="pt">
++<html lang="pt-AO">
+ <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>@yield('titulo', 'Estúdio de Música')</title>
++    @stack('head')
+ 
+     {{-- Mesmo CSS compilado do Core — Tailwind v4 deteta automaticamente
+          as classes usadas em qualquer parte do projeto, incluindo aqui. --}}
+     @vite(['Modules/Core/resources/css/app.css'])
+-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
++    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js" defer></script>
+ </head>
+ <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+ 
+diff --git a/Modules/EstudioMusica/resources/views/portal/mostrar.blade.php b/Modules/EstudioMusica/resources/views/portal/mostrar.blade.php
+index b09cc28..1da388e 100644
+--- a/Modules/EstudioMusica/resources/views/portal/mostrar.blade.php
++++ b/Modules/EstudioMusica/resources/views/portal/mostrar.blade.php
+@@ -9,6 +9,21 @@
+         <p class="text-sm text-slate-500">Os teus projetos, versões para audição e aprovação.</p>
+     </header>
+ 
++    @unless ($termosAceites)
++        <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm space-y-2">
++            <p class="font-medium text-amber-900">{{ $termos->titulo }} (versão {{ $termos->versao }})</p>
++            <p class="text-amber-800">Para aprovar versões e descarregar os ficheiros finais, lê e aceita os termos.</p>
++            <details>
++                <summary class="cursor-pointer text-amber-900 underline">Ler os termos</summary>
++                <div class="mt-2 whitespace-pre-line text-slate-700">{{ $termos->conteudo }}</div>
++            </details>
++            <form method="POST" action="{{ route('estudiomusica.portal.termos.aceitar', ['token' => request()->route('token')]) }}">
++                @csrf
++                <button type="submit" class="rounded-md bg-amber-700 px-3 py-1.5 text-white hover:bg-amber-600">Li e aceito</button>
++            </form>
++        </div>
++    @endunless
++
+     @forelse ($projetos as $projeto)
+         <section class="rounded-lg border border-slate-200 bg-white p-5 space-y-4">
+             <div class="flex items-center justify-between">
+@@ -16,6 +31,8 @@
+                 <span class="text-xs text-slate-500">{{ $projeto->rotuloEstado() }}</span>
+             </div>
+ 
++            @php $quitado = $projeto->financeiramenteQuitado(); @endphp
++
+             @forelse ($projeto->faixas as $faixa)
+                 <div class="border-t border-slate-100 pt-3 space-y-3">
+                     <p class="text-sm font-medium text-slate-800">{{ $faixa->nome }}</p>
+@@ -24,7 +41,7 @@
+                         <div x-data="{ tempoAtual: 0 }" class="rounded-md bg-slate-50 p-3 space-y-2">
+                             <div class="flex items-center justify-between text-xs text-slate-500">
+                                 <span>{{ $versao->rotulo }} &middot; {{ ucfirst(str_replace('_', ' ', $versao->estado)) }}</span>
+-                                @if ($projeto->financeiramenteQuitado())
++                                @if ($quitado && $termosAceites)
+                                     <a href="{{ route('estudiomusica.portal.versoes.descarregar', ['token' => request()->route('token'), 'versao' => $versao->id]) }}" class="underline">descarregar</a>
+                                 @else
+                                     <span title="Disponível depois de quitado o saldo do projeto">descarregar (bloqueado)</span>
+@@ -35,6 +52,10 @@
+                                    @timeupdate="tempoAtual = $event.target.currentTime"
+                                    src="{{ route('estudiomusica.portal.versoes.reproduzir', ['token' => request()->route('token'), 'versao' => $versao->id]) }}"></audio>
+ 
++                            @unless ($quitado)
++                                <p class="text-xs text-amber-700">Estás a ouvir uma pré-visualização. O ficheiro original, em qualidade total, fica disponível depois do pagamento do projeto.</p>
++                            @endunless
++
+                             {{-- Marcadores de tempo já deixados --}}
+                             <ul class="space-y-1 text-xs text-slate-600">
+                                 @foreach ($versao->marcadores as $marcador)
+@@ -49,6 +70,8 @@
+                                 <button type="submit" class="rounded-md bg-slate-900 px-2.5 py-1 text-xs text-white">Comentar</button>
+                             </form>
+ 
++                            {{-- Só a versão mais recente, ainda por decidir, aceita decisão. --}}
++                            @if ($loop->first && $termosAceites && $versao->estado === 'pendente_aprovacao' && $projeto->estado !== 'concluido')
+                             <div class="flex gap-2">
+                                 <form method="POST" action="{{ route('estudiomusica.portal.versoes.aprovar', ['token' => request()->route('token'), 'versao' => $versao->id]) }}">
+                                     @csrf
+@@ -59,6 +82,7 @@
+                                     <button type="submit" class="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-100">Solicitar ajustes</button>
+                                 </form>
+                             </div>
++                            @endif
+                         </div>
+                     @empty
+                         <p class="text-xs text-slate-400">Ainda sem versões enviadas para esta faixa.</p>
+diff --git a/Modules/EstudioMusica/resources/views/projetos/show.blade.php b/Modules/EstudioMusica/resources/views/projetos/show.blade.php
+index b08bbac..035a445 100644
+--- a/Modules/EstudioMusica/resources/views/projetos/show.blade.php
++++ b/Modules/EstudioMusica/resources/views/projetos/show.blade.php
+@@ -38,7 +38,8 @@
+             <h2 class="text-sm font-semibold text-slate-900">Situação financeira</h2>
+             <dl class="mt-2 space-y-1 text-sm text-slate-600">
+                 @if ($projeto->tipo_cobranca === 'pacote')
+-                    <div class="flex justify-between"><dt>Valor do pacote</dt><dd>{{ number_format((float) $projeto->valor_pacote, 2) }} Kz</dd></div>
++                    <div class="flex justify-between"><dt>Valor do pacote (sem IVA)</dt><dd>{{ number_format((float) $projeto->valor_pacote, 2) }} Kz</dd></div>
++                    <div class="flex justify-between"><dt>Pacote com IVA</dt><dd>{{ number_format((float) $projeto->valor_pacote * (1 + (float) config('faturacao.taxa_iva_geral') / 100), 2) }} Kz</dd></div>
+                 @endif
+                 <div class="flex justify-between"><dt>Faturado</dt><dd>{{ number_format($projeto->valorTotalFaturado(), 2) }} Kz</dd></div>
+                 <div class="flex justify-between"><dt>Recebido</dt><dd>{{ number_format($projeto->valorTotalRecebido(), 2) }} Kz</dd></div>
+@@ -62,6 +63,68 @@
+         </div>
+     </div>
+ 
++    {{-- Faturas e pagamentos --}}
++    <div class="rounded-lg border border-slate-200 bg-white p-4">
++        <h2 class="text-sm font-semibold text-slate-900">Faturas e pagamentos</h2>
++        <div class="mt-2 divide-y divide-slate-100 text-sm">
++            @forelse ($projeto->faturas->where('estado', 'emitida') as $fatura)
++                @php
++                    $recebido = (float) $projeto->recibos->where('estado', 'emitido')->where('fatura_id', $fatura->id)->sum('valor');
++                    $emFalta = round((float) $fatura->valor_total - $recebido, 2);
++                @endphp
++                <div class="flex flex-wrap items-center justify-between gap-2 py-2">
++                    <div>
++                        <p class="font-medium text-slate-900">{{ $fatura->numero_documento }}</p>
++                        <p class="text-xs text-slate-500">{{ number_format((float) $fatura->valor_total, 2) }} Kz &middot; recebido {{ number_format($recebido, 2) }} Kz</p>
++                    </div>
++                    @if ($emFalta > 0)
++                        <form method="POST" action="{{ route('estudiomusica.projetos.recibos', $projeto) }}" class="flex flex-wrap items-center gap-2">
++                            @csrf
++                            <input type="hidden" name="fatura_id" value="{{ $fatura->id }}">
++                            <select name="meio_pagamento" class="rounded-md border-slate-300 text-xs">
++                                <option value="multicaixa">Multicaixa</option>
++                                <option value="transferencia">Transferência</option>
++                                <option value="dinheiro">Dinheiro</option>
++                                <option value="outro">Outro</option>
++                            </select>
++                            <input type="number" step="0.01" min="0.01" max="{{ $emFalta }}" name="valor" placeholder="{{ number_format($emFalta, 2, '.', '') }}" class="w-28 rounded-md border-slate-300 text-xs" title="Deixa vazio para receber o que falta">
++                            <button type="submit" class="rounded-md bg-slate-900 px-2.5 py-1 text-xs text-white hover:bg-slate-700">Registar pagamento</button>
++                        </form>
++                    @else
++                        <span class="text-xs text-emerald-700">Paga</span>
++                    @endif
++                </div>
++            @empty
++                <p class="py-2 text-slate-500">Ainda sem faturas emitidas.</p>
++            @endforelse
++        </div>
++    </div>
++
++    {{-- Ficha do artista (e consentimento de marketing) --}}
++    <div class="rounded-lg border border-slate-200 bg-white p-4">
++        <h2 class="text-sm font-semibold text-slate-900">Ficha do artista</h2>
++        <form method="POST" action="{{ route('estudiomusica.clientes.perfil-artista', $projeto->cliente_id) }}" class="mt-2 grid gap-3 sm:grid-cols-3">
++            @csrf
++            @method('PUT')
++            <input type="text" name="nome_artistico" value="{{ $projeto->cliente->nome_artistico }}" placeholder="Nome artístico" class="rounded-md border-slate-300 text-sm">
++            <input type="text" name="genero_musical" value="{{ $projeto->cliente->genero_musical }}" placeholder="Género musical" class="rounded-md border-slate-300 text-sm">
++            <input type="date" name="data_nascimento" value="{{ $projeto->cliente->data_nascimento ? \Illuminate\Support\Carbon::parse($projeto->cliente->data_nascimento)->format('Y-m-d') : '' }}" max="{{ now()->subDay()->toDateString() }}" class="rounded-md border-slate-300 text-sm" title="Data de nascimento (usada só na mensagem de aniversário)">
++            <label class="flex items-start gap-2 text-xs text-slate-600 sm:col-span-3">
++                <input type="hidden" name="aceita_marketing" value="0">
++                <input type="checkbox" name="aceita_marketing" value="1" @checked($projeto->cliente->aceita_marketing) class="mt-0.5 rounded border-slate-300">
++                <span>
++                    O artista aceitou receber mensagens promocionais (aniversário, novidades, campanhas).
++                    @if ($projeto->cliente->aceita_marketing && $projeto->cliente->aceita_marketing_em)
++                        <span class="text-slate-400">Registado em {{ \Illuminate\Support\Carbon::parse($projeto->cliente->aceita_marketing_em)->format('d/m/Y') }}.</span>
++                    @endif
++                </span>
++            </label>
++            <div class="sm:col-span-3">
++                <button type="submit" class="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-700">Guardar ficha</button>
++            </div>
++        </form>
++    </div>
++
+     {{-- Faixas e versões --}}
+     <div class="rounded-lg border border-slate-200 bg-white p-4">
+         <div class="flex items-center justify-between">
+diff --git a/Modules/EstudioMusica/resources/views/reclamacoes/index.blade.php b/Modules/EstudioMusica/resources/views/reclamacoes/index.blade.php
+new file mode 100644
+index 0000000..a7e3820
+--- /dev/null
++++ b/Modules/EstudioMusica/resources/views/reclamacoes/index.blade.php
+@@ -0,0 +1,42 @@
++@extends('core::layouts.app')
++
++@section('titulo', 'Reclamações')
++
++@section('conteudo')
++    <h1 class="mb-1 text-lg font-semibold text-slate-900">Reclamações</h1>
++    <p class="mb-6 text-sm text-slate-500">
++        Reclamações recebidas pela página pública. Não substituem o Livro de Reclamações físico, que deve estar
++        sempre disponível no estabelecimento.
++    </p>
++
++    <div class="space-y-3">
++        @forelse ($reclamacoes as $reclamacao)
++            <div class="rounded-md border border-slate-200 bg-white p-4 text-sm">
++                <div class="flex flex-wrap items-center justify-between gap-2">
++                    <p class="font-medium text-slate-900">#{{ $reclamacao->id }} &middot; {{ $reclamacao->assunto }}</p>
++                    <span class="text-xs text-slate-500">{{ $reclamacao->created_at->format('d/m/Y H:i') }}</span>
++                </div>
++                <p class="mt-1 text-xs text-slate-500">{{ $reclamacao->nome }} &middot; {{ $reclamacao->email ?: '—' }} &middot; {{ $reclamacao->telefone ?: '—' }}</p>
++                <p class="mt-2 whitespace-pre-line text-slate-700">{{ $reclamacao->descricao }}</p>
++
++                <form method="POST" action="{{ route('estudiomusica.reclamacoes.atualizar', $reclamacao->id) }}" class="mt-3 space-y-2">
++                    @csrf
++                    @method('PUT')
++                    <textarea name="resposta" rows="2" placeholder="Resposta ao cliente" maxlength="3000" class="w-full rounded-md border-slate-300 text-sm">{{ $reclamacao->resposta }}</textarea>
++                    <div class="flex items-center gap-2">
++                        <select name="estado" class="rounded-md border-slate-300 text-xs">
++                            @foreach (['recebida' => 'Recebida', 'em_analise' => 'Em análise', 'resolvida' => 'Resolvida'] as $valor => $rotulo)
++                                <option value="{{ $valor }}" @selected($reclamacao->estado === $valor)>{{ $rotulo }}</option>
++                            @endforeach
++                        </select>
++                        <button type="submit" class="rounded-md bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700">Guardar / responder</button>
++                    </div>
++                </form>
++            </div>
++        @empty
++            <p class="text-sm text-slate-500">Ainda sem reclamações.</p>
++        @endforelse
++    </div>
++
++    <div class="mt-4">{{ $reclamacoes->links() }}</div>
++@endsection
+diff --git a/Modules/EstudioMusica/resources/views/solicitacoes/index.blade.php b/Modules/EstudioMusica/resources/views/solicitacoes/index.blade.php
+index 68e5419..4025d29 100644
+--- a/Modules/EstudioMusica/resources/views/solicitacoes/index.blade.php
++++ b/Modules/EstudioMusica/resources/views/solicitacoes/index.blade.php
+@@ -14,7 +14,10 @@
+                     <th class="px-4 py-2">Contacto</th>
+                     <th class="px-4 py-2">Serviço desejado</th>
+                     <th class="px-4 py-2">Mensagem</th>
++                    <th class="px-4 py-2">Marketing</th>
++                    <th class="px-4 py-2">Recebido</th>
+                     <th class="px-4 py-2">Estado</th>
++                    <th class="px-4 py-2"></th>
+                 </tr>
+             </thead>
+             <tbody class="divide-y divide-slate-100">
+@@ -24,6 +27,8 @@
+                         <td class="px-4 py-2 text-slate-600">{{ $solicitacao->email }} {{ $solicitacao->telefone }}</td>
+                         <td class="px-4 py-2 text-slate-600">{{ config('estudiomusica.tipos_servico.'.$solicitacao->tipo_servico_desejado, '—') }}</td>
+                         <td class="px-4 py-2 text-slate-600">{{ \Illuminate\Support\Str::limit($solicitacao->mensagem, 60) }}</td>
++                        <td class="px-4 py-2 text-xs {{ $solicitacao->aceita_marketing ? 'text-emerald-700' : 'text-slate-400' }}">{{ $solicitacao->aceita_marketing ? 'Aceitou' : 'Não' }}</td>
++                        <td class="px-4 py-2 text-xs text-slate-500">{{ $solicitacao->created_at->format('d/m/Y H:i') }}</td>
+                         <td class="px-4 py-2">
+                             <form method="POST" action="{{ route('estudiomusica.solicitacoes.estado', $solicitacao) }}">
+                                 @csrf
+@@ -35,9 +40,17 @@
+                                 </select>
+                             </form>
+                         </td>
++                        <td class="px-4 py-2">
++                            @if ($solicitacao->estado !== 'convertido')
++                                <form method="POST" action="{{ route('estudiomusica.solicitacoes.converter', $solicitacao) }}">
++                                    @csrf
++                                    <button type="submit" class="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Converter em cliente</button>
++                                </form>
++                            @endif
++                        </td>
+                     </tr>
+                 @empty
+-                    <tr><td colspan="5" class="px-4 py-6 text-center text-slate-500">Ainda sem pedidos recebidos.</td></tr>
++                    <tr><td colspan="8" class="px-4 py-6 text-center text-slate-500">Ainda sem pedidos recebidos.</td></tr>
+                 @endforelse
+             </tbody>
+         </table>
+diff --git a/Modules/EstudioMusica/resources/views/termos/index.blade.php b/Modules/EstudioMusica/resources/views/termos/index.blade.php
+new file mode 100644
+index 0000000..f627a64
+--- /dev/null
++++ b/Modules/EstudioMusica/resources/views/termos/index.blade.php
+@@ -0,0 +1,47 @@
++@extends('core::layouts.app')
++
++@section('titulo', 'Termos e Privacidade')
++
++@section('conteudo')
++    <h1 class="mb-1 text-lg font-semibold text-slate-900">Termos e Privacidade</h1>
++    <p class="mb-6 text-sm text-slate-500">
++        Os clientes aceitam os Termos de Serviço no Portal antes de aprovar ou descarregar ficheiros.
++        A Política de Privacidade pública está em
++        <a class="underline" href="{{ route('estudiomusica.landing.privacidade', $empresa->id) }}" target="_blank" rel="noopener">{{ route('estudiomusica.landing.privacidade', $empresa->id) }}</a>.
++    </p>
++
++    <div class="mb-6 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
++        O texto inicial é um <strong>modelo</strong>. Pede ao teu advogado para o validar e adaptar (direitos sobre os masters,
++        cancelamentos, preços) antes de o publicares como versão definitiva.
++    </div>
++
++    <form method="POST" action="{{ route('estudiomusica.termos.publicar') }}" class="mb-8 space-y-3 rounded-md border border-slate-200 bg-white p-4">
++        @csrf
++        <h2 class="text-sm font-semibold text-slate-900">Publicar nova versão (a atual é a v{{ $atual->versao }})</h2>
++        <input type="text" name="titulo" value="{{ old('titulo', $atual->titulo) }}" required maxlength="150" class="w-full rounded-md border-slate-300 text-sm">
++        <textarea name="conteudo" rows="18" required minlength="100" class="w-full rounded-md border-slate-300 font-mono text-xs">{{ old('conteudo', $atual->conteudo) }}</textarea>
++        @if ($errors->any())
++            <p class="text-sm text-red-700">{{ $errors->first() }}</p>
++        @endif
++        <button type="submit" class="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-700">Publicar nova versão</button>
++        <p class="text-xs text-slate-500">Todos os clientes voltam a ter de aceitar.</p>
++    </form>
++
++    <div class="overflow-hidden rounded-md border border-slate-200 bg-white">
++        <table class="w-full text-left text-sm">
++            <thead class="bg-slate-50 text-xs uppercase text-slate-500">
++                <tr><th class="px-4 py-3">Versão</th><th class="px-4 py-3">Título</th><th class="px-4 py-3">Publicada em</th><th class="px-4 py-3">Aceites</th></tr>
++            </thead>
++            <tbody class="divide-y divide-slate-100">
++                @foreach ($historico as $versao)
++                    <tr>
++                        <td class="px-4 py-2">v{{ $versao->versao }}</td>
++                        <td class="px-4 py-2">{{ $versao->titulo }}</td>
++                        <td class="px-4 py-2 text-slate-500">{{ $versao->publicado_em->format('d/m/Y H:i') }}</td>
++                        <td class="px-4 py-2">{{ $versao->aceites_count }}</td>
++                    </tr>
++                @endforeach
++            </tbody>
++        </table>
++    </div>
++@endsection
+diff --git a/Modules/EstudioMusica/routes/web.php b/Modules/EstudioMusica/routes/web.php
+index 0ffae53..b1c6f9b 100644
+--- a/Modules/EstudioMusica/routes/web.php
++++ b/Modules/EstudioMusica/routes/web.php
+@@ -7,9 +7,11 @@
+ use Modules\EstudioMusica\Http\Controllers\PerfilArtistaController;
+ use Modules\EstudioMusica\Http\Controllers\PortalClienteController;
+ use Modules\EstudioMusica\Http\Controllers\ProjetoMusicalController;
++use Modules\EstudioMusica\Http\Controllers\ReclamacaoController;
+ use Modules\EstudioMusica\Http\Controllers\SalaEstudioController;
+ use Modules\EstudioMusica\Http\Controllers\SessaoEstudioController;
+ use Modules\EstudioMusica\Http\Controllers\SolicitacaoOrcamentoController;
++use Modules\EstudioMusica\Http\Controllers\TermosEstudioController;
+ use Modules\EstudioMusica\Http\Controllers\VersaoAudioController;
+ use Modules\EstudioMusica\Support\PapeisEstudio;
+ 
+@@ -24,18 +26,25 @@
+ Route::prefix('estudio/{empresa}')->middleware('servico.empresa:estudio')->name('estudiomusica.landing.')->group(function () {
+     Route::get('/', [LandingController::class, 'mostrar'])->name('mostrar');
+     Route::post('/orcamento', [LandingController::class, 'solicitarOrcamento'])->middleware('throttle:10,1')->name('orcamento');
+-    // Saída do marketing: ligação assinada enviada no rodapé das mensagens promocionais.
+-    Route::get('/marketing/sair/{cliente}', [LandingController::class, 'cancelarMarketing'])
+-        ->middleware(['signed', 'throttle:30,1'])->whereNumber('cliente')->name('marketing-sair');
++    Route::get('/privacidade', [LandingController::class, 'privacidade'])->name('privacidade');
++    Route::post('/reclamacoes', [LandingController::class, 'registrarReclamacao'])->middleware('throttle:5,1')->name('reclamacao');
+ });
+ 
++// Saída do marketing: ligação assinada enviada no rodapé das mensagens promocionais.
++// FORA do grupo 'servico.empresa': o direito de oposição tem de funcionar sempre,
++// mesmo que o estúdio entretanto tenha deixado de ter o serviço ativo.
++Route::get('estudio/{empresa}/marketing/sair/{cliente}', [LandingController::class, 'cancelarMarketing'])
++    ->middleware(['signed', 'throttle:30,1'])
++    ->whereNumber('cliente')
++    ->name('estudiomusica.landing.marketing-sair');
++
+ /*
+ |--------------------------------------------------------------------------
+ | Portal do Cliente (secção C) — autenticado por token, nunca por 'auth'.
+ |--------------------------------------------------------------------------
+ */
+ Route::prefix('portal/{token}')
+-    ->middleware(['throttle:120,1', 'portal.cliente'])
++    ->middleware(['throttle:estudiomusica-portal', 'portal.cliente'])
+     ->where(['versao' => '[0-9]+'])
+     ->name('estudiomusica.portal.')
+     ->group(function () {
+@@ -45,6 +54,7 @@
+         Route::post('/versoes/{versao}/comentar', [PortalClienteController::class, 'comentar'])->name('versoes.comentar');
+         Route::post('/versoes/{versao}/aprovar', [PortalClienteController::class, 'aprovar'])->name('versoes.aprovar');
+         Route::post('/versoes/{versao}/ajustes', [PortalClienteController::class, 'solicitarAjustes'])->name('versoes.ajustes');
++        Route::post('/termos/aceitar', [PortalClienteController::class, 'aceitarTermos'])->name('termos.aceitar');
+     });
+ 
+ /*
+@@ -62,9 +72,15 @@
+     ->name('estudiomusica.')
+     // ids sempre numéricos: um {id} não numérico dava erro 500 (TypeError nos
+     // controllers que recebem `int`) em vez de 404.
+-    ->where(['projeto' => '[0-9]+', 'versao' => '[0-9]+', 'sessao' => '[0-9]+', 'faixa' => '[0-9]+', 'sala' => '[0-9]+', 'cliente' => '[0-9]+', 'solicitacao' => '[0-9]+'])
++    ->where(['projeto' => '[0-9]+', 'versao' => '[0-9]+', 'sessao' => '[0-9]+', 'faixa' => '[0-9]+', 'sala' => '[0-9]+', 'cliente' => '[0-9]+', 'solicitacao' => '[0-9]+', 'reclamacao' => '[0-9]+'])
+     ->group(function () {
+         // Equipa: só o Administrador atribui os papéis Receção/Engenheiro.
++        // Termos de Serviço e Política de Privacidade: só o Administrador publica versões.
++        Route::middleware('papel:Administrador')->prefix('termos')->name('termos.')->group(function () {
++            Route::get('/', [TermosEstudioController::class, 'index'])->name('index');
++            Route::post('/', [TermosEstudioController::class, 'publicar'])->name('publicar');
++        });
++
+         Route::middleware('papel:Administrador')->prefix('equipa')->name('equipa.')->group(function () {
+             Route::get('/', [EquipaEstudioController::class, 'index'])->name('index');
+             Route::post('/atribuir', [EquipaEstudioController::class, 'atribuir'])->name('atribuir');
+@@ -85,6 +101,7 @@
+             Route::get('/projetos/{projeto}', [ProjetoMusicalController::class, 'show'])->whereNumber('projeto')->name('projetos.show');
+             Route::get('/sessoes', [SessaoEstudioController::class, 'index'])->name('sessoes.index');
+             Route::get('/versoes/{versao}/reproduzir', [VersaoAudioController::class, 'reproduzir'])->name('versoes.reproduzir');
++            Route::get('/reclamacoes', [ReclamacaoController::class, 'index'])->name('reclamacoes.index');
+         });
+ 
+         // Salas: só Administrador ("configuração de preços", secção H).
+@@ -115,6 +132,7 @@
+         Route::middleware('permission:estudiomusica.emitir-cobranca')->group(function () {
+             Route::post('/projetos/{projeto}/sinal', [ProjetoMusicalController::class, 'gerarSinal'])->name('projetos.sinal');
+             Route::post('/projetos/{projeto}/saldo-final', [ProjetoMusicalController::class, 'gerarSaldoFinal'])->name('projetos.saldo-final');
++            Route::post('/projetos/{projeto}/recibos', [ProjetoMusicalController::class, 'registrarPagamento'])->name('projetos.recibos');
+         });
+ 
+         // Sessões e pedidos de orçamento recebidos: Administrador + Receção.
+@@ -123,6 +141,8 @@
+             Route::delete('/sessoes/{sessao}', [SessaoEstudioController::class, 'cancelar'])->name('sessoes.cancelar');
+             Route::get('/solicitacoes', [SolicitacaoOrcamentoController::class, 'index'])->name('solicitacoes.index');
+             Route::put('/solicitacoes/{solicitacao}/estado', [SolicitacaoOrcamentoController::class, 'atualizarEstado'])->name('solicitacoes.estado');
++            Route::post('/solicitacoes/{solicitacao}/converter', [SolicitacaoOrcamentoController::class, 'converter'])->name('solicitacoes.converter');
++            Route::put('/reclamacoes/{reclamacao}', [ReclamacaoController::class, 'atualizar'])->name('reclamacoes.atualizar');
+         });
+ 
+         // Check-in/out: Administrador + Receção.
+diff --git a/Modules/EstudioMusica/tests/Feature/AniversarioTest.php b/Modules/EstudioMusica/tests/Feature/AniversarioTest.php
+new file mode 100644
+index 0000000..4bcf6b7
+--- /dev/null
++++ b/Modules/EstudioMusica/tests/Feature/AniversarioTest.php
+@@ -0,0 +1,28 @@
++<?php
++
++namespace Modules\EstudioMusica\Tests\Feature;
++
++use Carbon\Carbon;
++use Modules\EstudioMusica\Support\Aniversario;
++use Tests\TestCase;
++
++class AniversarioTest extends TestCase
++{
++    public function test_aniversario_normal(): void
++    {
++        $this->assertTrue(Aniversario::hoje('1995-07-14', Carbon::parse('2026-07-14')));
++        $this->assertFalse(Aniversario::hoje('1995-07-14', Carbon::parse('2026-07-15')));
++    }
++
++    public function test_nascido_a_29_de_fevereiro_festeja_a_28_nos_anos_nao_bissextos(): void
++    {
++        $this->assertTrue(Aniversario::hoje('2000-02-29', Carbon::parse('2026-02-28')));
++        $this->assertFalse(Aniversario::hoje('2000-02-29', Carbon::parse('2026-03-01')));
++    }
++
++    public function test_nascido_a_29_de_fevereiro_festeja_a_29_nos_anos_bissextos(): void
++    {
++        $this->assertTrue(Aniversario::hoje('2000-02-29', Carbon::parse('2028-02-29')));
++        $this->assertFalse(Aniversario::hoje('2000-02-29', Carbon::parse('2028-02-28')));
++    }
++}
+diff --git a/Modules/EstudioMusica/tests/Feature/DadosPessoaisTest.php b/Modules/EstudioMusica/tests/Feature/DadosPessoaisTest.php
+new file mode 100644
+index 0000000..96b2594
+--- /dev/null
++++ b/Modules/EstudioMusica/tests/Feature/DadosPessoaisTest.php
+@@ -0,0 +1,111 @@
++<?php
++
++namespace Modules\EstudioMusica\Tests\Feature;
++
++use Illuminate\Foundation\Testing\RefreshDatabase;
++use Modules\Core\Models\Empresa;
++use Modules\Core\Services\TenantManager;
++use Modules\EstudioMusica\Jobs\PurgarSolicitacoesAntigasJob;
++use Modules\EstudioMusica\Models\SolicitacaoOrcamento;
++use Modules\EstudioMusica\Services\DadosPessoaisService;
++use Modules\Faturacao\Models\Cliente;
++use Tests\TestCase;
++
++/**
++ * Direitos do titular (Lei n.º 22/11): exportação, eliminação e retenção.
++ */
++class DadosPessoaisTest extends TestCase
++{
++    use RefreshDatabase;
++
++    protected Empresa $empresa;
++
++    protected Cliente $cliente;
++
++    protected function setUp(): void
++    {
++        parent::setUp();
++
++        $this->empresa = Empresa::create(['nome_comercial' => 'Estúdio Dados', 'nif' => '400000004']);
++        app(TenantManager::class)->set($this->empresa->id);
++
++        $this->cliente = (new Cliente)->forceFill([
++            'empresa_id' => $this->empresa->id,
++            'nome' => 'Artista Teste',
++            'email' => 'artista@example.test',
++            'telefone' => '923456789',
++            'nome_artistico' => 'MC Teste',
++            'data_nascimento' => '1995-07-14',
++            'aceita_marketing' => true,
++            'aceita_marketing_em' => now(),
++            'token_portal' => hash('sha256', 'segredo'),
++            'token_portal_expira_em' => now()->addDay(),
++        ]);
++        $this->cliente->save();
++    }
++
++    protected function pedido(string $email, ?string $telefone = null): SolicitacaoOrcamento
++    {
++        return SolicitacaoOrcamento::create([
++            'empresa_id' => $this->empresa->id,
++            'nome' => 'Lead',
++            'email' => $email,
++            'telefone' => $telefone,
++        ]);
++    }
++
++    public function test_exportacao_inclui_a_ficha_mas_nunca_o_token_do_portal(): void
++    {
++        $this->pedido('artista@example.test');
++
++        $dados = app(DadosPessoaisService::class)->exportar($this->cliente);
++
++        $this->assertSame('MC Teste', $dados['cliente']['nome_artistico']);
++        $this->assertArrayNotHasKey('token_portal', $dados['cliente']);
++        $this->assertCount(1, $dados['pedidos_orcamento']);
++    }
++
++    public function test_limpeza_apaga_ficha_consentimento_e_acesso_ao_portal_mas_mantem_o_cliente(): void
++    {
++        $this->pedido('artista@example.test');
++        $outro = $this->pedido('outra.pessoa@example.test');
++
++        $r = app(DadosPessoaisService::class)->limpar($this->cliente);
++
++        $cliente = Cliente::find($this->cliente->id);
++        $this->assertNotNull($cliente);
++        $this->assertSame('Artista Teste', $cliente->nome);
++        $this->assertNull($cliente->nome_artistico);
++        $this->assertNull($cliente->data_nascimento);
++        $this->assertNull($cliente->token_portal);
++        $this->assertFalse((bool) $cliente->aceita_marketing);
++        $this->assertSame(1, $r['pedidos_orcamento']);
++        $this->assertNotNull(SolicitacaoOrcamento::find($outro->id), 'pedidos de outras pessoas ficam intactos');
++    }
++
++    public function test_cliente_sem_email_nem_telefone_nao_apaga_pedidos_de_ninguem(): void
++    {
++        $sem = (new Cliente)->forceFill(['empresa_id' => $this->empresa->id, 'nome' => 'Sem contactos']);
++        $sem->save();
++        $pedido = $this->pedido('alguem@example.test');
++
++        $r = app(DadosPessoaisService::class)->limpar($sem);
++
++        $this->assertSame(0, $r['pedidos_orcamento']);
++        $this->assertNotNull(SolicitacaoOrcamento::find($pedido->id));
++    }
++
++    public function test_job_de_retencao_apaga_so_os_pedidos_antigos(): void
++    {
++        config(['estudiomusica.retencao_solicitacoes_meses' => 12]);
++
++        $antigo = $this->pedido('antigo@example.test');
++        $antigo->forceFill(['created_at' => now()->subMonths(13)])->save();
++        $recente = $this->pedido('recente@example.test');
++
++        (new PurgarSolicitacoesAntigasJob)->handle(app(TenantManager::class));
++
++        $this->assertNull(SolicitacaoOrcamento::withoutGlobalScopes()->find($antigo->id));
++        $this->assertNotNull(SolicitacaoOrcamento::withoutGlobalScopes()->find($recente->id));
++    }
++}
+diff --git a/Modules/EstudioMusica/tests/Feature/LandingConformidadeTest.php b/Modules/EstudioMusica/tests/Feature/LandingConformidadeTest.php
+new file mode 100644
+index 0000000..4b79faf
+--- /dev/null
++++ b/Modules/EstudioMusica/tests/Feature/LandingConformidadeTest.php
+@@ -0,0 +1,133 @@
++<?php
++
++namespace Modules\EstudioMusica\Tests\Feature;
++
++use Illuminate\Foundation\Testing\RefreshDatabase;
++use Illuminate\Support\Facades\URL;
++use Modules\Core\Models\Empresa;
++use Modules\Core\Services\TenantManager;
++use Modules\EstudioMusica\Models\Reclamacao;
++use Modules\EstudioMusica\Models\SolicitacaoOrcamento;
++use Modules\Faturacao\Models\Cliente;
++use Tests\TestCase;
++
++/**
++ * Landing pública: consentimento (Lei n.º 22/11), anti-robôs, canal de
++ * reclamações, política de privacidade e saída do marketing.
++ */
++class LandingConformidadeTest extends TestCase
++{
++    use RefreshDatabase;
++
++    protected Empresa $empresa;
++
++    protected function setUp(): void
++    {
++        parent::setUp();
++
++        $this->withoutVite();
++
++        $this->empresa = Empresa::create(['nome_comercial' => 'Estúdio Landing', 'nif' => '400000006']);
++        $this->empresa->aderirServicos(['estudio']);
++    }
++
++    protected function orcamento(array $extra = []): \Illuminate\Testing\TestResponse
++    {
++        return $this->post(route('estudiomusica.landing.orcamento', ['empresa' => $this->empresa->id]), array_merge([
++            'nome' => 'Lead Teste',
++            'email' => 'lead@example.test',
++        ], $extra));
++    }
++
++    public function test_pedido_sem_consentimento_e_recusado(): void
++    {
++        $this->orcamento()->assertSessionHasErrors('aceita_politica');
++
++        $this->assertSame(0, SolicitacaoOrcamento::withoutGlobalScopes()->count());
++    }
++
++    public function test_pedido_com_consentimento_guarda_a_prova_e_o_marketing_so_se_marcado(): void
++    {
++        $this->orcamento(['aceita_politica' => '1'])->assertSessionHasNoErrors();
++
++        $pedido = SolicitacaoOrcamento::withoutGlobalScopes()->firstOrFail();
++        $this->assertNotNull($pedido->consentimento_dados_em);
++        $this->assertFalse((bool) $pedido->aceita_marketing);
++
++        $this->orcamento(['aceita_politica' => '1', 'aceita_marketing' => '1', 'email' => 'outro@example.test']);
++
++        $this->assertSame(1, SolicitacaoOrcamento::withoutGlobalScopes()->where('aceita_marketing', true)->count());
++    }
++
++    public function test_pedido_exige_um_meio_de_contacto(): void
++    {
++        $this->post(route('estudiomusica.landing.orcamento', ['empresa' => $this->empresa->id]), [
++            'nome' => 'Sem contacto',
++            'aceita_politica' => '1',
++        ])->assertSessionHasErrors(['email', 'telefone']);
++    }
++
++    public function test_robo_que_preenche_o_campo_escondido_nao_cria_pedido(): void
++    {
++        $this->orcamento(['aceita_politica' => '1', 'website' => 'http://spam.example'])->assertSessionHasNoErrors();
++
++        $this->assertSame(0, SolicitacaoOrcamento::withoutGlobalScopes()->count());
++    }
++
++    public function test_reclamacao_valida_e_registada(): void
++    {
++        $this->post(route('estudiomusica.landing.reclamacao', ['empresa' => $this->empresa->id]), [
++            'nome' => 'Cliente Chateado',
++            'email' => 'cliente@example.test',
++            'assunto' => 'Atraso na entrega',
++            'descricao' => 'A mistura devia ter sido entregue na semana passada.',
++            'aceita_politica' => '1',
++        ])->assertSessionHasNoErrors();
++
++        $r = Reclamacao::withoutGlobalScopes()->firstOrFail();
++        $this->assertSame('recebida', $r->estado);
++        $this->assertNotNull($r->consentimento_dados_em);
++    }
++
++    public function test_reclamacao_sem_consentimento_falha_no_bag_proprio(): void
++    {
++        $this->post(route('estudiomusica.landing.reclamacao', ['empresa' => $this->empresa->id]), [
++            'nome' => 'Cliente',
++            'email' => 'cliente@example.test',
++            'assunto' => 'Assunto',
++            'descricao' => 'Descrição suficientemente longa.',
++        ])->assertSessionHasErrors('aceita_politica', null, 'reclamacao');
++
++        $this->assertSame(0, Reclamacao::withoutGlobalScopes()->count());
++    }
++
++    public function test_politica_de_privacidade_e_publica(): void
++    {
++        $this->get(route('estudiomusica.landing.privacidade', ['empresa' => $this->empresa->id]))
++            ->assertOk()
++            ->assertSee('Política de Privacidade')
++            ->assertSee('Estúdio Landing');
++    }
++
++    public function test_ligacao_de_saida_do_marketing_funciona_assinada_e_mesmo_sem_o_servico(): void
++    {
++        // Empresa SEM o serviço do estúdio: o direito de oposição tem de funcionar na mesma.
++        $outra = Empresa::create(['nome_comercial' => 'Sem Estúdio', 'nif' => '400000007']);
++        app(TenantManager::class)->set($outra->id);
++        $cliente = (new Cliente)->forceFill([
++            'empresa_id' => $outra->id,
++            'nome' => 'Artista',
++            'aceita_marketing' => true,
++            'aceita_marketing_em' => now(),
++        ]);
++        $cliente->save();
++
++        $parametros = ['empresa' => $outra->id, 'cliente' => $cliente->id];
++
++        $this->get(route('estudiomusica.landing.marketing-sair', $parametros))->assertForbidden();
++        $this->assertTrue((bool) Cliente::withoutGlobalScopes()->find($cliente->id)->aceita_marketing);
++
++        $this->get(URL::signedRoute('estudiomusica.landing.marketing-sair', $parametros))->assertOk();
++        $this->assertFalse((bool) Cliente::withoutGlobalScopes()->find($cliente->id)->aceita_marketing);
++    }
++}
+diff --git a/Modules/EstudioMusica/tests/Feature/PortalTermosTest.php b/Modules/EstudioMusica/tests/Feature/PortalTermosTest.php
+new file mode 100644
+index 0000000..60284df
+--- /dev/null
++++ b/Modules/EstudioMusica/tests/Feature/PortalTermosTest.php
+@@ -0,0 +1,129 @@
++<?php
++
++namespace Modules\EstudioMusica\Tests\Feature;
++
++use Illuminate\Foundation\Testing\RefreshDatabase;
++use Modules\Core\Models\Empresa;
++use Modules\Core\Services\TenantManager;
++use Modules\EstudioMusica\Models\FaixaMusical;
++use Modules\EstudioMusica\Models\ProjetoMusical;
++use Modules\EstudioMusica\Models\VersaoAudio;
++use Modules\Faturacao\Models\Cliente;
++use Tests\TestCase;
++
++/**
++ * Portal: o cliente só aprova versões depois de aceitar os Termos de
++ * Serviço (propriedade dos masters), e só decide sobre a versão mais recente.
++ */
++class PortalTermosTest extends TestCase
++{
++    use RefreshDatabase;
++
++    protected const TOKEN = 'token-de-teste-portal-0123456789abcdef0123456789';
++
++    protected Empresa $empresa;
++
++    protected Cliente $cliente;
++
++    protected VersaoAudio $versao;
++
++    protected function setUp(): void
++    {
++        parent::setUp();
++
++        $this->withoutVite();
++
++        $this->empresa = Empresa::create(['nome_comercial' => 'Estúdio Portal', 'nif' => '400000008']);
++        app(TenantManager::class)->set($this->empresa->id);
++
++        $this->cliente = (new Cliente)->forceFill([
++            'empresa_id' => $this->empresa->id,
++            'nome' => 'Artista Portal',
++            'token_portal' => hash('sha256', self::TOKEN),
++            'token_portal_expira_em' => now()->addDay(),
++        ]);
++        $this->cliente->save();
++
++        $projeto = ProjetoMusical::create([
++            'empresa_id' => $this->empresa->id,
++            'cliente_id' => $this->cliente->id,
++            'nome' => 'Projeto Portal',
++            'tipo_cobranca' => 'hora',
++        ]);
++        $faixa = FaixaMusical::create([
++            'empresa_id' => $this->empresa->id,
++            'projeto_musical_id' => $projeto->id,
++            'nome' => 'Faixa 1',
++            'ordem' => 1,
++        ]);
++        $this->versao = VersaoAudio::create([
++            'empresa_id' => $this->empresa->id,
++            'faixa_musical_id' => $faixa->id,
++            'rotulo' => 'Mix v1',
++            'caminho_ficheiro' => 'estudiomusica/versoes-audio/inexistente.wav',
++            'estado' => 'pendente_aprovacao',
++            'enviada_em' => now(),
++        ]);
++    }
++
++    protected function rota(string $nome): string
++    {
++        return route("estudiomusica.portal.{$nome}", ['token' => self::TOKEN, 'versao' => $this->versao->id]);
++    }
++
++    public function test_portal_pede_aceite_dos_termos_e_esconde_o_pedido_depois_de_aceitar(): void
++    {
++        $this->get(route('estudiomusica.portal.mostrar', ['token' => self::TOKEN]))
++            ->assertOk()
++            ->assertSee('Li e aceito');
++
++        $this->post(route('estudiomusica.portal.termos.aceitar', ['token' => self::TOKEN]))->assertRedirect();
++
++        $this->get(route('estudiomusica.portal.mostrar', ['token' => self::TOKEN]))
++            ->assertOk()
++            ->assertDontSee('Li e aceito');
++    }
++
++    public function test_aprovar_antes_de_aceitar_os_termos_e_recusado(): void
++    {
++        $this->post($this->rota('versoes.aprovar'))->assertSessionHas('erro');
++
++        $this->assertSame('pendente_aprovacao', $this->versao->fresh()->estado);
++    }
++
++    public function test_aprovar_depois_de_aceitar_os_termos_funciona(): void
++    {
++        $this->post(route('estudiomusica.portal.termos.aceitar', ['token' => self::TOKEN]));
++
++        $this->post($this->rota('versoes.aprovar'))->assertSessionMissing('erro');
++
++        $this->assertSame('aprovada', $this->versao->fresh()->estado);
++    }
++
++    public function test_so_a_versao_mais_recente_aceita_decisao(): void
++    {
++        $this->post(route('estudiomusica.portal.termos.aceitar', ['token' => self::TOKEN]));
++
++        VersaoAudio::create([
++            'empresa_id' => $this->empresa->id,
++            'faixa_musical_id' => $this->versao->faixa_musical_id,
++            'rotulo' => 'Mix v2',
++            'caminho_ficheiro' => 'estudiomusica/versoes-audio/inexistente2.wav',
++            'estado' => 'pendente_aprovacao',
++            'enviada_em' => now()->addMinute(),
++        ]);
++
++        $this->post($this->rota('versoes.aprovar'))->assertSessionHas('erro');
++
++        $this->assertSame('pendente_aprovacao', $this->versao->fresh()->estado);
++    }
++
++    public function test_resposta_do_portal_nao_e_cacheavel_e_nao_vaza_o_referer(): void
++    {
++        $resposta = $this->get(route('estudiomusica.portal.mostrar', ['token' => self::TOKEN]));
++
++        $resposta->assertHeader('Referrer-Policy', 'no-referrer');
++        $resposta->assertHeader('X-Robots-Tag', 'noindex, nofollow');
++        $this->assertStringContainsString('no-store', $resposta->headers->get('Cache-Control'));
++    }
++}
+diff --git a/Modules/EstudioMusica/tests/Feature/TermosEstudioTest.php b/Modules/EstudioMusica/tests/Feature/TermosEstudioTest.php
+new file mode 100644
+index 0000000..d204009
+--- /dev/null
++++ b/Modules/EstudioMusica/tests/Feature/TermosEstudioTest.php
+@@ -0,0 +1,83 @@
++<?php
++
++namespace Modules\EstudioMusica\Tests\Feature;
++
++use Illuminate\Foundation\Testing\RefreshDatabase;
++use Illuminate\Http\Request;
++use Modules\Core\Models\Empresa;
++use Modules\Core\Services\TenantManager;
++use Modules\EstudioMusica\Models\AceiteTermos;
++use Modules\EstudioMusica\Models\TermosEstudio;
++use Modules\EstudioMusica\Services\TermosEstudioService;
++use Modules\Faturacao\Models\Cliente;
++use Tests\TestCase;
++
++class TermosEstudioTest extends TestCase
++{
++    use RefreshDatabase;
++
++    protected Empresa $empresa;
++
++    protected Cliente $cliente;
++
++    protected TermosEstudioService $servico;
++
++    protected function setUp(): void
++    {
++        parent::setUp();
++
++        $this->empresa = Empresa::create(['nome_comercial' => 'Estúdio Termos', 'nif' => '400000005']);
++        app(TenantManager::class)->set($this->empresa->id);
++
++        $this->cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Artista Teste']);
++        $this->servico = app(TermosEstudioService::class);
++    }
++
++    public function test_primeira_consulta_cria_a_versao_1_a_partir_do_modelo_e_nao_duplica(): void
++    {
++        $a = $this->servico->atual($this->empresa->id, 'Estúdio Termos');
++        $b = $this->servico->atual($this->empresa->id, 'Estúdio Termos');
++
++        $this->assertSame(1, $a->versao);
++        $this->assertSame($a->id, $b->id);
++        $this->assertSame(1, TermosEstudio::query()->count());
++        $this->assertStringContainsString('Direitos de autor', $a->conteudo);
++        $this->assertStringContainsString('Estúdio Termos', $a->conteudo);
++    }
++
++    public function test_aceite_e_idempotente(): void
++    {
++        $termos = $this->servico->atual($this->empresa->id);
++
++        $this->servico->registarAceite($this->cliente, $termos, Request::create('/'));
++        $this->servico->registarAceite($this->cliente, $termos, Request::create('/'));
++
++        $this->assertTrue($this->servico->aceitou($this->cliente, $termos));
++        $this->assertSame(1, AceiteTermos::query()->count());
++    }
++
++    public function test_nova_versao_obriga_a_novo_aceite(): void
++    {
++        $v1 = $this->servico->atual($this->empresa->id);
++        $this->servico->registarAceite($this->cliente, $v1, Request::create('/'));
++
++        $v2 = $this->servico->publicar($this->empresa->id, 'Termos 2', str_repeat('Cláusula. ', 20));
++
++        $this->assertSame(2, $v2->versao);
++        $this->assertSame($v2->id, $this->servico->atual($this->empresa->id)->id);
++        $this->assertFalse($this->servico->aceitou($this->cliente, $v2));
++        $this->assertTrue($this->servico->aceitou($this->cliente, $v1), 'o aceite antigo fica como prova');
++    }
++
++    public function test_o_ip_nunca_e_guardado_em_claro(): void
++    {
++        $termos = $this->servico->atual($this->empresa->id);
++        $pedido = Request::create('/', 'GET', [], [], [], ['REMOTE_ADDR' => '203.0.113.7']);
++
++        $aceite = $this->servico->registarAceite($this->cliente, $termos, $pedido);
++
++        $this->assertNotNull($aceite->ip_hash);
++        $this->assertStringNotContainsString('203.0.113.7', $aceite->ip_hash);
++        $this->assertSame(64, strlen($aceite->ip_hash));
++    }
++}
+diff --git a/Modules/EstudioMusica/tests/Feature/TransferenciaInternacionalTest.php b/Modules/EstudioMusica/tests/Feature/TransferenciaInternacionalTest.php
+new file mode 100644
+index 0000000..e83f1ba
+--- /dev/null
++++ b/Modules/EstudioMusica/tests/Feature/TransferenciaInternacionalTest.php
+@@ -0,0 +1,59 @@
++<?php
++
++namespace Modules\EstudioMusica\Tests\Feature;
++
++use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
++use Modules\EstudioMusica\Notifications\Channels\LogChannel;
++use Modules\EstudioMusica\Support\TransferenciaInternacional;
++use Tests\TestCase;
++
++/**
++ * Lei n.º 22/11: canais que levam contactos para fora de Angola só enviam
++ * com autorização da APD (ou se o responsável desligar a exigência).
++ */
++class TransferenciaInternacionalTest extends TestCase
++{
++    protected function canalExterno(): CanalWhatsAppInterface
++    {
++        return new class implements CanalWhatsAppInterface
++        {
++            public function identificador(): string
++            {
++                return 'externo-teste';
++            }
++
++            public function enviar(string $destino, string $mensagem): bool
++            {
++                return true;
++            }
++        };
++    }
++
++    public function test_canal_externo_fica_bloqueado_sem_autorizacao_da_apd(): void
++    {
++        config(['estudiomusica.exigir_autorizacao_apd' => true, 'estudiomusica.apd_autorizacao_transferencia' => null]);
++
++        $this->assertFalse(TransferenciaInternacional::permitida($this->canalExterno()));
++    }
++
++    public function test_canal_externo_e_permitido_com_o_numero_da_autorizacao(): void
++    {
++        config(['estudiomusica.exigir_autorizacao_apd' => true, 'estudiomusica.apd_autorizacao_transferencia' => 'APD-123/2026']);
++
++        $this->assertTrue(TransferenciaInternacional::permitida($this->canalExterno()));
++    }
++
++    public function test_exigencia_pode_ser_desligada_pelo_responsavel(): void
++    {
++        config(['estudiomusica.exigir_autorizacao_apd' => false, 'estudiomusica.apd_autorizacao_transferencia' => null]);
++
++        $this->assertTrue(TransferenciaInternacional::permitida($this->canalExterno()));
++    }
++
++    public function test_canal_log_nunca_e_bloqueado_porque_nao_sai_do_servidor(): void
++    {
++        config(['estudiomusica.exigir_autorizacao_apd' => true, 'estudiomusica.apd_autorizacao_transferencia' => null]);
++
++        $this->assertTrue(TransferenciaInternacional::permitida(new LogChannel));
++    }
++}

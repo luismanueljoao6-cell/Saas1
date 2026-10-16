@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Mail;
 use RuntimeException;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
+use Modules\EstudioMusica\Support\TransferenciaInternacional;
 use Throwable;
 
 /**
@@ -20,7 +21,8 @@ use Throwable;
  * Services\NotificacaoEstudioService.
  *
  * Estratégia de entrega (cada mensagem chega UMA vez por pessoa, não três):
- *  - telefone: WhatsApp; só se falhar, SMS (que é pago);
+ *  - telefone: WhatsApp; só se falhar, SMS (que é pago) — e só se a transferência
+ *    internacional estiver autorizada (Support\TransferenciaInternacional);
  *  - e-mail: enviado sempre que existir.
  * Se NENHUM canal entregar, o job lança exceção e a queue repete (3
  * tentativas com espera crescente) — antes, os canais devolviam `false` em
@@ -57,9 +59,17 @@ class EnviarMensagemClienteJob implements ShouldBeEncrypted, ShouldQueue
         $entregue = false;
 
         if ($this->telefone) {
-            $tentou = true;
-            $entregue = $canalWhatsapp->enviar($this->telefone, $this->mensagem)
-                || $canalSms->enviar($this->telefone, $this->mensagem);
+            // Canais que levam o contacto para fora de Angola só com autorização da APD.
+            $whatsappPermitido = TransferenciaInternacional::permitida($canalWhatsapp);
+            $smsPermitido = TransferenciaInternacional::permitida($canalSms);
+
+            if ($whatsappPermitido || $smsPermitido) {
+                $tentou = true;
+                $entregue = ($whatsappPermitido && $canalWhatsapp->enviar($this->telefone, $this->mensagem))
+                    || ($smsPermitido && $canalSms->enviar($this->telefone, $this->mensagem));
+            } else {
+                Log::notice('EstudioMusica: envio por telefone bloqueado — falta a autorização da APD para a transferência internacional (ESTUDIOMUSICA_APD_AUTORIZACAO).');
+            }
         }
 
         if ($this->email) {

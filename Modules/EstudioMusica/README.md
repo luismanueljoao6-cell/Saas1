@@ -34,6 +34,17 @@ php artisan test                             # inclui os 2 testes do módulo
   qualidade gerada com **ffmpeg** (instala-o no servidor; `ESTUDIOMUSICA_FFMPEG_BIN`). O original só sai após quitação.
 - **Consentimento de marketing** (Lei 22/11 e 23/11): as campanhas só chegam a clientes com `aceita_marketing`
   (ficha do artista) — por omissão ninguém. Cada mensagem promocional leva uma ligação assinada para sair.
+- **Direitos do titular e retenção** (Lei 22/11): `php artisan estudiomusica:exportar-dados-artista {empresa} {cliente}`
+  exporta o que o Estúdio guarda; `estudiomusica:limpar-dados-artista` apaga ficha, consentimentos, cupões e pedidos
+  (nunca o cliente nem documentos fiscais). Pedidos de orçamento com mais de 12 meses (`retencao_solicitacoes_meses`)
+  são apagados semanalmente.
+- **Conformidade com a lei angolana**: ver `docs/CONFORMIDADE-ANGOLA.md` (o que o módulo faz, o que exige ação
+  humana — APD, contratos, Livro de Reclamações — e o dossier para o advogado). WhatsApp/SMS ficam bloqueados até
+  `ESTUDIOMUSICA_APD_AUTORIZACAO` estar definido.
+- **Termos de Serviço**: versionados, publicados em *Termos e Privacidade*; o cliente aceita no portal antes de aprovar/descarregar.
+- **Reclamações**: canal digital na landing + lista em *Reclamações* (não substitui o Livro de Reclamações físico).
+- **Pagamentos**: na página do projeto, "Registar pagamento" emite o recibo; é isto que quita o projeto e liberta o download.
+- **Pedidos de orçamento**: "Converter em cliente" cria (ou reaproveita) o cliente e leva o consentimento de marketing.
 - **valor_pacote é SEM IVA**: o IVA é acrescentado nas faturas de sinal/saldo.
 - **Upload de áudio**: o limite do módulo é 50 MB, mas o PHP por omissão só aceita 2 MB — sobe
   `upload_max_filesize` e `post_max_size` no `php.ini`.

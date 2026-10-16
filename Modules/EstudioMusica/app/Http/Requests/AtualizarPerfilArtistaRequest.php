@@ -16,9 +16,9 @@ class AtualizarPerfilArtistaRequest extends FormRequest
         return [
             'nome_artistico' => ['nullable', 'string', 'max:255'],
             'genero_musical' => ['nullable', 'string', 'max:255'],
-            'integrantes_banda' => ['nullable', 'array'],
+            'integrantes_banda' => ['nullable', 'array', 'max:30'],
             'integrantes_banda.*' => ['string', 'max:255'],
-            'links_redes_sociais' => ['nullable', 'array'],
+            'links_redes_sociais' => ['nullable', 'array', 'max:15'],
             'links_redes_sociais.*' => ['nullable', 'string', 'max:255'],
             'data_nascimento' => ['nullable', 'date', 'before:today'],
             // Consentimento para mensagens promocionais (Lei n.º 22/11 / 23/11).

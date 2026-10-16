@@ -11,8 +11,10 @@ use Illuminate\View\View;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\EstudioMusica\Models\ProjetoMusical;
+use Modules\EstudioMusica\Models\Reclamacao;
 use Modules\EstudioMusica\Models\SalaEstudio;
 use Modules\EstudioMusica\Models\SolicitacaoOrcamento;
+use Modules\EstudioMusica\Services\NotificacaoEstudioService;
 use Modules\Faturacao\Models\Cliente;
 
 /**
@@ -34,7 +36,7 @@ class LandingController extends Controller
     {
         [$salas, $destaques] = $this->tenantManager->semTenant(fn () => [
             SalaEstudio::where('empresa_id', $empresa->id)->ativas()->orderBy('nome')->get(),
-            ProjetoMusical::where('empresa_id', $empresa->id)->destaquesPortfolio()->latest()->get(),
+            ProjetoMusical::where('empresa_id', $empresa->id)->destaquesPortfolio()->latest()->limit(12)->get(),
         ]);
 
         return view('estudiomusica::landing.index', [
@@ -102,5 +104,49 @@ class LandingController extends Controller
             200,
             ['Content-Type' => 'text/plain; charset=UTF-8'],
         );
+    }
+
+    /** Política de Privacidade pública (dever de informar — Lei n.º 22/11). */
+    public function privacidade(Empresa $empresa): View
+    {
+        return view('estudiomusica::landing.privacidade', ['empresa' => $empresa]);
+    }
+
+    /**
+     * Canal digital de reclamações. Complementa — não substitui — o Livro
+     * de Reclamações físico exigido nos estabelecimentos (Decreto
+     * Presidencial n.º 234/16).
+     */
+    public function registrarReclamacao(Request $request, Empresa $empresa, NotificacaoEstudioService $notificacao): RedirectResponse
+    {
+        if ($request->filled('website')) {
+            return back()->with('sucesso', 'Reclamação registada.');
+        }
+
+        // Bag próprio: a página tem dois formulários e os erros não se misturam.
+        $dados = $request->validateWithBag('reclamacao', [
+            'nome' => ['required', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255', 'required_without:telefone'],
+            'telefone' => ['nullable', 'string', 'max:30', 'required_without:email'],
+            'assunto' => ['required', 'string', 'max:150'],
+            'descricao' => ['required', 'string', 'min:10', 'max:3000'],
+            'aceita_politica' => ['accepted'],
+        ], [
+            'aceita_politica.accepted' => 'Tens de aceitar o tratamento dos teus dados para registar a reclamação.',
+        ]);
+
+        $reclamacao = $this->tenantManager->semTenant(fn () => Reclamacao::create([
+            'empresa_id' => $empresa->id,
+            'nome' => $dados['nome'],
+            'email' => $dados['email'] ?? null,
+            'telefone' => $dados['telefone'] ?? null,
+            'assunto' => $dados['assunto'],
+            'descricao' => $dados['descricao'],
+            'consentimento_dados_em' => now(),
+        ]));
+
+        $notificacao->reclamacaoRecebida($empresa, $reclamacao);
+
+        return back()->with('sucesso', "Reclamação registada (ref. #{$reclamacao->id}). Vamos responder o mais depressa possível.");
     }
 }

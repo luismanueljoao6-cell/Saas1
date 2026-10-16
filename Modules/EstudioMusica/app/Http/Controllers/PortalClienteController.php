@@ -9,7 +9,9 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Modules\EstudioMusica\Models\ProjetoMusical;
 use Modules\EstudioMusica\Models\VersaoAudio;
+use Modules\EstudioMusica\Services\NotificacaoEstudioService;
 use Modules\EstudioMusica\Services\PreviewAudioService;
+use Modules\EstudioMusica\Services\TermosEstudioService;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -27,7 +29,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class PortalClienteController extends Controller
 {
-    public function __construct(protected PreviewAudioService $previews) {}
+    public function __construct(
+        protected PreviewAudioService $previews,
+        protected TermosEstudioService $termos,
+    ) {}
 
     public function mostrar(Request $request): View
     {
@@ -38,10 +43,37 @@ class PortalClienteController extends Controller
             ->latest()
             ->get();
 
+        $termos = $this->termos->atual($cliente->empresa_id);
+
         return view('estudiomusica::portal.mostrar', [
             'cliente' => $cliente,
             'projetos' => $projetos,
+            'termos' => $termos,
+            'termosAceites' => $this->termos->aceitou($cliente, $termos),
         ]);
+    }
+
+    /**
+     * O cliente aceita a versão em vigor dos Termos de Serviço (data, IP em
+     * hash e browser ficam registados). Sem isto não aprova nem descarrega.
+     */
+    public function aceitarTermos(Request $request): RedirectResponse
+    {
+        $cliente = $request->attributes->get('cliente_portal');
+
+        $this->termos->registarAceite($cliente, $this->termos->atual($cliente->empresa_id), $request);
+
+        return back()->with('sucesso', 'Termos de Serviço aceites. Obrigado!');
+    }
+
+    /** Mensagem de bloqueio se o cliente ainda não aceitou a versão em vigor dos termos. */
+    protected function termosPendentes(Request $request): ?string
+    {
+        $cliente = $request->attributes->get('cliente_portal');
+
+        return $this->termos->aceitou($cliente, $this->termos->atual($cliente->empresa_id))
+            ? null
+            : 'Antes de continuares, lê e aceita os Termos de Serviço no topo da página.';
     }
 
     /**
@@ -90,6 +122,12 @@ class PortalClienteController extends Controller
             return back()->with('erro', 'O download fica disponível assim que o saldo do projeto estiver quitado.');
         }
 
+        // O original só sai depois de o cliente aceitar os Termos de Serviço
+        // (propriedade dos masters, direitos de autor).
+        if ($erro = $this->termosPendentes($request)) {
+            return back()->with('erro', $erro);
+        }
+
         $extensao = pathinfo($versao->caminho_ficheiro, PATHINFO_EXTENSION);
 
         return Storage::disk('local')->download($versao->caminho_ficheiro, "{$versao->rotulo}.{$extensao}");
@@ -114,20 +152,21 @@ class PortalClienteController extends Controller
         return back()->with('sucesso', 'Comentário adicionado.');
     }
 
-    public function aprovar(Request $request, int $versao): RedirectResponse
+    public function aprovar(Request $request, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
 
-        if ($erro = $this->motivoParaNaoDecidir($versao)) {
+        if ($erro = $this->termosPendentes($request) ?? $this->motivoParaNaoDecidir($versao)) {
             return back()->with('erro', $erro);
         }
 
         $versao->update(['estado' => 'aprovada']);
+        $notificacao->equipaDecisaoCliente($versao, 'aprovada');
 
         return back()->with('sucesso', 'Versão aprovada!');
     }
 
-    public function solicitarAjustes(Request $request, int $versao): RedirectResponse
+    public function solicitarAjustes(Request $request, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
 
@@ -136,6 +175,7 @@ class PortalClienteController extends Controller
         }
 
         $versao->update(['estado' => 'ajustes_solicitados']);
+        $notificacao->equipaDecisaoCliente($versao, 'ajustes_solicitados');
 
         return back()->with('sucesso', 'Pedido de ajustes enviado à equipa.');
     }

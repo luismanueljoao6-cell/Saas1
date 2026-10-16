@@ -2,11 +2,6 @@
 
 namespace Modules\Faturacao\Support;
 
-use BaconQrCode\Common\ErrorCorrectionLevel;
-use BaconQrCode\Encoder\ByteMatrix;
-use BaconQrCode\Encoder\Encoder;
-use RuntimeException;
-
 /**
  * QR Code dos documentos impressos, segundo as especificações da AGT: URL
  * https://quiosqueagt.minfin.gov.ao/facturacao-eletronica/consultar-fe?emissor={NIF}&document={documentNo}
@@ -15,6 +10,9 @@ use RuntimeException;
  *
  * A AGT indica "versão 4 (33x33)", mas o URL tem cerca de 120 bytes e a versão 4
  * com correção M só comporta 62: usa-se a menor versão que o comporta.
+ *
+ * Sem dependências: o QR é gerado por QrEncoder e o PNG é escrito à mão (sem GD
+ * nem zlib), por isso funciona em qualquer instalação de PHP.
  */
 final class QrCodeAgt
 {
@@ -22,74 +20,78 @@ final class QrCodeAgt
 
     public const TAMANHO = 350;
 
+    private const MARGEM = 4; // módulos de zona de silêncio
+
     public static function url(string $nifEmissor, string $numeroDocumento): string
     {
         return self::BASE.'?emissor='.$nifEmissor.'&document='.str_replace(' ', '%20', $numeroDocumento);
     }
 
-    /** Verdadeiro se a biblioteca bacon/qr-code está instalada (composer require bacon/qr-code). */
-    public static function disponivel(): bool
+    /** PNG 350x350, preto e branco (1 bit por píxel). */
+    public static function png(string $url, int $tamanho = self::TAMANHO): string
     {
-        return class_exists(Encoder::class);
-    }
+        [$matriz, $modulo, $deslocamento] = self::geometria($url, $tamanho);
+        $n = count($matriz);
 
-    /** PNG 350x350, ou null se a biblioteca ou a extensão GD não estiverem disponíveis. */
-    public static function png(string $url, int $tamanho = self::TAMANHO): ?string
-    {
-        if (! self::disponivel() || ! function_exists('imagecreatetruecolor')) {
-            return null;
-        }
+        $bytesPorLinha = intdiv($tamanho + 7, 8);
+        $brancaLinha = str_repeat("\xFF", $bytesPorLinha);
+        $linhasModulo = [];
 
-        [$matriz, $total, $modulo, $deslocamento] = self::geometria($url, $tamanho);
+        // Uma linha de píxeis por linha de módulos (1 = branco, 0 = preto).
+        foreach ($matriz as $linhaModulos) {
+            $bits = array_fill(0, $bytesPorLinha * 8, 1);
 
-        $imagem = imagecreatetruecolor($tamanho, $tamanho);
-        imagefill($imagem, 0, 0, (int) imagecolorallocate($imagem, 255, 255, 255));
-        $preto = (int) imagecolorallocate($imagem, 0, 0, 0);
-        $n = $matriz->getWidth();
-
-        for ($y = 0; $y < $n; $y++) {
-            for ($x = 0; $x < $n; $x++) {
-                if ($matriz->get($x, $y) === 1) {
-                    $px = $deslocamento + $x * $modulo;
-                    $py = $deslocamento + $y * $modulo;
-                    imagefilledrectangle($imagem, $px, $py, $px + $modulo - 1, $py + $modulo - 1, $preto);
+            foreach ($linhaModulos as $x => $escuro) {
+                if ($escuro) {
+                    $inicio = $deslocamento + $x * $modulo;
+                    for ($p = 0; $p < $modulo; $p++) {
+                        $bits[$inicio + $p] = 0;
+                    }
                 }
             }
+
+            $linha = '';
+            foreach (array_chunk($bits, 8) as $grupo) {
+                $linha .= chr(bindec(implode('', $grupo)));
+            }
+            $linhasModulo[] = $linha;
         }
 
-        ob_start();
-        imagepng($imagem);
-        $png = (string) ob_get_clean();
-        imagedestroy($imagem);
+        $dados = '';
+        for ($y = 0; $y < $tamanho; $y++) {
+            $relativo = $y - $deslocamento;
+            $indice = $relativo >= 0 ? intdiv($relativo, $modulo) : -1;
+            $dados .= "\x00".($indice >= 0 && $indice < $n ? $linhasModulo[$indice] : $brancaLinha);
+        }
 
-        return $png;
+        return "\x89PNG\r\n\x1a\n"
+            .self::bloco('IHDR', pack('NNCCCCC', $tamanho, $tamanho, 1, 0, 0, 0, 0))
+            .self::bloco('IDAT', self::zlibSemCompressao($dados))
+            .self::bloco('IEND', '');
     }
 
-    public static function svg(string $url, int $tamanho = self::TAMANHO): ?string
+    public static function svg(string $url, int $tamanho = self::TAMANHO): string
     {
-        if (! self::disponivel()) {
-            return null;
-        }
-
-        [$matriz, $total] = self::geometria($url, $tamanho);
-        $n = $matriz->getWidth();
+        [$matriz] = self::geometria($url, $tamanho);
+        $n = count($matriz);
+        $total = $n + 2 * self::MARGEM;
         $caminho = '';
 
         for ($y = 0; $y < $n; $y++) {
             $x = 0;
             while ($x < $n) {
-                if ($matriz->get($x, $y) !== 1) {
+                if (! $matriz[$y][$x]) {
                     $x++;
 
                     continue;
                 }
 
                 $inicio = $x;
-                while ($x < $n && $matriz->get($x, $y) === 1) {
+                while ($x < $n && $matriz[$y][$x]) {
                     $x++;
                 }
 
-                $caminho .= 'M'.($inicio + 4).' '.($y + 4).'h'.($x - $inicio).'v1h-'.($x - $inicio).'z';
+                $caminho .= 'M'.($inicio + self::MARGEM).' '.($y + self::MARGEM).'h'.($x - $inicio).'v1h-'.($x - $inicio).'z';
             }
         }
 
@@ -97,34 +99,52 @@ final class QrCodeAgt
             .'<rect width="'.$total.'" height="'.$total.'" fill="#fff"/><path fill="#000" d="'.$caminho.'"/></svg>';
     }
 
-    /** data: URI para <img src>; PNG quando possível, senão SVG; null sem a biblioteca. */
-    public static function dataUri(string $url): ?string
+    /** data: URI do PNG, para <img src>. */
+    public static function dataUri(string $url): string
     {
-        $png = self::png($url);
-
-        if ($png !== null) {
-            return 'data:image/png;base64,'.base64_encode($png);
-        }
-
-        $svg = self::svg($url);
-
-        return $svg !== null ? 'data:image/svg+xml;base64,'.base64_encode($svg) : null;
+        return 'data:image/png;base64,'.base64_encode(self::png($url));
     }
 
-    /** @return array{0: ByteMatrix, 1: int, 2: int, 3: int} matriz, módulos totais (com margem), px por módulo, deslocamento */
-    protected static function geometria(string $url, int $tamanho): array
+    /** @return array{0: array<int, array<int, bool>>, 1: int, 2: int} matriz, píxeis por módulo, deslocamento */
+    private static function geometria(string $url, int $tamanho): array
     {
-        $codigo = Encoder::encode($url, ErrorCorrectionLevel::M(), 'UTF-8', null, false);
-        $matriz = $codigo->getMatrix();
-        $total = $matriz->getWidth() + 8; // margem de 4 módulos (quiet zone)
+        $matriz = QrEncoder::matriz($url);
+        $total = count($matriz) + 2 * self::MARGEM;
         $modulo = intdiv($tamanho, $total);
 
         if ($modulo < 1) {
-            throw new RuntimeException('Tamanho do QR Code demasiado pequeno.');
+            throw new \RuntimeException('Tamanho do QR Code demasiado pequeno.');
         }
 
-        $deslocamento = intdiv($tamanho - $modulo * $total, 2) + 4 * $modulo;
+        return [$matriz, $modulo, intdiv($tamanho - $modulo * count($matriz), 2)];
+    }
 
-        return [$matriz, $total, $modulo, $deslocamento];
+    /** Fluxo zlib com blocos "stored" (sem compressão): dispensa a extensão zlib. */
+    private static function zlibSemCompressao(string $dados): string
+    {
+        $saida = "\x78\x01";
+        $total = strlen($dados);
+        $posicao = 0;
+
+        do {
+            $bloco = substr($dados, $posicao, 65535);
+            $posicao += strlen($bloco);
+            $ultimo = $posicao >= $total ? 1 : 0;
+            $saida .= chr($ultimo).pack('vv', strlen($bloco), strlen($bloco) ^ 0xFFFF).$bloco;
+        } while ($posicao < $total);
+
+        $a = 1;
+        $b = 0;
+        for ($i = 0; $i < $total; $i++) {
+            $a = ($a + ord($dados[$i])) % 65521;
+            $b = ($b + $a) % 65521;
+        }
+
+        return $saida.pack('N', ($b << 16) | $a);
+    }
+
+    private static function bloco(string $tipo, string $dados): string
+    {
+        return pack('N', strlen($dados)).$tipo.$dados.pack('N', crc32($tipo.$dados));
     }
 }

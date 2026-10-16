@@ -7,9 +7,11 @@ use Modules\EstudioMusica\Http\Controllers\LandingController;
 use Modules\EstudioMusica\Http\Controllers\PerfilArtistaController;
 use Modules\EstudioMusica\Http\Controllers\PortalClienteController;
 use Modules\EstudioMusica\Http\Controllers\ProjetoMusicalController;
+use Modules\EstudioMusica\Http\Controllers\ReclamacaoController;
 use Modules\EstudioMusica\Http\Controllers\SalaEstudioController;
 use Modules\EstudioMusica\Http\Controllers\SessaoEstudioController;
 use Modules\EstudioMusica\Http\Controllers\SolicitacaoOrcamentoController;
+use Modules\EstudioMusica\Http\Controllers\TermosEstudioController;
 use Modules\EstudioMusica\Http\Controllers\VersaoAudioController;
 use Modules\EstudioMusica\Support\PapeisEstudio;
 
@@ -24,10 +26,17 @@ use Modules\EstudioMusica\Support\PapeisEstudio;
 Route::prefix('estudio/{empresa}')->middleware('servico.empresa:estudio')->name('estudiomusica.landing.')->group(function () {
     Route::get('/', [LandingController::class, 'mostrar'])->name('mostrar');
     Route::post('/orcamento', [LandingController::class, 'solicitarOrcamento'])->middleware('throttle:10,1')->name('orcamento');
-    // Saída do marketing: ligação assinada enviada no rodapé das mensagens promocionais.
-    Route::get('/marketing/sair/{cliente}', [LandingController::class, 'cancelarMarketing'])
-        ->middleware(['signed', 'throttle:30,1'])->whereNumber('cliente')->name('marketing-sair');
+    Route::get('/privacidade', [LandingController::class, 'privacidade'])->name('privacidade');
+    Route::post('/reclamacoes', [LandingController::class, 'registrarReclamacao'])->middleware('throttle:5,1')->name('reclamacao');
 });
+
+// Saída do marketing: ligação assinada enviada no rodapé das mensagens promocionais.
+// FORA do grupo 'servico.empresa': o direito de oposição tem de funcionar sempre,
+// mesmo que o estúdio entretanto tenha deixado de ter o serviço ativo.
+Route::get('estudio/{empresa}/marketing/sair/{cliente}', [LandingController::class, 'cancelarMarketing'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->whereNumber('cliente')
+    ->name('estudiomusica.landing.marketing-sair');
 
 /*
 |--------------------------------------------------------------------------
@@ -35,7 +44,7 @@ Route::prefix('estudio/{empresa}')->middleware('servico.empresa:estudio')->name(
 |--------------------------------------------------------------------------
 */
 Route::prefix('portal/{token}')
-    ->middleware(['throttle:120,1', 'portal.cliente'])
+    ->middleware(['throttle:estudiomusica-portal', 'portal.cliente'])
     ->where(['versao' => '[0-9]+'])
     ->name('estudiomusica.portal.')
     ->group(function () {
@@ -45,6 +54,7 @@ Route::prefix('portal/{token}')
         Route::post('/versoes/{versao}/comentar', [PortalClienteController::class, 'comentar'])->name('versoes.comentar');
         Route::post('/versoes/{versao}/aprovar', [PortalClienteController::class, 'aprovar'])->name('versoes.aprovar');
         Route::post('/versoes/{versao}/ajustes', [PortalClienteController::class, 'solicitarAjustes'])->name('versoes.ajustes');
+        Route::post('/termos/aceitar', [PortalClienteController::class, 'aceitarTermos'])->name('termos.aceitar');
     });
 
 /*
@@ -62,9 +72,15 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:estudio'])
     ->name('estudiomusica.')
     // ids sempre numéricos: um {id} não numérico dava erro 500 (TypeError nos
     // controllers que recebem `int`) em vez de 404.
-    ->where(['projeto' => '[0-9]+', 'versao' => '[0-9]+', 'sessao' => '[0-9]+', 'faixa' => '[0-9]+', 'sala' => '[0-9]+', 'cliente' => '[0-9]+', 'solicitacao' => '[0-9]+'])
+    ->where(['projeto' => '[0-9]+', 'versao' => '[0-9]+', 'sessao' => '[0-9]+', 'faixa' => '[0-9]+', 'sala' => '[0-9]+', 'cliente' => '[0-9]+', 'solicitacao' => '[0-9]+', 'reclamacao' => '[0-9]+'])
     ->group(function () {
         // Equipa: só o Administrador atribui os papéis Receção/Engenheiro.
+        // Termos de Serviço e Política de Privacidade: só o Administrador publica versões.
+        Route::middleware('papel:Administrador')->prefix('termos')->name('termos.')->group(function () {
+            Route::get('/', [TermosEstudioController::class, 'index'])->name('index');
+            Route::post('/', [TermosEstudioController::class, 'publicar'])->name('publicar');
+        });
+
         Route::middleware('papel:Administrador')->prefix('equipa')->name('equipa.')->group(function () {
             Route::get('/', [EquipaEstudioController::class, 'index'])->name('index');
             Route::post('/atribuir', [EquipaEstudioController::class, 'atribuir'])->name('atribuir');
@@ -85,6 +101,7 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:estudio'])
             Route::get('/projetos/{projeto}', [ProjetoMusicalController::class, 'show'])->whereNumber('projeto')->name('projetos.show');
             Route::get('/sessoes', [SessaoEstudioController::class, 'index'])->name('sessoes.index');
             Route::get('/versoes/{versao}/reproduzir', [VersaoAudioController::class, 'reproduzir'])->name('versoes.reproduzir');
+            Route::get('/reclamacoes', [ReclamacaoController::class, 'index'])->name('reclamacoes.index');
         });
 
         // Salas: só Administrador ("configuração de preços", secção H).
@@ -115,6 +132,7 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:estudio'])
         Route::middleware('permission:estudiomusica.emitir-cobranca')->group(function () {
             Route::post('/projetos/{projeto}/sinal', [ProjetoMusicalController::class, 'gerarSinal'])->name('projetos.sinal');
             Route::post('/projetos/{projeto}/saldo-final', [ProjetoMusicalController::class, 'gerarSaldoFinal'])->name('projetos.saldo-final');
+            Route::post('/projetos/{projeto}/recibos', [ProjetoMusicalController::class, 'registrarPagamento'])->name('projetos.recibos');
         });
 
         // Sessões e pedidos de orçamento recebidos: Administrador + Receção.
@@ -123,6 +141,8 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:estudio'])
             Route::delete('/sessoes/{sessao}', [SessaoEstudioController::class, 'cancelar'])->name('sessoes.cancelar');
             Route::get('/solicitacoes', [SolicitacaoOrcamentoController::class, 'index'])->name('solicitacoes.index');
             Route::put('/solicitacoes/{solicitacao}/estado', [SolicitacaoOrcamentoController::class, 'atualizarEstado'])->name('solicitacoes.estado');
+            Route::post('/solicitacoes/{solicitacao}/converter', [SolicitacaoOrcamentoController::class, 'converter'])->name('solicitacoes.converter');
+            Route::put('/reclamacoes/{reclamacao}', [ReclamacaoController::class, 'atualizar'])->name('reclamacoes.atualizar');
         });
 
         // Check-in/out: Administrador + Receção.

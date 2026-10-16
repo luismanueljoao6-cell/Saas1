@@ -48,7 +48,10 @@ class AgendamentoService
                 throw ConflitoAgendamentoException::paraSala($sala, $inicio->format('d/m H:i'), $fim->format('d/m H:i'));
             }
 
-            return SessaoEstudio::create($dados);
+            // Estado inicial explícito: antes dependia do default da coluna, e o
+            // objeto devolvido ficava com `estado` = null até ser relido da BD
+            // (o que fazia o check-in/cancelamento recusar a sessão acabada de criar).
+            return SessaoEstudio::create(array_merge(['estado' => 'agendada'], $dados));
         });
     }
 

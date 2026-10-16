@@ -28,7 +28,8 @@ class VerificarTokenPortalCliente
 
     public function handle(Request $request, Closure $next): Response
     {
-        $token = $request->route('token') ?? $request->query('token');
+        // Só o token da rota: aceitá-lo também em ?token= espalhava-o por logs e Referer.
+        $token = $request->route('token');
 
         if (! $token) {
             abort(404);
@@ -51,6 +52,13 @@ class VerificarTokenPortalCliente
         $this->tenantManager->set($cliente->empresa_id);
         $request->attributes->set('cliente_portal', $cliente);
 
-        return $next($request);
+        $resposta = $next($request);
+
+        // O token vive no URL: não pode vazar por Referer, cache nem motores de busca.
+        $resposta->headers->set('Referrer-Policy', 'no-referrer');
+        $resposta->headers->set('Cache-Control', 'private, no-store');
+        $resposta->headers->set('X-Robots-Tag', 'noindex, nofollow');
+
+        return $resposta;
     }
 }

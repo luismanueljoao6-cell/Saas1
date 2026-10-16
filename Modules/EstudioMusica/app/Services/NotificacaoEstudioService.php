@@ -6,6 +6,8 @@ use Modules\EstudioMusica\Jobs\EnviarMensagemClienteJob;
 use Modules\EstudioMusica\Models\FaixaMusical;
 use Modules\EstudioMusica\Models\ProjetoMusical;
 use Modules\EstudioMusica\Models\SessaoEstudio;
+use Modules\Core\Models\Empresa;
+use Modules\EstudioMusica\Models\Reclamacao;
 use Modules\EstudioMusica\Models\VersaoAudio;
 use Modules\Faturacao\Models\Cliente;
 
@@ -90,6 +92,63 @@ class NotificacaoEstudioService
             $projeto->cliente,
             'Projeto finalizado',
             "O teu projeto \"{$projeto->nome}\" foi concluído! Já podes aceder a tudo no teu Portal do Cliente."
+        );
+    }
+
+    /**
+     * Avisa a EQUIPA (produtor/engenheiro do projeto) quando o cliente
+     * aprova ou pede ajustes no portal — antes, a decisão ficava invisível
+     * até alguém abrir o projeto. Só e-mail (os utilizadores não têm
+     * telefone registado).
+     */
+    public function equipaDecisaoCliente(VersaoAudio $versao, string $decisao): void
+    {
+        $faixa = $versao->faixaMusical;
+        $projeto = $faixa->projetoMusical;
+        $cliente = $projeto->cliente;
+        $nome = $cliente->nome_artistico ?: $cliente->nome;
+        $acao = $decisao === 'aprovada' ? 'aprovou' : 'pediu ajustes à';
+
+        collect([$projeto->produtor, $projeto->engenheiro])
+            ->filter()
+            ->pluck('email')
+            ->filter()
+            ->unique()
+            ->each(fn (string $email) => EnviarMensagemClienteJob::dispatch(
+                null,
+                $email,
+                'Decisão do cliente no portal',
+                "{$nome} {$acao} versão \"{$versao->rotulo}\" da faixa \"{$faixa->nome}\" (projeto \"{$projeto->nome}\")."
+            ));
+    }
+
+    /** Avisa o estúdio (e-mail da empresa) e confirma a receção a quem reclamou. */
+    public function reclamacaoRecebida(Empresa $empresa, Reclamacao $reclamacao): void
+    {
+        if ($empresa->email) {
+            EnviarMensagemClienteJob::dispatch(
+                null,
+                $empresa->email,
+                'Nova reclamação recebida',
+                "Reclamação #{$reclamacao->id} de {$reclamacao->nome}: {$reclamacao->assunto}. Consulta e responde em Estúdio > Reclamações."
+            );
+        }
+
+        EnviarMensagemClienteJob::dispatch(
+            $reclamacao->telefone,
+            $reclamacao->email,
+            'Recebemos a tua reclamação',
+            "Recebemos a tua reclamação (ref. #{$reclamacao->id}) sobre \"{$reclamacao->assunto}\". Vamos responder o mais depressa possível."
+        );
+    }
+
+    public function reclamacaoRespondida(Reclamacao $reclamacao): void
+    {
+        EnviarMensagemClienteJob::dispatch(
+            $reclamacao->telefone,
+            $reclamacao->email,
+            'Resposta à tua reclamação',
+            "Resposta à tua reclamação #{$reclamacao->id}: {$reclamacao->resposta}"
         );
     }
 

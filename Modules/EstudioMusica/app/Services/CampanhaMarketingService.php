@@ -9,6 +9,7 @@ use Modules\Core\Services\TenantManager;
 use Modules\EstudioMusica\Models\CampanhaEnviada;
 use Modules\EstudioMusica\Models\CupomDesconto;
 use Modules\EstudioMusica\Models\ProjetoMusical;
+use Modules\EstudioMusica\Support\Aniversario;
 use Modules\Faturacao\Models\Cliente;
 
 /**
@@ -49,7 +50,7 @@ class CampanhaMarketingService
                 ->where('aceita_marketing', true)
                 ->chunkById(100, function ($clientes) use ($hoje, &$enviados): void {
                     foreach ($clientes as $cliente) {
-                        if (! Carbon::parse($cliente->data_nascimento)->isBirthday($hoje)) {
+                        if (! Aniversario::hoje($cliente->data_nascimento, $hoje)) {
                             continue;
                         }
 

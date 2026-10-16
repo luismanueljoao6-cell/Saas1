@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use DomainException;
 use InvalidArgumentException;
 use Modules\Core\Models\User;
 use Modules\EstudioMusica\Http\Requests\GuardarProjetoMusicalRequest;
@@ -15,6 +16,7 @@ use Modules\EstudioMusica\Services\FaturacaoEstudioService;
 use Modules\EstudioMusica\Services\NotificacaoEstudioService;
 use Modules\EstudioMusica\Services\PerfilArtistaService;
 use Modules\Faturacao\Models\Cliente;
+use Modules\Faturacao\Models\Fatura;
 
 /**
  * Nota sobre os parâmetros de rota: recebem sempre o id (int), nunca o
@@ -92,6 +94,36 @@ class ProjetoMusicalController extends Controller
         }
 
         return back()->with('sucesso', 'Estado do projeto atualizado.');
+    }
+
+    /**
+     * Regista o recebimento de um pagamento contra uma fatura do projeto
+     * (emite o Recibo). É o que faz o projeto passar a "quitado" e libertar
+     * o download no portal — até aqui só era possível por código/tinker.
+     */
+    public function registrarPagamento(Request $request, int $projeto): RedirectResponse
+    {
+        $dados = $request->validate([
+            'fatura_id' => ['required', 'integer'],
+            'meio_pagamento' => ['required', Rule::in(['dinheiro', 'transferencia', 'multicaixa', 'outro'])],
+            'valor' => ['nullable', 'numeric', 'gt:0', 'max:999999999999'],
+        ]);
+
+        $projeto = ProjetoMusical::findOrFail($projeto);
+        $fatura = Fatura::findOrFail($dados['fatura_id']);
+
+        try {
+            $recibo = $this->faturacaoEstudio->registrarRecibo(
+                $projeto,
+                $fatura,
+                $dados['meio_pagamento'],
+                isset($dados['valor']) ? (float) $dados['valor'] : null,
+            );
+        } catch (InvalidArgumentException|DomainException $e) {
+            return back()->with('erro', $e->getMessage());
+        }
+
+        return back()->with('sucesso', "Pagamento registado (recibo {$recibo->numero_documento}).");
     }
 
     public function gerarSinal(int $projeto): RedirectResponse

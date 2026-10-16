@@ -76,6 +76,26 @@ return [
     | Validade do token de acesso temporário (secção C). Gerado de novo
     | sempre que a Receção reenvia o link ao artista.
     */
+    // Pedidos de orçamento da landing são apagados passado este tempo (Lei n.º 22/11).
+    'retencao_solicitacoes_meses' => 12,
+
+    // Mostrar o preço por hora (sem IVA) das salas na landing page.
+    'landing_mostrar_precos' => true,
+
+    // Reclamações recebidas pela landing são apagadas passado este tempo.
+    'retencao_reclamacoes_meses' => 24,
+
+    // ---- Transferência internacional de dados (Lei n.º 22/11) -------------
+    // WhatsApp (Meta) e SMS (Twilio) enviam os contactos dos clientes para
+    // fora de Angola. Por omissão estes canais ficam BLOQUEADOS até haver o nº
+    // da autorização/notificação da APD (ou até assumires a responsabilidade
+    // pondo ESTUDIOMUSICA_EXIGIR_AUTORIZACAO_APD=false). O e-mail e o canal
+    // `log` não são afetados. Ver docs/CONFORMIDADE-ANGOLA.md.
+    'exigir_autorizacao_apd' => (bool) env('ESTUDIOMUSICA_EXIGIR_AUTORIZACAO_APD', true),
+    'apd_autorizacao_transferencia' => env('ESTUDIOMUSICA_APD_AUTORIZACAO'),
+    // Nº de registo/notificação do tratamento na APD (mostrado na Política de Privacidade).
+    'apd_registo' => env('ESTUDIOMUSICA_APD_REGISTO'),
+
     // Quantas horas antes do início marcado já se pode fazer check-in.
     'checkin_antecedencia_max_horas' => 12,
 
