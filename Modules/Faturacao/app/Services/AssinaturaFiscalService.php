@@ -123,15 +123,26 @@ class AssinaturaFiscalService
             // Só caracteres seguros no nome do ficheiro (sem '/', '..' etc.).
             $nif = preg_replace('/[^A-Za-z0-9]/', '', $nif) ?? '';
 
-            if ($nif !== '') {
-                $porEmpresa = rtrim((string) config('faturacao.chaves_dir'), '/\\').DIRECTORY_SEPARATOR.$nif.'.pem';
+            $porEmpresa = rtrim((string) config('faturacao.chaves_dir'), '/\\').DIRECTORY_SEPARATOR.($nif !== '' ? $nif : 'SEM-NIF').'.pem';
 
-                if (is_file($porEmpresa)) {
-                    return $porEmpresa;
-                }
+            if ($nif !== '' && is_file($porEmpresa)) {
+                return $porEmpresa;
+            }
+
+            // Um documento fiscal de uma empresa nunca pode ser assinado com a
+            // chave genérica fora de desenvolvimento/testes.
+            if (! $this->permiteChaveGenerica()) {
+                throw AssinaturaFiscalException::chavePrivadaNaoEncontrada($porEmpresa);
             }
         }
 
         return (string) config('faturacao.chave_privada_path');
+    }
+
+    /** A chave por omissão só é aceite em local/testing e com a AGT desligada. */
+    protected function permiteChaveGenerica(): bool
+    {
+        return ! config('faturacao.agt.ativo')
+            && app()->environment(['local', 'testing']);
     }
 }

@@ -3,6 +3,7 @@
 namespace Modules\Faturacao\Services;
 
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Exceptions\AgtException;
@@ -53,6 +54,8 @@ class AgtSubmissaoService
         $total = ['validos' => 0, 'invalidos' => 0, 'erros' => 0, 'pendentes' => 0];
         $intervalo = (int) config('faturacao.agt.consulta_intervalo', 60);
 
+        $this->marcarSemResposta($empresaId);
+
         $pedidos = AgtSubmissao::query()
             ->where('estado', AgtSubmissao::ENVIADO)
             ->whereNotNull('request_id')
@@ -63,12 +66,69 @@ class AgtSubmissaoService
             ->groupBy(fn (AgtSubmissao $s) => $s->empresa_id.'|'.$s->request_id);
 
         foreach ($pedidos as $grupo) {
-            foreach ($this->consultarPedido($grupo->all()) as $chave => $valor) {
+            // Uma falha de rede num pedido não pode impedir a consulta dos restantes.
+            try {
+                $parcial = $this->consultarPedido($grupo->all());
+            } catch (AgtException $e) {
+                if ($e->getCode() !== AgtException::TRANSPORTE) {
+                    throw $e;
+                }
+
+                $parcial = $this->aguardar($grupo->all(), ['validos' => 0, 'invalidos' => 0, 'erros' => 0, 'pendentes' => 0]);
+            }
+
+            foreach ($parcial as $chave => $valor) {
                 $total[$chave] += $valor;
             }
         }
 
         return $total;
+    }
+
+    /**
+     * Documentos "enviados" sem estado final há demasiado tempo não ficam
+     * eternamente a aguardar: passam a exigir intervenção.
+     */
+    public function marcarSemResposta(?int $empresaId = null): int
+    {
+        $horas = (int) config('faturacao.agt.sem_resposta_horas', 24);
+
+        $submissoes = AgtSubmissao::query()
+            ->where('estado', AgtSubmissao::ENVIADO)
+            ->where('enviado_em', '<=', now()->subHours($horas))
+            ->when($empresaId, fn ($q) => $q->where('empresa_id', $empresaId))
+            ->get();
+
+        foreach ($submissoes as $submissao) {
+            $submissao->update([
+                'estado' => AgtSubmissao::AGUARDA_INTERVENCAO,
+                'erros' => [['codigo' => 'SEM_RESPOSTA', 'descricao' => "A AGT não devolveu um estado final em {$horas} horas."]],
+            ]);
+        }
+
+        return $submissoes->count();
+    }
+
+    /**
+     * Reenvio controlado. Só para falhas técnicas: um documento inválido ou
+     * rejeitado pela AGT nunca é reenviado — exige um documento de correção.
+     */
+    public function reenviar(AgtSubmissao $submissao): AgtSubmissao
+    {
+        if (! in_array($submissao->estado, [AgtSubmissao::ERRO, AgtSubmissao::AGUARDA_INTERVENCAO], true)) {
+            throw new \DomainException('Só se reenviam submissões em erro técnico ou a aguardar intervenção; documentos inválidos ou rejeitados exigem um documento de correção.');
+        }
+
+        Log::warning('Submissão AGT reenviada manualmente', [
+            'submissao_id' => $submissao->id,
+            'documento_no' => $submissao->documento_no,
+            'estado_anterior' => $submissao->estado,
+            'erros_anteriores' => $submissao->erros,
+        ]);
+
+        $submissao->update(['estado' => AgtSubmissao::PENDENTE, 'tentativas' => 0, 'erros' => null, 'request_id' => null]);
+
+        return $submissao->fresh();
     }
 
     /** @return array{enviados: int, rejeitados: int, erros: int} */

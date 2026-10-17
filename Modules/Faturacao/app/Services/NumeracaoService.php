@@ -32,11 +32,11 @@ class NumeracaoService
     /**
      * @return array{serie: Serie, numero_sequencial: int, numero_documento: string}
      */
-    public function proximoNumero(int $empresaId, string $tipoDocumento, string $prefixo = 'A'): array
+    public function proximoNumero(int $empresaId, string $tipoDocumento, string $prefixo = 'A', ?string $estabelecimento = null): array
     {
-        return $this->tenantManager->semTenant(function () use ($empresaId, $tipoDocumento, $prefixo) {
-            return DB::transaction(function () use ($empresaId, $tipoDocumento, $prefixo) {
-                $serie = $this->obterOuCriarSerie($empresaId, $tipoDocumento, $prefixo, comLock: true);
+        return $this->tenantManager->semTenant(function () use ($empresaId, $tipoDocumento, $prefixo, $estabelecimento) {
+            return DB::transaction(function () use ($empresaId, $tipoDocumento, $prefixo, $estabelecimento) {
+                $serie = $this->obterOuCriarSerie($empresaId, $tipoDocumento, $prefixo, comLock: true, estabelecimento: $estabelecimento);
 
                 $novoNumero = $serie->ultimo_numero + 1;
 
@@ -67,14 +67,14 @@ class NumeracaoService
      * rascunho). $comLock só interessa dentro de uma transação que vai a
      * seguir incrementar ultimo_numero; para leitura isolada, false chega.
      */
-    public function obterOuCriarSerie(int $empresaId, string $tipoDocumento, string $prefixo = 'A', bool $comLock = false): Serie
+    public function obterOuCriarSerie(int $empresaId, string $tipoDocumento, string $prefixo = 'A', bool $comLock = false, ?string $estabelecimento = null): Serie
     {
-        return $this->tenantManager->semTenant(function () use ($empresaId, $tipoDocumento, $prefixo, $comLock) {
+        return $this->tenantManager->semTenant(function () use ($empresaId, $tipoDocumento, $prefixo, $comLock, $estabelecimento) {
             $ano = now()->year;
 
             // Com a comunicação à AGT ativa, só se numera em séries autorizadas por ela.
             if (config('faturacao.agt.ativo')) {
-                return $this->serieAgtAtual($empresaId, $tipoDocumento, $ano, $comLock);
+                return $this->serieAgtAtual($empresaId, $tipoDocumento, $ano, $comLock, $estabelecimento);
             }
 
             $query = Serie::query()
@@ -93,12 +93,16 @@ class NumeracaoService
      * Série autorizada pela AGT para o ano corrente (regime normal). Já corre
      * dentro do semTenant() de quem chamou.
      */
-    protected function serieAgtAtual(int $empresaId, string $tipoDocumento, int $ano, bool $comLock): Serie
+    protected function serieAgtAtual(int $empresaId, string $tipoDocumento, int $ano, bool $comLock, ?string $estabelecimento = null): Serie
     {
+        // O estabelecimento é parte da autorização da série na AGT.
+        $estabelecimento ??= (string) config('faturacao.agt.estabelecimento_padrao');
+
         $query = Serie::query()
             ->where('empresa_id', $empresaId)
             ->where('tipo_documento', $tipoDocumento)
             ->where('ano', $ano)
+            ->where('estabelecimento', $estabelecimento)
             ->whereNotNull('agt_codigo')
             ->where('contingencia', 'N')
             ->orderByDesc('id');

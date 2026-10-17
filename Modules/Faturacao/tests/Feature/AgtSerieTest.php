@@ -33,7 +33,7 @@ class AgtSerieTest extends TestCase
 
         config([
             'faturacao.chave_privada_path' => $privadaEmpresa,
-            'faturacao.chaves_dir' => sys_get_temp_dir().'/agt-sem-chaves-'.uniqid(),
+            'faturacao.chaves_dir' => $this->instalarChaveDaEmpresa($privadaEmpresa),
             'faturacao.agt.software.chave_privada_path' => $privadaSoftware,
             'faturacao.agt.software.product_id' => 'Saas1 Teste',
             'faturacao.agt.software.product_version' => '1.0.0',
@@ -43,6 +43,21 @@ class AgtSerieTest extends TestCase
             'faturacao.agt.ambiente' => 'homologacao',
             'faturacao.saft_numero_certificado' => 'C_134',
         ]);
+    }
+
+    /** Cria {chaves_dir}/{NIF}.pem — com a AGT ativa a chave genérica já não é aceite. */
+    protected function instalarChaveDaEmpresa(string $privadaEmpresa, string $nif = '5001636863'): string
+    {
+        $dir = sys_get_temp_dir().'/agt-chaves-'.uniqid();
+        mkdir($dir);
+        copy($privadaEmpresa, "{$dir}/{$nif}.pem");
+
+        $this->beforeApplicationDestroyed(function () use ($dir, $nif) {
+            @unlink("{$dir}/{$nif}.pem");
+            @rmdir($dir);
+        });
+
+        return $dir;
     }
 
     /** @return array{0: string, 1: string} caminhos [privada, publica] */

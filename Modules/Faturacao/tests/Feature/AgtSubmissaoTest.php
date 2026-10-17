@@ -34,6 +34,8 @@ class AgtSubmissaoTest extends TestCase
 
     protected bool $falharRede = false;
 
+    protected bool $falharRedeEstado = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -43,7 +45,7 @@ class AgtSubmissaoTest extends TestCase
 
         config([
             'faturacao.chave_privada_path' => $privadaEmpresa,
-            'faturacao.chaves_dir' => sys_get_temp_dir().'/agt-sem-chaves-'.uniqid(),
+            'faturacao.chaves_dir' => $this->instalarChaveDaEmpresa($privadaEmpresa),
             'faturacao.agt.ativo' => true,
             'faturacao.agt.ambiente' => 'homologacao',
             'faturacao.agt.utilizador' => 'produtor',
@@ -57,6 +59,21 @@ class AgtSubmissaoTest extends TestCase
         $this->cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cliente Teste', 'nif' => null]);
 
         $this->fingirAgt();
+    }
+
+    /** Cria {chaves_dir}/{NIF}.pem — com a AGT ativa a chave genérica já não é aceite. */
+    protected function instalarChaveDaEmpresa(string $privadaEmpresa, string $nif = '5001636863'): string
+    {
+        $dir = sys_get_temp_dir().'/agt-chaves-'.uniqid();
+        mkdir($dir);
+        copy($privadaEmpresa, "{$dir}/{$nif}.pem");
+
+        $this->beforeApplicationDestroyed(function () use ($dir, $nif) {
+            @unlink("{$dir}/{$nif}.pem");
+            @rmdir($dir);
+        });
+
+        return $dir;
     }
 
     /** @return array{0: string} */
@@ -93,7 +110,9 @@ class AgtSubmissaoTest extends TestCase
             '*registarFactura' => fn () => $this->falharRede
                 ? throw new ConnectionException('timeout')
                 : Http::response($this->respostaRegistar, isset($this->respostaRegistar['requestID']) ? 200 : 400),
-            '*obterEstado' => fn () => Http::response($this->respostaEstado, 200),
+            '*obterEstado' => fn () => $this->falharRedeEstado
+                ? throw new ConnectionException('timeout')
+                : Http::response($this->respostaEstado, 200),
         ]);
     }
 
@@ -295,6 +314,78 @@ class AgtSubmissaoTest extends TestCase
         $this->assertSame('erro', $submissao->estado);
         $this->assertSame('LOCAL', $submissao->erros[0]['codigo']);
         $this->assertStringContainsString('codigos_taxa', $submissao->erros[0]['descricao']);
+    }
+
+    public function test_enviado_sem_resposta_ha_muito_tempo_fica_a_aguardar_intervencao(): void
+    {
+        $this->emitirFatura();
+        app(AgtSubmissaoService::class)->enviarPendentes();
+        AgtSubmissao::query()->update(['enviado_em' => now()->subHours(25)]);
+
+        app(AgtSubmissaoService::class)->consultarEstados();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $this->assertSame(AgtSubmissao::AGUARDA_INTERVENCAO, $submissao->estado);
+        $this->assertSame('SEM_RESPOSTA', $submissao->erros[0]['codigo']);
+    }
+
+    public function test_enviado_recentemente_continua_a_aguardar_a_agt(): void
+    {
+        $this->emitirFatura();
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        app(AgtSubmissaoService::class)->consultarEstados();
+
+        $this->assertSame(AgtSubmissao::ENVIADO, AgtSubmissao::query()->firstOrFail()->estado);
+    }
+
+    public function test_falha_de_rede_na_consulta_nao_rebenta_e_mantem_enviado(): void
+    {
+        $this->emitirFatura();
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $this->falharRedeEstado = true;
+        $res = app(AgtSubmissaoService::class)->consultarEstados();
+
+        $this->assertSame(1, $res['pendentes']);
+        $this->assertSame(AgtSubmissao::ENVIADO, AgtSubmissao::query()->firstOrFail()->estado);
+    }
+
+    public function test_reenviar_aceita_erro_tecnico_e_volta_a_pendente(): void
+    {
+        $this->emitirFatura();
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $submissao->update(['estado' => AgtSubmissao::AGUARDA_INTERVENCAO, 'tentativas' => 3]);
+
+        $nova = app(AgtSubmissaoService::class)->reenviar($submissao);
+
+        $this->assertSame(AgtSubmissao::PENDENTE, $nova->estado);
+        $this->assertSame(0, $nova->tentativas);
+        $this->assertSame(1, app(AgtSubmissaoService::class)->enviarPendentes()['enviados']);
+    }
+
+    public function test_documento_invalido_ou_rejeitado_nao_pode_ser_reenviado(): void
+    {
+        $this->emitirFatura();
+        $submissao = AgtSubmissao::query()->firstOrFail();
+
+        foreach ([AgtSubmissao::INVALIDO, AgtSubmissao::REJEITADO, AgtSubmissao::VALIDO, AgtSubmissao::PENDENTE] as $estado) {
+            $submissao->update(['estado' => $estado]);
+
+            try {
+                app(AgtSubmissaoService::class)->reenviar($submissao);
+                $this->fail("Reenvio de '{$estado}' devia ser recusado.");
+            } catch (\DomainException $e) {
+                $this->assertStringContainsString('documento de correção', $e->getMessage());
+            }
+        }
+    }
+
+    public function test_so_o_estado_valido_conta_como_confirmacao_fiscal(): void
+    {
+        $this->assertFalse((new AgtSubmissao(['estado' => AgtSubmissao::ENVIADO]))->confirmadoFiscalmente());
+        $this->assertTrue((new AgtSubmissao(['estado' => AgtSubmissao::VALIDO]))->confirmadoFiscalmente());
+        $this->assertSame('A aguardar intervenção', (new AgtSubmissao(['estado' => AgtSubmissao::AGUARDA_INTERVENCAO]))->rotulo());
     }
 
     public function test_numero_json_de_decimal_remove_zeros_a_direita(): void

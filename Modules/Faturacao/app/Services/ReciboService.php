@@ -47,6 +47,11 @@ class ReciboService
             throw new \InvalidArgumentException('O meio de pagamento é obrigatório.');
         }
 
+        // O AgtDocumentoBuilder não suporta adiantamentos: recusar já, não só no envio.
+        if ($faturaId === null && config('faturacao.agt.ativo')) {
+            throw new \DomainException('Recibos de adiantamento ainda não são suportados com a comunicação AGT ativa.');
+        }
+
         try {
             return DB::transaction(function () use ($empresaId, $clienteId, $centimos, $meioPagamento, $faturaId) {
                 GuardaEmissao::garantir($empresaId);

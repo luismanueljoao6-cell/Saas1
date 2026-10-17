@@ -10,6 +10,7 @@ use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
 use Modules\Faturacao\Support\Dinheiro;
 use Modules\Faturacao\Support\GuardaEmissao;
+use Modules\Faturacao\Support\ValidacaoLinhas;
 use Throwable;
 
 class FaturaService
@@ -31,6 +32,8 @@ class FaturaService
         if ((int) $cliente->empresa_id !== (int) $empresa->id) {
             throw new \DomainException('O cliente não pertence a esta empresa.');
         }
+
+        ValidacaoLinhas::validar($linhas, (int) $empresa->id);
 
         return DB::transaction(function () use ($empresa, $cliente, $linhas, $observacoes) {
             $fatura = Fatura::create([

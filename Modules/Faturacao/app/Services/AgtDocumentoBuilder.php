@@ -82,7 +82,7 @@ class AgtDocumentoBuilder
         $linhas = [];
 
         foreach ($documento->linhas()->get() as $indice => $linha) {
-            $produto = ($linha->produto_id ?? null) ? Produto::withoutGlobalScopes()->find($linha->produto_id) : null;
+            $produto = ($linha->produto_id ?? null) ? Produto::withoutGlobalScopes()->where('empresa_id', $documento->empresa_id)->find($linha->produto_id) : null;
             $valor = NumeroJson::deCentimos(Dinheiro::centimos($linha->valor_sem_iva));
 
             $item = [

@@ -9,6 +9,8 @@ use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
 use Modules\Faturacao\Support\Dinheiro;
+use Modules\Faturacao\Support\GuardaEmissao;
+use Modules\Faturacao\Support\ValidacaoLinhas;
 use Throwable;
 
 /**
@@ -85,6 +87,10 @@ class NotaCreditoDebitoService
             throw new \InvalidArgumentException('O motivo é obrigatório.');
         }
 
+        if ($tipo === 'credito' && $faturaId === null) {
+            throw new \DomainException('Uma nota de crédito exige a fatura de origem.');
+        }
+
         if (empty($linhas)) {
             throw new \InvalidArgumentException('Uma nota de crédito/débito precisa de pelo menos uma linha.');
         }
@@ -94,6 +100,9 @@ class NotaCreditoDebitoService
         if (! $cliente) {
             throw new \DomainException('O cliente não pertence a esta empresa.');
         }
+
+        // Notas de crédito espelham a fatura original: não se re-verificam as taxas.
+        ValidacaoLinhas::validar($linhas, $empresaId, verificarTaxas: $tipo !== 'credito');
 
         if ($faturaId !== null) {
             $origem = Fatura::withoutGlobalScopes()->where('empresa_id', $empresaId)->find($faturaId);
@@ -155,6 +164,8 @@ class NotaCreditoDebitoService
                     return $nota->fresh('linhas');
                 }
 
+                GuardaEmissao::garantir((int) $nota->empresa_id);
+
                 if ($nota->linhas()->doesntExist()) {
                     throw new \DomainException('Não é possível emitir uma nota sem linhas.');
                 }
@@ -203,8 +214,12 @@ class NotaCreditoDebitoService
     /** Soma das NC emitidas + esta nota nunca pode exceder o valor da fatura. */
     protected function garantirLimiteDeCredito(NotaCreditoDebito $nota): void
     {
-        if ($nota->tipo !== 'credito' || ! $nota->fatura_id) {
+        if ($nota->tipo !== 'credito') {
             return;
+        }
+
+        if (! $nota->fatura_id) {
+            throw new \DomainException('Uma nota de crédito exige a fatura de origem.');
         }
 
         // Lock na fatura serializa emissões concorrentes de NC sobre ela.

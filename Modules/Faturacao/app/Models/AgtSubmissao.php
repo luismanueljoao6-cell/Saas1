@@ -23,6 +23,18 @@ class AgtSubmissao extends Model
 
     public const ERRO = 'erro';
 
+    public const AGUARDA_INTERVENCAO = 'aguarda_intervencao';
+
+    public const ROTULOS = [
+        self::PENDENTE => 'Pendente de envio',
+        self::ENVIADO => 'Enviado — a aguardar validação da AGT',
+        self::VALIDO => 'Válido (confirmado pela AGT)',
+        self::INVALIDO => 'Inválido (recusado na validação da AGT)',
+        self::REJEITADO => 'Rejeitado no envio',
+        self::ERRO => 'Erro técnico',
+        self::AGUARDA_INTERVENCAO => 'A aguardar intervenção',
+    ];
+
     protected $table = 'agt_submissoes';
 
     protected $fillable = [
@@ -39,6 +51,17 @@ class AgtSubmissao extends Model
         'ultima_consulta_em',
         'validado_em',
     ];
+
+    public function rotulo(): string
+    {
+        return self::ROTULOS[$this->estado] ?? (string) $this->estado;
+    }
+
+    /** Só "válido" é confirmação fiscal: "enviado" apenas significa que a AGT recebeu o pedido. */
+    public function confirmadoFiscalmente(): bool
+    {
+        return $this->estado === self::VALIDO;
+    }
 
     protected function casts(): array
     {
