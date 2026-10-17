@@ -186,3 +186,20 @@ em falta. Diz qual preferes.
 - `php artisan subscricoes:saude` — verifica scheduler, fila e webhooks por processar (de hora a hora).
 - Requer `php artisan queue:work` e `php artisan schedule:run` (cron) ativos.
 - Renovações: `SUBSCRICOES_RENOVACAO_PRECO=contratado|atual`.
+
+## Operações de suporte
+
+```bash
+# Valida chave, entidade Multicaixa e sandbox/produção (corre também diariamente)
+php artisan subscricoes:verificar-configuracao
+
+# Confirmação manual — só super admin; valor, comprovativo e justificação obrigatórios.
+# Cada tentativa fica na auditoria (log "pagamentos"). Não repete pagamentos já confirmados.
+php artisan subscricoes:confirmar-manual 42 \
+  --operador=admin@exemplo.ao --valor=15000.00 \
+  --comprovativo="BAI-2026-10-17-00123" \
+  --justificacao="Transferência recebida após expirar a referência"
+```
+
+Uma confirmação manual também aplica um pagamento recebido depois de a renovação
+automática ter sido cancelada (a via automática continua a recusá-lo).

@@ -75,6 +75,8 @@ class FaturaService
 
                 GuardaEmissao::garantir((int) $fatura->empresa_id);
 
+                GuardaEmissao::garantirLimiteMensalFaturas((int) $fatura->empresa_id);
+
                 if ($fatura->linhas()->doesntExist()) {
                     throw new \DomainException('Não é possível emitir uma fatura sem linhas.');
                 }

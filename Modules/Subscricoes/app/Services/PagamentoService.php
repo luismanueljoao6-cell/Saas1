@@ -94,7 +94,15 @@ class PagamentoService
                     // Uma referência de renovação deixa de ser válida quando a
                     // renovação automática foi cancelada. A verificação sob lock
                     // fecha a corrida entre o cancelamento e um webhook em curso.
-                    if ($subscricao->estado === 'ativa' && ! $subscricao->renovacao_automatica) {
+                    // Exceção: a confirmação MANUAL (operador autorizado, com
+                    // comprovativo do recebimento) aplica o pagamento mesmo com a
+                    // renovação cancelada — o dinheiro foi realmente recebido e não
+                    // pode ficar sem forma de ser aplicado. A via automática mantém a regra.
+                    if (
+                        $confirmadoPor === null
+                        && $subscricao->estado === 'ativa'
+                        && ! $subscricao->renovacao_automatica
+                    ) {
                         throw new DomainException(
                             "A renovação da subscrição {$subscricao->id} foi cancelada; o pagamento pendente não pode ativá-la."
                         );

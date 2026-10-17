@@ -16,6 +16,7 @@ use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Models\Subscricao;
 use Modules\Subscricoes\Notifications\RenovacaoProximaNotification;
 use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
+use Modules\Subscricoes\Services\Gateways\ProxyPayGateway;
 use RuntimeException;
 use Throwable;
 
@@ -40,6 +41,8 @@ class SubscricaoService
     public function iniciar(Empresa $empresa, Plano $plano): Pagamento
     {
         try {
+            $this->garantirGatewayConfigurado();
+
             if (! $plano->ativo) {
                 throw new DomainException('Este plano não está disponível para novas subscrições.');
             }
@@ -386,6 +389,38 @@ class SubscricaoService
                 'erro' => $inner->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Em produção, nunca emite cobranças com a ProxyPay mal configurada
+     * (sem chave, sem entidade Multicaixa ou apontada à sandbox): o cliente
+     * não conseguiria pagar. Ver ConfiguracaoPagamentoValidator.
+     *
+     * @throws GatewayPagamentoException
+     */
+    protected function garantirGatewayConfigurado(): void
+    {
+        if (! app()->isProduction() || ! $this->gateway instanceof ProxyPayGateway) {
+            return;
+        }
+
+        $resultado = (new ConfiguracaoPagamentoValidator)->validar(
+            (array) Config::get('subscricoes.gateways.proxypay', []),
+            true,
+        );
+
+        if ($resultado['erros'] === []) {
+            return;
+        }
+
+        Log::critical('Cobrança bloqueada: configuração de pagamento inválida', [
+            'erros' => $resultado['erros'],
+        ]);
+
+        throw GatewayPagamentoException::falhaAoGerarReferencia(
+            $this->gateway->identificador(),
+            'configuração de pagamento inválida: '.implode(' ', $resultado['erros'])
+        );
     }
 
     protected function garantirEstadoPendenteSeNecessario(Empresa $empresa): void

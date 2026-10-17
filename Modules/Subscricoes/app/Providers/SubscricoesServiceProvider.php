@@ -8,6 +8,8 @@ use Illuminate\Support\ServiceProvider;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Services\MenuRegistry;
 use Modules\Subscricoes\Console\ReconciliarPagamentosCommand;
+use Modules\Subscricoes\Console\ConfirmarPagamentoManualCommand;
+use Modules\Subscricoes\Console\VerificarConfiguracaoCommand;
 use Modules\Subscricoes\Console\SaudeSubscricoesCommand;
 use Modules\Subscricoes\Console\VerificarSubscricoesCommand;
 use Modules\Subscricoes\Http\Middleware\VerificarAssinaturaWebhook;
@@ -72,6 +74,8 @@ class SubscricoesServiceProvider extends ServiceProvider
                 VerificarSubscricoesCommand::class,
                 ReconciliarPagamentosCommand::class,
                 SaudeSubscricoesCommand::class,
+                ConfirmarPagamentoManualCommand::class,
+                VerificarConfiguracaoCommand::class,
             ]);
         }
 
@@ -103,6 +107,11 @@ class SubscricoesServiceProvider extends ServiceProvider
             $schedule->command('subscricoes:saude')
                 ->hourly()
                 ->name('subscricoes:saude')
+                ->withoutOverlapping();
+
+            $schedule->command('subscricoes:verificar-configuracao')
+                ->daily()
+                ->name('subscricoes:verificar-configuracao')
                 ->withoutOverlapping();
         });
     }
