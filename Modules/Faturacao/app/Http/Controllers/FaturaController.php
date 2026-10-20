@@ -3,6 +3,8 @@
 namespace Modules\Faturacao\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Routing\Controller;
 use Illuminate\View\View;
 use Modules\Core\Models\Empresa;
@@ -11,7 +13,9 @@ use Modules\Faturacao\Http\Requests\GuardarFaturaRequest;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\Produto;
+use Modules\Faturacao\Exceptions\EmissaoNaoPermitidaException;
 use Modules\Faturacao\Services\FaturaService;
+use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Throwable;
 
 /**
@@ -20,7 +24,10 @@ use Throwable;
  */
 class FaturaController extends Controller
 {
-    public function __construct(protected FaturaService $faturaService) {}
+    public function __construct(
+        protected FaturaService $faturaService,
+        protected NotaCreditoDebitoService $notaService,
+    ) {}
 
     public function index(): View
     {
@@ -61,8 +68,104 @@ class FaturaController extends Controller
     public function mostrar(int $fatura): View
     {
         return view('faturacao::faturas.mostrar', [
-            'fatura' => Fatura::with('linhas', 'cliente')->findOrFail($fatura),
+            'fatura' => Fatura::with('linhas', 'cliente', 'notasCreditoDebito')->findOrFail($fatura),
         ]);
+    }
+
+    public function editar(int $fatura): View|RedirectResponse
+    {
+        $modelo = Fatura::with('linhas')->findOrFail($fatura);
+
+        if ($modelo->estado !== 'rascunho') {
+            return redirect()->route('faturacao.faturas.mostrar', $modelo->id)
+                ->with('erro', 'Só é possível editar faturas em rascunho.');
+        }
+
+        return view('faturacao::faturas.criar', [
+            'fatura' => $modelo,
+            'clientes' => Cliente::orderBy('nome')->get(),
+            'produtos' => Produto::ativos()->orderBy('nome')->get(),
+            'taxaIvaGeral' => (float) config('faturacao.taxa_iva_geral'),
+            'linhasIniciais' => $modelo->linhas->map(fn ($linha) => [
+                'produto_id' => $linha->produto_id,
+                'descricao' => $linha->descricao,
+                'quantidade' => (float) $linha->quantidade,
+                'preco_unitario' => (float) $linha->preco_unitario,
+                'taxa_iva' => (float) $linha->taxa_iva,
+            ])->values()->all(),
+        ]);
+    }
+
+    public function atualizar(GuardarFaturaRequest $request, int $fatura): RedirectResponse
+    {
+        $modelo = Fatura::findOrFail($fatura);
+
+        $this->garantirQuePodeEmitirFaturas($modelo->empresa);
+
+        $cliente = Cliente::findOrFail($request->validated('cliente_id'));
+
+        try {
+            $this->faturaService->atualizarRascunho(
+                $modelo,
+                $cliente,
+                $request->validated('linhas'),
+                $request->validated('observacoes'),
+            );
+        } catch (\DomainException|\InvalidArgumentException $e) {
+            return back()->withInput()->withErrors(['fatura' => $e->getMessage()]);
+        }
+
+        return redirect()->route('faturacao.faturas.mostrar', $modelo->id)
+            ->with('sucesso', 'Rascunho atualizado. Revê os valores antes de emitir.');
+    }
+
+    public function eliminar(int $fatura): RedirectResponse
+    {
+        $modelo = Fatura::findOrFail($fatura);
+
+        try {
+            $this->faturaService->eliminarRascunho($modelo);
+        } catch (\DomainException $e) {
+            return back()->with('erro', $e->getMessage());
+        }
+
+        return redirect()->route('faturacao.faturas.index')
+            ->with('sucesso', 'Rascunho eliminado.');
+    }
+
+    /**
+     * Anulação TOTAL por nota de crédito: criar + emitir na MESMA transação.
+     * Se a emissão falhar não fica um rascunho de nota a bloquear nova
+     * tentativa ("esta fatura já tem uma nota de crédito associada").
+     */
+    public function anular(Request $request, int $fatura): RedirectResponse
+    {
+        $dados = $request->validate([
+            // A AGT recebe no máximo 60 caracteres do motivo: não se aceita mais, para não truncar em silêncio.
+            'motivo' => ['required', 'string', 'min:3', 'max:60'],
+        ]);
+
+        $modelo = Fatura::findOrFail($fatura);
+
+        $this->garantirQuePodeEmitirFaturas($modelo->empresa);
+
+        try {
+            $nota = DB::transaction(fn () => $this->notaService->emitir(
+                $this->notaService->criarParaAnularFatura($modelo, $dados['motivo'])
+            ), attempts: 3);
+        } catch (\DomainException|\InvalidArgumentException|EmissaoNaoPermitidaException $e) {
+            // Mensagens de regra de negócio: seguras para o utilizador.
+            return back()->with('erro', $e->getMessage());
+        } catch (AssinaturaFiscalException) {
+            return back()->with('erro', 'Não foi possível assinar o documento. A equipa técnica foi notificada.');
+        } catch (Throwable $e) {
+            report($e);
+
+            return back()->with('erro', 'Ocorreu um erro ao emitir a nota de crédito. Tenta novamente.');
+        }
+
+        return redirect()->route('faturacao.faturas.mostrar', $modelo->id)
+            ->with('sucesso', "Nota de crédito {$nota->numero_documento} emitida: a fatura ficou anulada.");
     }
 
     public function emitir(int $fatura): RedirectResponse

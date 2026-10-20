@@ -276,3 +276,44 @@ Um documento `invalido`/`rejeitado` só se corrige com um documento novo (regra 
 O esquema SAF-T(AO) público (SAFTAO1.01_01, 2020) limita esse campo a 172 caracteres. Falta a
 especificação atual da AGT para o SAF-T com faturação eletrónica; até a haver, não uses o SAF-T
 exportado para submissões.
+
+## Auditoria técnica — estado das correções
+
+Revisão feita contra o código de `main`. Distingue-se **implementado**, **testado
+automaticamente** e **validado em homologação AGT**. Nada neste módulo está
+certificado pela AGT.
+
+**Já corrigido antes desta revisão (verificado no código):** chave genérica só em
+`local`/`testing` e com a AGT desligada; nota de crédito exige a fatura de origem;
+`GuardaEmissao` aplicada a faturas, recibos e notas; série AGT escolhida por
+estabelecimento; `Dinheiro` rejeita entradas inválidas; `ValidacaoLinhas` central
+chamada pelos serviços; recibos de adiantamento recusados com a AGT ativa;
+produtos filtrados por empresa no `AgtDocumentoBuilder`.
+
+**Corrigido nesta revisão:**
+- Nota de débito não liquida IVA (`FATURACAO_ND_LIQUIDA_IVA=false`, por omissão);
+  o pedido à AGT segue sem bloco `taxes` — confirmar em homologação.
+- Limite de crédito também por taxa de IVA, além do total bruto.
+- SAF-T: `ProductID`/`ProductVersion` configuráveis; validação contra o XSD oficial
+  (`FATURACAO_SAFT_XSD_PATH`); estados `validado_xsd` / `gerado_sem_validacao` /
+  `rejeitado_xsd`; versões anteriores do mesmo período guardadas em `historico/`.
+
+**Em aberto (não resolvido):**
+- SAF-T (AO) completo: `TaxTable`, `DocumentTotals`, recibos e o limite do campo
+  `Hash` dependem do XSD oficial.
+- Isenções de IVA (códigos M) e demais códigos de taxa AGT.
+- Fluxo de correção de documentos rejeitados; rotas/interface de notas e recibos;
+  edição/eliminação de rascunhos.
+- Matriz de requisitos legais; testes em MySQL com concorrência real;
+  homologação com a AGT.
+
+### Rascunhos e anulação (parte 2)
+
+- Rascunhos de fatura podem ser editados (`GET/PUT /faturacao/faturas/{id}`) e
+  eliminados (`DELETE`); com lock na linha, para não colidir com a emissão.
+  Faturas emitidas continuam imutáveis (trait, triggers e `DomainException`).
+- Anulação total por nota de crédito a partir da página da fatura
+  (`POST /faturacao/faturas/{id}/anular`, só Administrador): criar + emitir na
+  mesma transação; o motivo tem no máximo 60 caracteres (o limite enviado à AGT).
+- Continua por fazer: notas de crédito **parciais** e notas de débito pela
+  interface, recibos pela interface, e o fluxo de correção de documentos rejeitados.

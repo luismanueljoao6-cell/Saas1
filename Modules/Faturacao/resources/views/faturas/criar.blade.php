@@ -1,11 +1,11 @@
 @extends('core::layouts.app')
 
-@section('titulo', 'Nova fatura')
+@section('titulo', isset($fatura) ? 'Editar rascunho' : 'Nova fatura')
 
 @section('conteudo')
     <div class="w-full max-w-3xl"
-         x-data="novaFatura({{ $taxaIvaGeral }})">
-        <h1 class="text-xl font-semibold text-slate-900">Nova fatura</h1>
+         x-data="novaFatura({{ $taxaIvaGeral }}, @js($linhasIniciais ?? []))">
+        <h1 class="text-xl font-semibold text-slate-900">{{ isset($fatura) ? 'Editar rascunho #'.$fatura->id : 'Nova fatura' }}</h1>
         <p class="mt-1 text-sm text-slate-500">Fica como rascunho — só recebe número e assinatura fiscal quando a emitires.</p>
 
         @if ($errors->any())
@@ -18,8 +18,11 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('faturacao.faturas.guardar') }}" @submit="antesDeSubmeter" class="mt-6 space-y-6">
+        <form method="POST" action="{{ isset($fatura) ? route('faturacao.faturas.atualizar', $fatura->id) : route('faturacao.faturas.guardar') }}" @submit="antesDeSubmeter" class="mt-6 space-y-6">
             @csrf
+            @isset($fatura)
+                @method('PUT')
+            @endisset
 
             <div>
                 <label for="cliente_id" class="block text-sm font-medium text-slate-700">Cliente</label>
@@ -27,7 +30,7 @@
                         class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
                     <option value="">Selecionar...</option>
                     @foreach ($clientes as $cliente)
-                        <option value="{{ $cliente->id }}">{{ $cliente->nome }} @if($cliente->nif) ({{ $cliente->nif }}) @endif</option>
+                        <option value="{{ $cliente->id }}" @selected((int) old('cliente_id', $fatura->cliente_id ?? 0) === (int) $cliente->id)>{{ $cliente->nome }} @if($cliente->nif) ({{ $cliente->nif }}) @endif</option>
                     @endforeach
                 </select>
                 @if ($clientes->isEmpty())
@@ -52,6 +55,7 @@
                                    class="col-span-4 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
                             <input type="number" step="0.01" min="0" max="100" :name="`linhas[${indice}][taxa_iva]`" x-model.number="linha.taxa_iva" placeholder="IVA %"
                                    class="col-span-3 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                            <input type="hidden" :name="`linhas[${indice}][produto_id]`" :value="linha.produto_id ?? ''">
                             <button type="button" @click="removerLinha(indice)" class="col-span-1 text-red-500 hover:text-red-700" title="Remover">✕</button>
                         </div>
                     </template>
@@ -66,20 +70,22 @@
 
             <div>
                 <label for="observacoes" class="block text-sm font-medium text-slate-700">Observações (opcional)</label>
-                <textarea name="observacoes" id="observacoes" rows="2" class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></textarea>
+                <textarea name="observacoes" id="observacoes" rows="2" class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm">{{ old('observacoes', $fatura->observacoes ?? '') }}</textarea>
             </div>
 
             <button type="submit" :disabled="linhas.length === 0"
                     class="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50">
-                Guardar rascunho
+                {{ isset($fatura) ? 'Guardar alterações' : 'Guardar rascunho' }}
             </button>
         </form>
     </div>
 
     <script>
-        function novaFatura(taxaIvaGeral) {
+        function novaFatura(taxaIvaGeral, linhasIniciais = []) {
             return {
-                linhas: [{ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral }],
+                linhas: linhasIniciais.length > 0
+                    ? linhasIniciais
+                    : [{ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral }],
                 adicionarLinha() {
                     this.linhas.push({ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral });
                 },

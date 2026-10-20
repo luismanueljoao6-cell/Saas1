@@ -80,12 +80,53 @@
                 </button>
                 <p class="mt-2 text-center text-xs text-slate-500">Depois de emitida, este documento não pode ser alterado nem apagado — só corrigido por Nota de Crédito.</p>
             </form>
+
+            <div class="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 text-sm">
+                <a href="{{ route('faturacao.faturas.editar', $fatura->id) }}" class="font-medium text-indigo-600 hover:text-indigo-500">Editar rascunho</a>
+                <form method="POST" action="{{ route('faturacao.faturas.eliminar', $fatura->id) }}"
+                      onsubmit="return confirm('Eliminar este rascunho? Esta ação não pode ser desfeita.');">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="font-medium text-red-600 hover:text-red-500">Eliminar rascunho</button>
+                </form>
+            </div>
         @else
             <div class="mt-6 rounded-lg bg-slate-50 border border-slate-200 p-4 font-mono text-xs text-slate-500">
                 <p>Data/hora do sistema: {{ $fatura->data_hora_sistema->format('Y-m-d H:i:s') }}</p>
                 <p class="mt-1 break-all">Hash: {{ Str::limit($fatura->hash, 60) }}</p>
                 <p class="mt-1">Versão da chave: {{ $fatura->chave_versao }}</p>
             </div>
+
+            @if ($fatura->notasCreditoDebito->isNotEmpty())
+                <div class="mt-4 rounded-lg border border-slate-200 p-4 text-sm">
+                    <p class="font-medium text-slate-700">Notas associadas</p>
+                    <ul class="mt-2 space-y-1 text-slate-600">
+                        @foreach ($fatura->notasCreditoDebito as $nota)
+                            <li class="flex justify-between">
+                                <span>{{ $nota->numero_documento ?? 'Rascunho #'.$nota->id }} — {{ $nota->tipo === 'credito' ? 'Crédito' : 'Débito' }} ({{ $nota->estado }})</span>
+                                <span>{{ number_format((float) $nota->valor_total, 2, ',', ' ') }}</span>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            @if (! $fatura->notasCreditoDebito->contains('tipo', 'credito'))
+                <form method="POST" action="{{ route('faturacao.faturas.anular', $fatura->id) }}" class="mt-4 space-y-2"
+                      onsubmit="return confirm('Emitir uma nota de crédito que anula TODA esta fatura? Esta ação é fiscal e não pode ser desfeita.');">
+                    @csrf
+                    <label for="motivo" class="block text-sm font-medium text-slate-700">Anular fatura (nota de crédito total)</label>
+                    <input type="text" name="motivo" id="motivo" required minlength="3" maxlength="60" value="{{ old('motivo') }}"
+                           placeholder="Motivo (máx. 60 caracteres)"
+                           class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                    @error('motivo')
+                        <p class="text-xs text-red-600">{{ $message }}</p>
+                    @enderror
+                    <button type="submit" class="w-full rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500">
+                        Anular com nota de crédito
+                    </button>
+                </form>
+            @endif
         @endif
     </div>
 @endsection

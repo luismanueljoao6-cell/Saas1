@@ -25,10 +25,17 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao'])
         Route::get('/faturas/criar', [FaturaController::class, 'criar'])->name('faturas.criar');
         Route::post('/faturas', [FaturaController::class, 'guardar'])->name('faturas.guardar');
         Route::get('/faturas/{fatura}', [FaturaController::class, 'mostrar'])->whereNumber('fatura')->name('faturas.mostrar');
+        Route::get('/faturas/{fatura}/editar', [FaturaController::class, 'editar'])->whereNumber('fatura')->name('faturas.editar');
+        Route::put('/faturas/{fatura}', [FaturaController::class, 'atualizar'])->whereNumber('fatura')->name('faturas.atualizar');
+        Route::delete('/faturas/{fatura}', [FaturaController::class, 'eliminar'])
+            ->whereNumber('fatura')->middleware('throttle:20,1')->name('faturas.eliminar');
 
         Route::middleware('papel:Administrador')->group(function () {
             Route::post('/faturas/{fatura}/emitir', [FaturaController::class, 'emitir'])
                 ->whereNumber('fatura')->middleware('throttle:20,1')->name('faturas.emitir');
+
+            Route::post('/faturas/{fatura}/anular', [FaturaController::class, 'anular'])
+                ->whereNumber('fatura')->middleware('throttle:10,1')->name('faturas.anular');
 
             Route::get('/saft', [SafTExportController::class, 'criar'])->name('saft.criar');
             Route::post('/saft', [SafTExportController::class, 'despachar'])->middleware('throttle:3,1')->name('saft.despachar');

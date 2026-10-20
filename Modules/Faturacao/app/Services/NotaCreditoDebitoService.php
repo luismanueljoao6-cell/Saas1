@@ -101,8 +101,19 @@ class NotaCreditoDebitoService
             throw new \DomainException('O cliente não pertence a esta empresa.');
         }
 
+        $debitoSemIva = $this->debitoSemIva($tipo);
+
         // Notas de crédito espelham a fatura original: não se re-verificam as taxas.
-        ValidacaoLinhas::validar($linhas, $empresaId, verificarTaxas: $tipo !== 'credito');
+        // Notas de débito sem IVA não usam a tabela de taxas: exigem taxa 0 (abaixo).
+        ValidacaoLinhas::validar($linhas, $empresaId, verificarTaxas: $tipo === 'debito' && ! $debitoSemIva);
+
+        if ($debitoSemIva) {
+            foreach (array_values($linhas) as $indice => $dadosLinha) {
+                if (Dinheiro::centimos($dadosLinha['taxa_iva']) !== 0) {
+                    throw new \DomainException('Linha '.($indice + 1).': uma nota de débito não liquida IVA; a taxa tem de ser 0.');
+                }
+            }
+        }
 
         if ($faturaId !== null) {
             $origem = Fatura::withoutGlobalScopes()->where('empresa_id', $empresaId)->find($faturaId);
@@ -171,6 +182,7 @@ class NotaCreditoDebitoService
                 }
 
                 $this->recalcularTotais($nota);
+                $this->garantirDebitoSemIva($nota);
                 $this->garantirLimiteDeCredito($nota);
 
                 $resultado = $this->numeracaoService->proximoNumero($nota->empresa_id, $nota->tipoDocumentoFiscal());
@@ -239,6 +251,72 @@ class NotaCreditoDebitoService
 
         if ($jaCreditado + Dinheiro::centimos($nota->valor_total) > Dinheiro::centimos($fatura->valor_total)) {
             throw new \DomainException('O total creditado excede o valor da fatura de origem.');
+        }
+
+        $this->garantirLimitePorTaxa($nota, $fatura);
+    }
+
+    /**
+     * Além do total bruto, o valor líquido creditado a cada taxa de IVA nunca
+     * pode exceder o valor líquido faturado a essa taxa (impede "trocar" IVA
+     * entre taxas dentro do mesmo limite global).
+     */
+    protected function garantirLimitePorTaxa(NotaCreditoDebito $nota, Fatura $fatura): void
+    {
+        $agrupar = function ($linhas): array {
+            $porTaxa = [];
+
+            foreach ($linhas as $linha) {
+                $taxa = number_format((float) $linha->taxa_iva, 2, '.', '');
+                $porTaxa[$taxa] = ($porTaxa[$taxa] ?? 0) + Dinheiro::centimos($linha->valor_sem_iva);
+            }
+
+            return $porTaxa;
+        };
+
+        $faturado = $agrupar($fatura->linhas()->get());
+        $creditado = $agrupar($nota->linhas()->get());
+
+        $anteriores = NotaCreditoDebito::withoutGlobalScopes()
+            ->where('empresa_id', $nota->empresa_id)
+            ->where('fatura_id', $fatura->id)
+            ->where('tipo', 'credito')
+            ->where('estado', 'emitida')
+            ->where('id', '!=', $nota->id)
+            ->with('linhas')
+            ->get();
+
+        foreach ($anteriores as $anterior) {
+            foreach ($agrupar($anterior->linhas) as $taxa => $valor) {
+                $creditado[$taxa] = ($creditado[$taxa] ?? 0) + $valor;
+            }
+        }
+
+        foreach ($creditado as $taxa => $valor) {
+            if ($valor > ($faturado[$taxa] ?? 0)) {
+                throw new \DomainException("O valor creditado à taxa de IVA {$taxa}% excede o valor faturado a essa taxa.");
+            }
+        }
+    }
+
+    /** Uma nota de débito não liquida IVA, salvo se a configuração o permitir expressamente. */
+    protected function debitoSemIva(string $tipo): bool
+    {
+        return $tipo === 'debito' && ! config('faturacao.nota_debito_liquida_iva', false);
+    }
+
+    /** Última barreira antes de emitir: rascunhos antigos com IVA não passam. */
+    protected function garantirDebitoSemIva(NotaCreditoDebito $nota): void
+    {
+        if (! $this->debitoSemIva((string) $nota->tipo)) {
+            return;
+        }
+
+        $comIva = Dinheiro::centimos($nota->valor_iva) !== 0
+            || $nota->linhas()->get()->contains(fn ($linha) => Dinheiro::centimos($linha->taxa_iva) !== 0);
+
+        if ($comIva) {
+            throw new \DomainException('Uma nota de débito não pode liquidar IVA.');
         }
     }
 

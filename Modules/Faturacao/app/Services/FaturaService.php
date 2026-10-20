@@ -147,6 +147,69 @@ class FaturaService
         }
     }
 
+    /**
+     * Edita um RASCUNHO (substitui cliente, linhas e observações). Lock na
+     * linha da fatura: uma edição e uma emissão em simultâneo ficam
+     * serializadas e a segunda vê o estado final. Uma fatura emitida nunca
+     * se edita — corrige-se por Nota de Crédito.
+     *
+     * @param  array<int, array{produto_id?: int|null, descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float}>  $linhas
+     */
+    public function atualizarRascunho(Fatura $fatura, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
+    {
+        if (empty($linhas)) {
+            throw new \InvalidArgumentException('Uma fatura precisa de pelo menos uma linha.');
+        }
+
+        if ((int) $cliente->empresa_id !== (int) $fatura->empresa_id) {
+            throw new \DomainException('O cliente não pertence a esta empresa.');
+        }
+
+        ValidacaoLinhas::validar($linhas, (int) $fatura->empresa_id);
+
+        return DB::transaction(function () use ($fatura, $cliente, $linhas, $observacoes) {
+            $atual = $this->rascunhoComLock($fatura);
+
+            $atual->update(['cliente_id' => $cliente->id, 'observacoes' => $observacoes]);
+
+            $this->substituirLinhas($atual, $linhas);
+            $this->recalcularTotais($atual);
+
+            return $atual->fresh('linhas');
+        });
+    }
+
+    /** Elimina um RASCUNHO (sem número nem assinatura). Documentos emitidos nunca se apagam. */
+    public function eliminarRascunho(Fatura $fatura): void
+    {
+        DB::transaction(function () use ($fatura) {
+            $atual = $this->rascunhoComLock($fatura);
+
+            $atual->linhas()->delete();
+            $atual->delete();
+        });
+
+        Log::info('Rascunho de fatura eliminado', [
+            'fatura_id' => $fatura->id,
+            'empresa_id' => $fatura->empresa_id,
+        ]);
+    }
+
+    /** Relê o rascunho com lock, sem depender do tenant ambiente, e recusa qualquer outro estado. */
+    protected function rascunhoComLock(Fatura $fatura): Fatura
+    {
+        $atual = Fatura::withoutGlobalScopes()
+            ->where('empresa_id', $fatura->empresa_id)
+            ->lockForUpdate()
+            ->findOrFail($fatura->id);
+
+        if ($atual->estado !== 'rascunho') {
+            throw new \DomainException('Só é possível alterar ou apagar faturas em rascunho.');
+        }
+
+        return $atual;
+    }
+
     protected function recalcularTotais(Fatura $fatura): void
     {
         $linhas = $fatura->linhas()->get();

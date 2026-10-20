@@ -79,6 +79,20 @@ return [
     'saft_numero_certificado' => env('FATURACAO_SAFT_NUMERO_CERTIFICADO', '0'),
 
     /*
+    | XSD oficial do SAF-T (AO), usado para validar cada ficheiro gerado. Obtém-no
+    | nas especificações oficiais da AGT e guarda-o neste caminho. Sem ele, em
+    | produção, nenhum SAF-T é marcado como pronto para exportação fiscal.
+    */
+    'saft_xsd_path' => env('FATURACAO_SAFT_XSD_PATH') ?: storage_path('app/faturacao/saft/SAF-T-AO.xsd'),
+
+    /*
+    | Nota de débito e IVA. Por omissão a nota de débito NÃO liquida imposto
+    | (regime jurídico angolano, segundo a auditoria técnica — confirma com a
+    | AGT/contabilista). Só passa a true se a tua análise jurídica disser o contrário.
+    */
+    'nota_debito_liquida_iva' => (bool) env('FATURACAO_ND_LIQUIDA_IVA', false),
+
+    /*
     | Taxas de IVA aceites na emissão (percentagens, separadas por vírgula no .env).
     | Confirma contra a tabela atual da AGT antes de produção. Taxa 0 (isenção)
     | está DESATIVADA por omissão: exige motivo de isenção (códigos M no SAF-T), ainda

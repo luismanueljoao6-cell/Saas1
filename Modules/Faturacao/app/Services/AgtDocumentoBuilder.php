@@ -65,6 +65,11 @@ class AgtDocumentoBuilder
     protected function linhas(Fatura|NotaCreditoDebito $documento): array
     {
         $ehNotaCredito = $documento instanceof NotaCreditoDebito && $documento->tipo === 'credito';
+        // Nota de débito: não liquida IVA (faturacao.nota_debito_liquida_iva); as linhas seguem sem
+        // bloco "taxes". CONFIRMAR em homologação que a AGT aceita linhas sem esse bloco.
+        $semImposto = $documento instanceof NotaCreditoDebito
+            && $documento->tipo === 'debito'
+            && ! config('faturacao.nota_debito_liquida_iva', false);
         $referencia = null;
 
         if ($documento instanceof NotaCreditoDebito) {
@@ -102,13 +107,19 @@ class AgtDocumentoBuilder
 
             // Nota de crédito a débito; os restantes documentos a crédito (regras E16/E17).
             $item[$ehNotaCredito ? 'debitAmount' : 'creditAmount'] = $valor;
-            $item['taxes'] = [[
-                'taxType' => 'IVA',
-                'taxCountryRegion' => 'AO',
-                'taxCode' => $this->codigoImposto((string) $linha->taxa_iva),
-                'taxPercentage' => NumeroJson::deDecimal((string) $linha->taxa_iva),
-                'taxContribution' => NumeroJson::deCentimos(Dinheiro::centimos($linha->valor_iva)),
-            ]];
+            if ($semImposto) {
+                if (Dinheiro::centimos($linha->valor_iva) !== 0 || Dinheiro::centimos($linha->taxa_iva) !== 0) {
+                    throw AgtException::configuracaoInvalida("a nota de débito {$documento->numero_documento} liquida IVA, o que não é permitido.");
+                }
+            } else {
+                $item['taxes'] = [[
+                    'taxType' => 'IVA',
+                    'taxCountryRegion' => 'AO',
+                    'taxCode' => $this->codigoImposto((string) $linha->taxa_iva),
+                    'taxPercentage' => NumeroJson::deDecimal((string) $linha->taxa_iva),
+                    'taxContribution' => NumeroJson::deCentimos(Dinheiro::centimos($linha->valor_iva)),
+                ]];
+            }
             $item['settlementAmount'] = NumeroJson::deCentimos(0);
 
             $linhas[] = $item;

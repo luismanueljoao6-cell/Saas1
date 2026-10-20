@@ -92,7 +92,8 @@ class SafTExportService
             'DateCreated' => now()->format('Y-m-d'),
             'TaxAccountingBasis' => 'F',
             'SoftwareCertificateNumber' => config('faturacao.saft_numero_certificado', '0'),
-            'ProductID' => 'Plataforma de Gestão/1.0',
+            'ProductID' => (string) config('faturacao.agt.software.product_id', 'Saas1'),
+            'ProductVersion' => (string) config('faturacao.agt.software.product_version', '1.0.0'),
         ];
 
         foreach ($campos as $nome => $valor) {
