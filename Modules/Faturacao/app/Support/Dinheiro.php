@@ -14,6 +14,9 @@ final class Dinheiro
     /** Máx. de quantidade × preço (milésimos × cêntimos) para não haver overflow de int. */
     private const LIMITE_LINHA = 900_000_000_000_000_000;
 
+    /** Máx. de quantidade × preço (milésimos × cêntimos) para não haver overflow de int. */
+    private const LIMITE_LINHA = 900_000_000_000_000_000;
+
     public static function centimos(string|int|float|null $valor): int
     {
         return self::escalar($valor, 2);
@@ -35,6 +38,22 @@ final class Dinheiro
         $milesimos = self::escalar($quantidade, 3);
         $preco = self::centimos($precoUnitario);
         $taxa = self::escalar($taxaIva, 2); // 14.00 -> 1400
+
+        if ($milesimos <= 0) {
+            throw new \InvalidArgumentException('A quantidade tem de ser positiva.');
+        }
+
+        if ($preco < 0) {
+            throw new \InvalidArgumentException('O preço unitário não pode ser negativo.');
+        }
+
+        if ($taxa < 0 || $taxa > 10000) {
+            throw new \InvalidArgumentException('A taxa de IVA tem de estar entre 0 e 100.');
+        }
+
+        if ($preco > 0 && $milesimos > intdiv(self::LIMITE_LINHA, $preco)) {
+            throw new \InvalidArgumentException('O valor da linha excede o limite permitido.');
+        }
 
         if ($milesimos <= 0) {
             throw new \InvalidArgumentException('A quantidade tem de ser positiva.');
