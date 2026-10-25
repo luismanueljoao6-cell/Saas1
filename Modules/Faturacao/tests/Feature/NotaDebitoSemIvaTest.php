@@ -96,7 +96,9 @@ class NotaDebitoSemIvaTest extends TestCase
         $nc = app(NotaCreditoDebitoService::class);
 
         // 900 a 0% cabe no total bruto (1140), mas não existe valor faturado a 0%.
-        $rascunho = $nc->criarRascunho($e->id, $c->id, 'credito', 'Taxa errada', $this->linha(900, 0), $fatura->id);
+        // (Uma linha isenta tem de trazer o motivo de isenção: M10 é só um código válido da tabela.)
+        $linhaIsenta = [['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => 900, 'taxa_iva' => 0, 'motivo_isencao' => 'M10']];
+        $rascunho = $nc->criarRascunho($e->id, $c->id, 'credito', 'Taxa errada', $linhaIsenta, $fatura->id);
 
         $this->expectException(\DomainException::class);
         $nc->emitir($rascunho);

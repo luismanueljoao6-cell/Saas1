@@ -34,9 +34,15 @@ class AgtDocumentoBuilder
             throw AgtException::configuracaoInvalida("o documento {$documento->numero_documento} não está em AOA; facturas em divisa ainda não são suportadas.");
         }
 
+        // Correção de um documento rejeitado pela AGT: é um documento NOVO (número novo, regra E46)
+        // com documentStatus "C" e o número do documento rejeitado em rejectedDocumentNo.
+        $rejeitado = $documento->getAttribute('rejeitado_documento_no');
+        $correcao = is_string($rejeitado) && $rejeitado !== '' ? ['rejectedDocumentNo' => $rejeitado] : [];
+
         $resultado = [
             'documentNo' => $assinado['documentNo'],
-            'documentStatus' => 'N',
+            'documentStatus' => $correcao === [] ? 'N' : 'C',
+            ...$correcao,
             'jwsDocumentSignature' => $assinatura,
             'documentDate' => $assinado['documentDate'],
             'documentType' => $assinado['documentType'],
@@ -107,19 +113,13 @@ class AgtDocumentoBuilder
 
             // Nota de crédito a débito; os restantes documentos a crédito (regras E16/E17).
             $item[$ehNotaCredito ? 'debitAmount' : 'creditAmount'] = $valor;
-            if ($semImposto) {
-                if (Dinheiro::centimos($linha->valor_iva) !== 0 || Dinheiro::centimos($linha->taxa_iva) !== 0) {
-                    throw AgtException::configuracaoInvalida("a nota de débito {$documento->numero_documento} liquida IVA, o que não é permitido.");
-                }
-            } else {
-                $item['taxes'] = [[
-                    'taxType' => 'IVA',
-                    'taxCountryRegion' => 'AO',
-                    'taxCode' => $this->codigoImposto((string) $linha->taxa_iva),
-                    'taxPercentage' => NumeroJson::deDecimal((string) $linha->taxa_iva),
-                    'taxContribution' => NumeroJson::deCentimos(Dinheiro::centimos($linha->valor_iva)),
-                ]];
+
+            $impostos = $this->impostos($documento, $linha, $semImposto);
+
+            if ($impostos !== []) {
+                $item['taxes'] = $impostos;
             }
+
             $item['settlementAmount'] = NumeroJson::deCentimos(0);
 
             $linhas[] = $item;
@@ -157,12 +157,99 @@ class AgtDocumentoBuilder
         return Fatura::withoutGlobalScopes()->where('empresa_id', $empresaId)->find($faturaId);
     }
 
-    protected function codigoImposto(string $taxa): string
+    /**
+     * Impostos da linha.
+     *  - Nota de débito sem imposto: por omissão a linha segue SEM bloco "taxes" (CONFIRMAR em
+     *    homologação que a AGT o aceita); com `agt.nd_codigo_nao_sujeicao` segue como não sujeita
+     *    (taxType NS + taxExemptionCode).
+     *  - Linha a 0% (isenta ou não sujeita): tem de ter motivo de isenção; segue como IVA/ISE ou NS,
+     *    sempre com taxExemptionCode (Anexo 6.4).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function impostos(Fatura|NotaCreditoDebito $documento, object $linha, bool $debitoSemImposto): array
     {
-        if ((float) $taxa == 0.0) {
-            throw AgtException::configuracaoInvalida('linhas isentas (IVA 0%) ainda não são suportadas na comunicação com a AGT: falta o código de isenção (Anexo 6.4).');
+        $taxa = (string) $linha->taxa_iva;
+
+        if ($debitoSemImposto) {
+            if (Dinheiro::centimos($linha->valor_iva) !== 0 || Dinheiro::centimos($linha->taxa_iva) !== 0) {
+                throw AgtException::configuracaoInvalida("a nota de débito {$documento->numero_documento} liquida IVA, o que não é permitido.");
+            }
+
+            $codigo = strtoupper(trim((string) config('faturacao.agt.nd_codigo_nao_sujeicao')));
+
+            return $codigo === '' ? [] : [$this->impostoIsento('NS', $this->codigoNaoSujeicaoDebito($codigo))];
         }
 
+        if ((float) $taxa == 0.0) {
+            [$tipo, $codigo] = $this->motivoDeIsencao((string) ($linha->motivo_isencao ?? ''), (string) $documento->numero_documento);
+
+            return [$this->impostoIsento($tipo, $codigo)];
+        }
+
+        return [[
+            'taxType' => 'IVA',
+            'taxCountryRegion' => 'AO',
+            'taxCode' => $this->codigoImposto($taxa),
+            'taxPercentage' => NumeroJson::deDecimal($taxa),
+            'taxContribution' => NumeroJson::deCentimos(Dinheiro::centimos($linha->valor_iva)),
+        ]];
+    }
+
+    /** @return array<string, mixed> */
+    protected function impostoIsento(string $tipo, string $codigo): array
+    {
+        $imposto = ['taxType' => $tipo === 'NS' ? 'NS' : 'IVA', 'taxCountryRegion' => 'AO'];
+
+        if ($tipo !== 'NS') {
+            $imposto['taxCode'] = 'ISE';
+        }
+
+        return $imposto + [
+            'taxPercentage' => NumeroJson::deCentimos(0),
+            'taxContribution' => NumeroJson::deCentimos(0),
+            'taxExemptionCode' => $codigo,
+        ];
+    }
+
+    /** @return array{0: string, 1: string} [tipo (ISE|NS), código do motivo] */
+    protected function motivoDeIsencao(string $motivo, string $numeroDocumento): array
+    {
+        $this->garantirTabelaDeIsencaoConfirmada();
+
+        $codigo = strtoupper(trim($motivo));
+        $entrada = ((array) config('faturacao.motivos_isencao', []))[$codigo] ?? null;
+
+        if ($codigo === '' || ! is_array($entrada)) {
+            throw AgtException::configuracaoInvalida("a linha isenta do documento {$numeroDocumento} não tem um motivo de isenção válido (config faturacao.motivos_isencao).");
+        }
+
+        return [($entrada['tipo'] ?? 'ISE') === 'NS' ? 'NS' : 'ISE', $codigo];
+    }
+
+    protected function codigoNaoSujeicaoDebito(string $codigo): string
+    {
+        $this->garantirTabelaDeIsencaoConfirmada();
+
+        $entrada = ((array) config('faturacao.motivos_isencao', []))[$codigo] ?? null;
+
+        if (! is_array($entrada) || ($entrada['tipo'] ?? null) !== 'NS') {
+            throw AgtException::configuracaoInvalida('FATURACAO_AGT_ND_CODIGO_NS tem de ser um código de não sujeição (tipo NS) da tabela faturacao.motivos_isencao (Anexo 6.4).');
+        }
+
+        return $codigo;
+    }
+
+    /** Nada de códigos por confirmar a caminho da AGT. */
+    protected function garantirTabelaDeIsencaoConfirmada(): void
+    {
+        if (! config('faturacao.motivos_isencao_confirmados')) {
+            throw AgtException::configuracaoInvalida('a tabela de motivos de isenção ainda não foi confirmada contra o Anexo 6.4 (FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS=true).');
+        }
+    }
+
+    protected function codigoImposto(string $taxa): string
+    {
         $mapa = (array) config('faturacao.agt.codigos_taxa', []);
         $chave = number_format((float) $taxa, 2, '.', '');
 
@@ -171,6 +258,6 @@ class AgtDocumentoBuilder
 
     protected function numero(mixed $valor): NumeroJson
     {
-        return NumeroJson::deCentimos((int) round(((float) $valor) * 100));
+        return NumeroJson::deCentimos(Dinheiro::centimos($valor));
     }
 }

@@ -140,8 +140,9 @@ grace period, consegues consultar faturas antigas mas não criar novas
 - **Recibos e notas de crédito/débito não têm UI própria** — os models e
   services existem e estão testados (`NotaCreditoDebitoService`), falta o
   controller/views equivalentes aos de Fatura.
-- **Validação do SAF-T contra o XSD oficial** — o `SafTExportService`
-  gera uma estrutura plausível, não validada campo a campo.
+- **Validação do SAF-T contra o XSD oficial** — o `SafTExportService` gera uma estrutura
+  provisória; o `GerarSafTJob` valida-a com o XSD oficial (`FATURACAO_SAFT_XSD_PATH`) e só
+  publica o que passou.
 - **Faturas de outros módulos** (ex.: a subscrição SaaS da própria
   plataforma) não passam por aqui — este módulo fatura AS EMPRESAS
   clientes da plataforma aos SEUS PRÓPRIOS clientes, não a relação entre
@@ -222,7 +223,9 @@ especificação oficial da AGT (quiosque AGT > Facturação Electrónica):
   não faz parte do objecto assinado.
 - **O IVA é arredondado por excesso** ao cêntimo (regra do campo `taxContribution`).
 - Chaves por empresa: `storage/app/faturacao/chaves/{NIF}.pem` (emitidas pela AGT
-  no Portal do Contribuinte); sem esse ficheiro usa-se a chave por omissão.
+  no Portal do Contribuinte). Sem esse ficheiro a emissão **falha**: a chave por omissão só
+  é aceite em desenvolvimento/testes (`APP_ENV` local/testing e AGT desligada). Ver
+  `docs/CHAVES.md` e `php artisan faturacao:verificar-chaves`.
 
 Ainda **não** feito (fases seguintes): pedido de séries à AGT, envio
 `registarFactura`, QR Code, tipos de operação, códigos de isenção e SAF-T(AO).
@@ -255,10 +258,11 @@ guardados em `erros`), `rejeitado` ou `erro`. O que se envia é copiado do JWS g
 no documento, por isso é igual ao que foi assinado.
 
 Limitações atuais (os documentos nestes casos ficam em `erro`, sem bloquear os outros):
-IVA 0% / isenções (falta o código do Anexo 6.4), recibos sem fatura (adiantamentos),
-documentos em divisa, notas de crédito sem fatura original. `operationType` é `SG` para
-todas as linhas e só a taxa de 14% (`NOR`) está mapeada em `agt.codigos_taxa`.
-Um documento `invalido`/`rejeitado` só se corrige com um documento novo (regra E46) — fluxo ainda por fazer.
+isenções enquanto a tabela de motivos não estiver confirmada (ver "Fase 2 da auditoria"),
+documentos em divisa, recibos sem fatura (recusados logo na emissão com a AGT ativa).
+`operationType` é `SG` para todas as linhas e só a taxa de 14% (`NOR`) está mapeada em
+`agt.codigos_taxa`. Um documento `invalido`/`rejeitado` só se corrige com um documento novo
+(regra E46): `php artisan faturacao:agt-corrigir <id>` (só faturas).
 
 
 ## Cliente congelado e QR Code (Fase 3a)
@@ -317,3 +321,34 @@ produtos filtrados por empresa no `AgtDocumentoBuilder`.
   mesma transação; o motivo tem no máximo 60 caracteres (o limite enviado à AGT).
 - Continua por fazer: notas de crédito **parciais** e notas de débito pela
   interface, recibos pela interface, e o fluxo de correção de documentos rejeitados.
+
+## Fase 2 da auditoria (complemento)
+
+Acrescenta ao que está acima o que ainda faltava. Cada ponto tem teste automático.
+
+- **Isenções (IVA 0%)**: cada linha a 0% exige `motivo_isencao` (tabela `faturacao.motivos_isencao`);
+  segue para a AGT como IVA/`ISE` ou NS conforme o tipo do motivo, sempre com `taxExemptionCode`.
+  Para ativar: `FATURACAO_TAXAS_IVA_PERMITIDAS=14,0`. **A tabela é uma transcrição de terceiros, não o
+  Anexo 6.4 oficial**: com a AGT ativa, as isenções só funcionam depois de a comparares com o anexo e
+  definires `FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS=true`.
+- **Nota de débito**: continua a seguir sem bloco `taxes`. Se preferires enviá-la como não sujeita,
+  define `FATURACAO_AGT_ND_CODIGO_NS` (código de tipo NS da tabela, com a tabela confirmada):
+  segue com `taxType` NS + `taxExemptionCode`. Confirma em homologação qual das duas a AGT aceita.
+- **Preço, quantidade e taxa são obrigatórios**: um valor em falta ou vazio nunca vira 0 em silêncio.
+- **Chaves**: assinar sem empresa já não cai na chave genérica fora de desenvolvimento;
+  `php artisan faturacao:verificar-chaves` e `docs/CHAVES.md` (verificação e rotação).
+- **Correção de faturas rejeitadas**: `php artisan faturacao:agt-corrigir <id da submissão>` cria o
+  rascunho do documento novo; ao emitir segue com `documentStatus` C + `rejectedDocumentNo`.
+  Só faturas; NC/ND/recibos rejeitados exigem tratamento manual.
+- **Auditoria da cadeia**: `faturacao:verificar-cadeia` usa a chave pública de cada empresa, confere o
+  número do documento e o intervalo autorizado pela AGT, e com `--agt` a correspondência com a AGT.
+- **SAF-T**: a estrutura ganhou `TaxTable`, `DocumentTotals` e o imposto/isenção por linha, mas
+  **continua provisória** (sem namespace, sem recibos, `Hash` > 172 caracteres).
+- **Documentação**: `docs/CHAVES.md`, `docs/HOMOLOGACAO_AGT.md` (checklist e evidências) e
+  `docs/MATRIZ_REQUISITOS_FISCAIS.md` (rascunho a validar contra a lei).
+
+**Continua em aberto** (não se resolve só com código): conformidade fiscal integral e certificação do
+software; XSD oficial e estrutura SAF-T completa; confirmação da tabela de motivos de isenção (Anexo 6.4);
+homologação real com a AGT; descontos, divisas, retenções e os restantes tipos de documento; interface
+para notas de crédito parciais, notas de débito e recibos.
+

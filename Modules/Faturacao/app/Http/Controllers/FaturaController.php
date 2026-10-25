@@ -4,16 +4,16 @@ namespace Modules\Faturacao\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
+use Modules\Faturacao\Exceptions\EmissaoNaoPermitidaException;
 use Modules\Faturacao\Http\Requests\GuardarFaturaRequest;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\Produto;
-use Modules\Faturacao\Exceptions\EmissaoNaoPermitidaException;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Throwable;
@@ -42,7 +42,23 @@ class FaturaController extends Controller
             'clientes' => Cliente::orderBy('nome')->get(),
             'produtos' => Produto::ativos()->orderBy('nome')->get(),
             'taxaIvaGeral' => (float) config('faturacao.taxa_iva_geral'),
+            ...$this->dadosDeIsencao(),
         ]);
+    }
+
+    /**
+     * Para o formulário: motivos de isenção (só há seletor se a taxa 0% for permitida).
+     *
+     * @return array{motivosIsencao: array<string, string>, aceitaIsencao: bool}
+     */
+    protected function dadosDeIsencao(): array
+    {
+        return [
+            'motivosIsencao' => collect((array) config('faturacao.motivos_isencao', []))
+                ->map(fn (array $motivo, string $codigo) => "{$codigo} — {$motivo['descricao']}")
+                ->all(),
+            'aceitaIsencao' => in_array(0.0, array_map('floatval', (array) config('faturacao.taxas_iva_permitidas', [])), true),
+        ];
     }
 
     public function guardar(GuardarFaturaRequest $request): RedirectResponse
@@ -54,12 +70,17 @@ class FaturaController extends Controller
 
         $cliente = Cliente::findOrFail($request->validated('cliente_id'));
 
-        $fatura = $this->faturaService->criarRascunho(
-            $empresa,
-            $cliente,
-            $request->validated('linhas'),
-            $request->validated('observacoes'),
-        );
+        try {
+            $fatura = $this->faturaService->criarRascunho(
+                $empresa,
+                $cliente,
+                $request->validated('linhas'),
+                $request->validated('observacoes'),
+            );
+        } catch (\DomainException|\InvalidArgumentException $e) {
+            // Regras de negócio (ex.: linha isenta sem motivo): mensagens seguras para o utilizador.
+            return back()->withInput()->withErrors(['fatura' => $e->getMessage()]);
+        }
 
         return redirect()->route('faturacao.faturas.mostrar', $fatura)
             ->with('sucesso', 'Rascunho criado. Revê os valores antes de emitir.');
@@ -86,12 +107,14 @@ class FaturaController extends Controller
             'clientes' => Cliente::orderBy('nome')->get(),
             'produtos' => Produto::ativos()->orderBy('nome')->get(),
             'taxaIvaGeral' => (float) config('faturacao.taxa_iva_geral'),
+            ...$this->dadosDeIsencao(),
             'linhasIniciais' => $modelo->linhas->map(fn ($linha) => [
                 'produto_id' => $linha->produto_id,
                 'descricao' => $linha->descricao,
                 'quantidade' => (float) $linha->quantidade,
                 'preco_unitario' => (float) $linha->preco_unitario,
                 'taxa_iva' => (float) $linha->taxa_iva,
+                'motivo_isencao' => $linha->motivo_isencao ?? '',
             ])->values()->all(),
         ]);
     }

@@ -37,6 +37,7 @@ class Fatura extends Model implements DocumentoFiscalInterface
         'hash_anterior',
         'chave_versao',
         'observacoes',
+        'rejeitado_documento_no',
     ];
 
     protected function casts(): array

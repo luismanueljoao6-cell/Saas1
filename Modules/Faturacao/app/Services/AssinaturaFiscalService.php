@@ -75,13 +75,58 @@ class AssinaturaFiscalService
             throw AssinaturaFiscalException::chavePublicaNaoEncontrada();
         }
 
-        $chavePublica = openssl_pkey_get_public((string) file_get_contents($caminhoChavePublica));
+        return $this->verificarComPem($conteudo, $jws, (string) file_get_contents($caminhoChavePublica));
+    }
+
+    /** Como verificar(), com a chave pública já em PEM. */
+    public function verificarComPem(string $conteudo, string $jws, string $chavePublicaPem): bool
+    {
+        $chavePublica = openssl_pkey_get_public($chavePublicaPem);
 
         if (! $chavePublica) {
             throw AssinaturaFiscalException::chavePublicaInvalida();
         }
 
         return Jws::verificar($jws, $chavePublica) && Jws::payload($jws) === $conteudo;
+    }
+
+    /**
+     * Chave pública (PEM) derivada da chave privada DA EMPRESA ({chaves_dir}/{NIF}.pem),
+     * ou null se essa chave não existe neste servidor. Nunca recorre à chave genérica.
+     */
+    public function chavePublicaDaEmpresa(int $empresaId): ?string
+    {
+        $caminho = $this->caminhoDaChaveDaEmpresa($empresaId);
+
+        if ($this->nifSeguro($empresaId) === '' || ! is_file($caminho)) {
+            return null;
+        }
+
+        $chave = openssl_pkey_get_private((string) file_get_contents($caminho));
+
+        if (! $chave) {
+            throw AssinaturaFiscalException::chavePrivadaInvalida();
+        }
+
+        $publica = (openssl_pkey_get_details($chave) ?: [])['key'] ?? null;
+
+        return is_string($publica) ? $publica : null;
+    }
+
+    /** Caminho esperado da chave privada da empresa: {chaves_dir}/{NIF}.pem. */
+    public function caminhoDaChaveDaEmpresa(int $empresaId): string
+    {
+        $nif = $this->nifSeguro($empresaId);
+
+        return rtrim((string) config('faturacao.chaves_dir'), '/\\').DIRECTORY_SEPARATOR.($nif !== '' ? $nif : 'SEM-NIF').'.pem';
+    }
+
+    /** NIF só com caracteres seguros para um nome de ficheiro (sem '/', '..' etc.); '' se a empresa não tem NIF. */
+    protected function nifSeguro(int $empresaId): string
+    {
+        $nif = (string) Empresa::query()->whereKey($empresaId)->value('nif');
+
+        return preg_replace('/[^A-Za-z0-9]/', '', $nif) ?? '';
     }
 
     protected function carregarChavePrivada(?int $empresaId): OpenSSLAsymmetricKey
@@ -118,14 +163,16 @@ class AssinaturaFiscalService
 
     protected function caminhoDaChave(?int $empresaId): string
     {
+        // Sem empresa não há chave de emissor: fora de desenvolvimento/testes nunca se
+        // assina (nem se assina um pedido à AGT) com a chave genérica.
+        if ($empresaId === null && ! $this->permiteChaveGenerica()) {
+            throw AssinaturaFiscalException::chavePrivadaNaoEncontrada('(sem empresa: a chave por NIF não pode ser resolvida)');
+        }
+
         if ($empresaId !== null) {
-            $nif = (string) Empresa::query()->whereKey($empresaId)->value('nif');
-            // Só caracteres seguros no nome do ficheiro (sem '/', '..' etc.).
-            $nif = preg_replace('/[^A-Za-z0-9]/', '', $nif) ?? '';
+            $porEmpresa = $this->caminhoDaChaveDaEmpresa($empresaId);
 
-            $porEmpresa = rtrim((string) config('faturacao.chaves_dir'), '/\\').DIRECTORY_SEPARATOR.($nif !== '' ? $nif : 'SEM-NIF').'.pem';
-
-            if ($nif !== '' && is_file($porEmpresa)) {
+            if ($this->nifSeguro($empresaId) !== '' && is_file($porEmpresa)) {
                 return $porEmpresa;
             }
 

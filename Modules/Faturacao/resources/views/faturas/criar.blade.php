@@ -57,6 +57,17 @@
                                    class="col-span-3 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
                             <input type="hidden" :name="`linhas[${indice}][produto_id]`" :value="linha.produto_id ?? ''">
                             <button type="button" @click="removerLinha(indice)" class="col-span-1 text-red-500 hover:text-red-700" title="Remover">✕</button>
+                            @if ($aceitaIsencao)
+                                {{-- Linhas a 0% exigem o motivo de isenção; desativado (não enviado) nas restantes. --}}
+                                <select :name="`linhas[${indice}][motivo_isencao]`" x-model="linha.motivo_isencao"
+                                        x-show="Number(linha.taxa_iva) === 0" :disabled="Number(linha.taxa_iva) !== 0" :required="Number(linha.taxa_iva) === 0"
+                                        class="col-span-12 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                                    <option value="">Motivo de isenção...</option>
+                                    @foreach ($motivosIsencao as $codigo => $rotulo)
+                                        <option value="{{ $codigo }}">{{ $rotulo }}</option>
+                                    @endforeach
+                                </select>
+                            @endif
                         </div>
                     </template>
                 </div>
@@ -85,9 +96,9 @@
             return {
                 linhas: linhasIniciais.length > 0
                     ? linhasIniciais
-                    : [{ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral }],
+                    : [{ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral, motivo_isencao: '' }],
                 adicionarLinha() {
-                    this.linhas.push({ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral });
+                    this.linhas.push({ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral, motivo_isencao: '' });
                 },
                 removerLinha(indice) {
                     this.linhas.splice(indice, 1);

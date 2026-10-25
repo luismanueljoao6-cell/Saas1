@@ -14,8 +14,11 @@ use Modules\Faturacao\Support\Dinheiro;
 
 /**
  * ESTRUTURA PROVISÓRIA do SAF-T (AO): ainda NÃO validada contra o XSD oficial
- * da AGT (faltam namespace, TaxTable, DocumentTotals, etc.). Não submeter à AGT
- * sem validação XSD e software certificado — ver README.
+ * da AGT (falta, por exemplo, o namespace e o tratamento dos recibos). Tem
+ * TaxTable e DocumentTotals, mas só deixa de ser provisória quando o XSD oficial
+ * (faturacao.saft_xsd_path) a aceitar — o GerarSafTJob valida com o SafTValidadorXsd e
+ * só publica o que passou. Não submeter à AGT sem validação XSD e software
+ * certificado — ver README.
  *
  * Todas as queries filtram explicitamente por empresa_id e ignoram a
  * TenantScope, por isso não dependem de tenant ambiente (jobs/comandos).
@@ -31,12 +34,18 @@ class SafTExportService
         $doc = new DOMDocument('1.0', 'UTF-8');
         $doc->formatOutput = true;
 
+        $doc->appendChild($doc->createComment(' ESTRUTURA PROVISÓRIA: não validada contra o XSD oficial da AGT. Não submeter sem validação e certificação. '));
+
         $raiz = $doc->createElement('AuditFile');
         $doc->appendChild($raiz);
 
+        // Os documentos geram-se primeiro: a TaxTable lista os impostos efetivamente usados no período.
+        $impostosUsados = [];
+        $fonte = $this->documentosFonte($doc, $empresa, $inicio, $fim, $impostosUsados);
+
         $raiz->appendChild($this->cabecalho($doc, $empresa, $inicio, $fim));
-        $raiz->appendChild($this->tabelasMestras($doc, $empresa));
-        $raiz->appendChild($this->documentosFonte($doc, $empresa, $inicio, $fim));
+        $raiz->appendChild($this->tabelasMestras($doc, $empresa, $impostosUsados));
+        $raiz->appendChild($fonte);
 
         return $doc->saveXML();
     }
@@ -103,7 +112,8 @@ class SafTExportService
         return $cab;
     }
 
-    protected function tabelasMestras(DOMDocument $doc, Empresa $empresa): DOMElement
+    /** @param  array<string, array{0: string, 1: string, 2: string}>  $impostosUsados */
+    protected function tabelasMestras(DOMDocument $doc, Empresa $empresa, array $impostosUsados = []): DOMElement
     {
         $tabelas = $doc->createElement('MasterFiles');
 
@@ -125,10 +135,34 @@ class SafTExportService
             $tabelas->appendChild($p);
         }
 
+        $tabelas->appendChild($this->tabelaDeImpostos($doc, $impostosUsados));
+
         return $tabelas;
     }
 
-    protected function documentosFonte(DOMDocument $doc, Empresa $empresa, Carbon $inicio, Carbon $fim): DOMElement
+    /** @param  array<string, array{0: string, 1: string, 2: string}>  $impostosUsados  [tipo, código, taxa] por chave */
+    protected function tabelaDeImpostos(DOMDocument $doc, array $impostosUsados): DOMElement
+    {
+        $descricoes = ['NOR' => 'Taxa normal', 'INT' => 'Taxa intermédia', 'RED' => 'Taxa reduzida', 'ISE' => 'Isento', 'OUT' => 'Outra taxa', 'NS' => 'Não sujeito'];
+        $tabela = $doc->createElement('TaxTable');
+
+        ksort($impostosUsados);
+
+        foreach ($impostosUsados as [$tipo, $codigo, $taxa]) {
+            $entrada = $doc->createElement('TaxTableEntry');
+            $entrada->appendChild($this->no($doc, 'TaxType', $tipo));
+            $entrada->appendChild($this->no($doc, 'TaxCountryRegion', 'AO'));
+            $entrada->appendChild($this->no($doc, 'TaxCode', $codigo));
+            $entrada->appendChild($this->no($doc, 'Description', $descricoes[$codigo] ?? $codigo));
+            $entrada->appendChild($this->no($doc, 'TaxPercentage', $taxa));
+            $tabela->appendChild($entrada);
+        }
+
+        return $tabela;
+    }
+
+    /** @param  array<string, array{0: string, 1: string, 2: string}>  $impostosUsados */
+    protected function documentosFonte(DOMDocument $doc, Empresa $empresa, Carbon $inicio, Carbon $fim, array &$impostosUsados): DOMElement
     {
         $fonte = $doc->createElement('SourceDocuments');
         $vendas = $doc->createElement('SalesInvoices');
@@ -153,7 +187,7 @@ class SafTExportService
             ->with('linhas')->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
 
         foreach ($faturas as $f) {
-            $vendas->appendChild($this->documento($doc, 'FT', $f, 'CreditAmount'));
+            $vendas->appendChild($this->documento($doc, 'FT', $f, 'CreditAmount', $impostosUsados));
             $totalCredito += Dinheiro::centimos($f->valor_sem_iva);
             $entradas++;
         }
@@ -165,7 +199,7 @@ class SafTExportService
 
         foreach ($notas as $n) {
             $ehCredito = $n->tipo === 'credito';
-            $vendas->appendChild($this->documento($doc, $n->tipoDocumentoFiscal(), $n, $ehCredito ? 'DebitAmount' : 'CreditAmount'));
+            $vendas->appendChild($this->documento($doc, $n->tipoDocumentoFiscal(), $n, $ehCredito ? 'DebitAmount' : 'CreditAmount', $impostosUsados));
             $ehCredito
                 ? $totalDebito += Dinheiro::centimos($n->valor_sem_iva)
                 : $totalCredito += Dinheiro::centimos($n->valor_sem_iva);
@@ -181,7 +215,8 @@ class SafTExportService
         return $fonte;
     }
 
-    protected function documento(DOMDocument $doc, string $tipo, Fatura|NotaCreditoDebito $m, string $campoValor): DOMElement
+    /** @param  array<string, array{0: string, 1: string, 2: string}>  $impostosUsados */
+    protected function documento(DOMDocument $doc, string $tipo, Fatura|NotaCreditoDebito $m, string $campoValor, array &$impostosUsados): DOMElement
     {
         $no = $doc->createElement('Invoice');
 
@@ -193,20 +228,70 @@ class SafTExportService
         $no->appendChild($this->no($doc, 'CustomerID', $m->cliente_id));
         $no->appendChild($this->no($doc, 'Hash', $m->hash));
         $no->appendChild($this->no($doc, 'HashControl', $m->chave_versao));
-        $no->appendChild($this->no($doc, 'GrossTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_total))));
-        $no->appendChild($this->no($doc, 'NetTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_sem_iva))));
-        $no->appendChild($this->no($doc, 'TaxPayable', Dinheiro::formatar(Dinheiro::centimos($m->valor_iva))));
 
         foreach ($m->linhas as $linha) {
+            [$tipoImposto, $codigoImposto, $motivo] = $this->classificarImposto($m, $linha);
+            $taxa = number_format((float) $linha->taxa_iva, 2, '.', '');
+            $impostosUsados["{$tipoImposto}|{$codigoImposto}|{$taxa}"] = [$tipoImposto, $codigoImposto, $taxa];
+
             $l = $doc->createElement('Line');
             $l->appendChild($this->no($doc, 'Description', $linha->descricao));
             $l->appendChild($this->no($doc, 'Quantity', $linha->quantidade));
             $l->appendChild($this->no($doc, 'UnitPrice', Dinheiro::formatar(Dinheiro::centimos($linha->preco_unitario))));
             $l->appendChild($this->no($doc, $campoValor, Dinheiro::formatar(Dinheiro::centimos($linha->valor_sem_iva))));
-            $l->appendChild($this->no($doc, 'TaxPercentage', $linha->taxa_iva));
+
+            $imposto = $doc->createElement('Tax');
+            $imposto->appendChild($this->no($doc, 'TaxType', $tipoImposto));
+            $imposto->appendChild($this->no($doc, 'TaxCountryRegion', 'AO'));
+            $imposto->appendChild($this->no($doc, 'TaxCode', $codigoImposto));
+            $imposto->appendChild($this->no($doc, 'TaxPercentage', $taxa));
+            $l->appendChild($imposto);
+
+            if ($motivo !== null) {
+                $l->appendChild($this->no($doc, 'TaxExemptionCode', $motivo));
+            }
+
             $no->appendChild($l);
         }
 
+        $totais = $doc->createElement('DocumentTotals');
+        $totais->appendChild($this->no($doc, 'TaxPayable', Dinheiro::formatar(Dinheiro::centimos($m->valor_iva))));
+        $totais->appendChild($this->no($doc, 'NetTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_sem_iva))));
+        $totais->appendChild($this->no($doc, 'GrossTotal', Dinheiro::formatar(Dinheiro::centimos($m->valor_total))));
+        $no->appendChild($totais);
+
         return $no;
+    }
+
+    /**
+     * Mesma classificação que segue para a AGT (AgtDocumentoBuilder): IVA com código da
+     * taxa, isento (IVA/ISE) ou não sujeito (NS); nota de débito é sempre não sujeita.
+     *
+     * @return array{0: string, 1: string, 2: ?string} [taxType, taxCode, taxExemptionCode]
+     */
+    protected function classificarImposto(Fatura|NotaCreditoDebito $documento, object $linha): array
+    {
+        $taxa = (float) $linha->taxa_iva;
+
+        if ($taxa > 0) {
+            $codigos = (array) config('faturacao.agt.codigos_taxa', []);
+
+            return ['IVA', (string) ($codigos[number_format($taxa, 2, '.', '')] ?? 'OUT'), null];
+        }
+
+        if ($documento instanceof NotaCreditoDebito && $documento->tipo === 'debito') {
+            $codigo = strtoupper(trim((string) config('faturacao.agt.nd_codigo_nao_sujeicao')));
+
+            return ['NS', 'NS', $codigo !== '' ? $codigo : null];
+        }
+
+        $motivo = strtoupper(trim((string) ($linha->motivo_isencao ?? '')));
+        $entrada = ((array) config('faturacao.motivos_isencao', []))[$motivo] ?? null;
+
+        if (is_array($entrada) && ($entrada['tipo'] ?? 'ISE') === 'NS') {
+            return ['NS', 'NS', $motivo];
+        }
+
+        return ['IVA', 'ISE', $motivo !== '' ? $motivo : null];
     }
 }

@@ -63,6 +63,7 @@ class NotaCreditoDebitoService
             'quantidade' => $linha->quantidade,
             'preco_unitario' => $linha->preco_unitario,
             'taxa_iva' => $linha->taxa_iva,
+            'motivo_isencao' => $linha->motivo_isencao,
         ])->all();
 
         return $this->criarRascunho($fatura->empresa_id, $fatura->cliente_id, 'credito', $motivo, $linhas, $fatura->id);
@@ -103,9 +104,15 @@ class NotaCreditoDebitoService
 
         $debitoSemIva = $this->debitoSemIva($tipo);
 
-        // Notas de crédito espelham a fatura original: não se re-verificam as taxas.
-        // Notas de débito sem IVA não usam a tabela de taxas: exigem taxa 0 (abaixo).
-        ValidacaoLinhas::validar($linhas, $empresaId, verificarTaxas: $tipo === 'debito' && ! $debitoSemIva);
+        // Notas de crédito espelham a fatura original: não se re-verificam as taxas (mas as linhas isentas
+        // têm de trazer o motivo de isenção). Notas de débito sem IVA não usam a tabela de taxas nem levam
+        // motivo de isenção: exigem taxa 0 (abaixo).
+        ValidacaoLinhas::validar(
+            $linhas,
+            $empresaId,
+            verificarTaxas: $tipo === 'debito' && ! $debitoSemIva,
+            exigirMotivoIsencao: $tipo === 'credito' || ($tipo === 'debito' && ! $debitoSemIva),
+        );
 
         if ($debitoSemIva) {
             foreach (array_values($linhas) as $indice => $dadosLinha) {
@@ -127,7 +134,7 @@ class NotaCreditoDebitoService
             }
         }
 
-        return DB::transaction(function () use ($empresaId, $clienteId, $tipo, $motivo, $linhas, $faturaId) {
+        return DB::transaction(function () use ($empresaId, $clienteId, $tipo, $motivo, $linhas, $faturaId, $debitoSemIva) {
             $tipoDocumento = $tipo === 'debito' ? 'ND' : 'NC';
 
             $nota = NotaCreditoDebito::create([
@@ -148,6 +155,7 @@ class NotaCreditoDebitoService
                     'quantidade' => $dadosLinha['quantidade'],
                     'preco_unitario' => $dadosLinha['preco_unitario'],
                     'taxa_iva' => $dadosLinha['taxa_iva'],
+                    'motivo_isencao' => $debitoSemIva ? null : ValidacaoLinhas::normalizarMotivo($dadosLinha['motivo_isencao'] ?? null),
                     'ordem' => $indice,
                 ]))->calcularValores()->save();
             }

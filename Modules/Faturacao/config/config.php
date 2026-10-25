@@ -28,6 +28,9 @@ return [
     // devolve '' e não usaria o valor por omissão.
     'chave_privada_path' => env('FATURACAO_CHAVE_PRIVADA_PATH') ?: storage_path('app/faturacao/chave-privada.pem'),
 
+    // Chave pública de recurso do faturacao:verificar-cadeia (quando a empresa não tem {NIF}.pem neste servidor).
+    'chave_publica_path' => env('FATURACAO_CHAVE_PUBLICA_PATH') ?: storage_path('app/faturacao/chave-publica.pem'),
+
     'chaves_dir' => env('FATURACAO_CHAVES_DIR') ?: storage_path('app/faturacao/chaves'),
 
     /*
@@ -94,11 +97,71 @@ return [
 
     /*
     | Taxas de IVA aceites na emissão (percentagens, separadas por vírgula no .env).
-    | Confirma contra a tabela atual da AGT antes de produção. Taxa 0 (isenção)
-    | está DESATIVADA por omissão: exige motivo de isenção (códigos M no SAF-T), ainda
-    | por implementar — só a ativar depois disso (ver README).
+    | Confirma contra a tabela atual da AGT antes de produção. A taxa 0 (isenção)
+    | está DESATIVADA por omissão: para a ativar junta-a (FATURACAO_TAXAS_IVA_PERMITIDAS=14,0)
+    | e confirma a tabela 'motivos_isencao' abaixo — cada linha a 0% exige um motivo.
     */
     'taxas_iva_permitidas' => array_map('floatval', array_filter(explode(',', (string) env('FATURACAO_TAXAS_IVA_PERMITIDAS') ?: '14'), 'strlen')),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Motivos de isenção / não sujeição de IVA (taxExemptionCode)
+    |--------------------------------------------------------------------------
+    | Uma linha a 0% só é aceite com um motivo desta tabela, e o código segue
+    | para a AGT em `taxExemptionCode` (3 caracteres, Anexo 6.4 do Decreto
+    | Executivo n.º 683/25). 'tipo': ISE => taxType IVA + taxCode ISE (isento);
+    | NS => taxType NS (não sujeito).
+    |
+    | ATENÇÃO — tabela POR CONFIRMAR: é a transcrição de um terceiro (WISEDAT,
+    | set/2025) da tabela angolana de motivos de isenção; não é a cópia oficial
+    | do Anexo 6.4. Compara-a com o anexo oficial, corrige o que for preciso e só
+    | então define FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS=true. Enquanto isso for
+    | false, com a AGT ativa as isenções são recusadas (nenhum código por
+    | confirmar segue para a AGT).
+    | (M00 — Regime Simplificado — não é um motivo de isenção e fica de fora.)
+    */
+    'motivos_isencao_confirmados' => (bool) env('FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS', false),
+
+    'motivos_isencao' => [
+        'M02' => ['tipo' => 'NS', 'descricao' => 'Transmissão de bens e serviço não sujeita'],
+        'M04' => ['tipo' => 'NS', 'descricao' => 'IVA – Regime de Exclusão (Lei n.º 42/20)'],
+        'M10' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do n.º 1 do artigo 12.º do CIVA (bens alimentares)'],
+        'M11' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do n.º 1 do artigo 12.º do CIVA (medicamentos)'],
+        'M12' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea c) do n.º 1 do artigo 12.º do CIVA'],
+        'M13' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea d) do n.º 1 do artigo 12.º do CIVA (livros)'],
+        'M14' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea e) do n.º 1 do artigo 12.º do CIVA (locação de imóveis habitacionais)'],
+        'M15' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea f) do n.º 1 do artigo 12.º do CIVA'],
+        'M16' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea g) do n.º 1 do artigo 12.º do CIVA (jogos)'],
+        'M17' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea h) do n.º 1 do artigo 12.º do CIVA (transporte colectivo de passageiros)'],
+        'M18' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea i) do n.º 1 do artigo 12.º do CIVA (intermediação financeira)'],
+        'M19' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea j) do n.º 1 do artigo 12.º do CIVA (seguros)'],
+        'M20' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea k) do n.º 1 do artigo 12.º do CIVA (produtos petrolíferos)'],
+        'M21' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea l) do n.º 1 do artigo 12.º do CIVA (ensino)'],
+        'M22' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea m) do artigo 12.º do CIVA (serviços médico-sanitários)'],
+        'M23' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea n) do artigo 12.º do CIVA (transporte de doentes)'],
+        'M24' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea o) do artigo 12.º do CIVA (equipamentos médicos)'],
+        'M30' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do artigo 15.º do CIVA (exportações)'],
+        'M31' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea b) do artigo 15.º do CIVA'],
+        'M32' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea c) do artigo 15.º do CIVA'],
+        'M33' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea d) do artigo 15.º do CIVA'],
+        'M34' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea e) do artigo 15.º do CIVA'],
+        'M35' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea f) do artigo 15.º do CIVA'],
+        'M36' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea g) do artigo 15.º do CIVA'],
+        'M37' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea h) do artigo 15.º do CIVA'],
+        'M38' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea i) do artigo 15.º do CIVA'],
+        'M80' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do n.º 1 do artigo 14.º do CIVA (importações)'],
+        'M81' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea b) do n.º 1 do artigo 14.º do CIVA'],
+        'M82' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea c) do n.º 1 do artigo 14.º do CIVA'],
+        'M83' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea d) do n.º 1 do artigo 14.º do CIVA'],
+        'M84' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea e) do n.º 1 do artigo 14.º do CIVA'],
+        'M85' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do n.º 2 do artigo 14.º do CIVA'],
+        'M86' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea b) do n.º 2 do artigo 14.º do CIVA'],
+        'M90' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do n.º 1 do artigo 16.º do CIVA (regimes aduaneiros especiais)'],
+        'M91' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea b) do n.º 1 do artigo 16.º do CIVA'],
+        'M92' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea c) do n.º 1 do artigo 16.º do CIVA'],
+        'M93' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea d) do n.º 1 do artigo 16.º do CIVA'],
+        'M94' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea e) do n.º 1 do artigo 16.º do CIVA'],
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -133,6 +196,10 @@ return [
         'sem_resposta_horas' => (int) env('FATURACAO_AGT_SEM_RESPOSTA_HORAS', 24), // horas até um "enviado" sem estado final exigir intervenção
         'operation_type_padrao' => env('FATURACAO_AGT_OPERATION_TYPE', 'SG'), // tipo de operação das linhas (SG = serviço geral)
         'unidade_padrao' => 'UN',
+        // Nota de débito (não liquida imposto): por omissão segue SEM bloco "taxes". Se definires aqui um
+        // código de não sujeição (tipo NS da tabela motivos_isencao) e confirmares a tabela, segue com
+        // taxType NS + este taxExemptionCode. Confirmar em homologação qual a AGT aceita.
+        'nd_codigo_nao_sujeicao' => env('FATURACAO_AGT_ND_CODIGO_NS') ?: null,
         // Taxa de IVA (2 casas) => taxCode da AGT (NOR, INT, RED, OUT). Só as listadas são enviadas.
         'codigos_taxa' => ['14.00' => 'NOR'],
         'software' => [

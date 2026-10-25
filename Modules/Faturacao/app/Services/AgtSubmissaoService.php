@@ -116,7 +116,7 @@ class AgtSubmissaoService
     public function reenviar(AgtSubmissao $submissao): AgtSubmissao
     {
         if (! in_array($submissao->estado, [AgtSubmissao::ERRO, AgtSubmissao::AGUARDA_INTERVENCAO], true)) {
-            throw new \DomainException('Só se reenviam submissões em erro técnico ou a aguardar intervenção; documentos inválidos ou rejeitados exigem um documento de correção.');
+            throw new \DomainException('Só se reenviam submissões em erro técnico ou a aguardar intervenção; documentos inválidos ou rejeitados exigem um documento de correção (php artisan faturacao:agt-corrigir <id da submissão>).');
         }
 
         Log::warning('Submissão AGT reenviada manualmente', [
