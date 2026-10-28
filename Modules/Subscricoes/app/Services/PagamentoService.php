@@ -10,6 +10,7 @@ use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantService;
+use Modules\Core\Support\Servico;
 use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Subscricao;
@@ -32,7 +33,7 @@ class PagamentoService
      * que ainda restavam somam-se, nunca se perdem.
      *
      * @param  string|null  $valorRecebido  Valor pago segundo o gateway. Se
-     *                                      informado e inferior ao devido, lança DomainException
+     *                                      informado e diferente do devido (a menos ou a mais), lança DomainException
      *                                      e NADA é confirmado. Nulo = sem verificação (confirmação manual).
      *
      * @throws DomainException|Throwable
@@ -131,6 +132,9 @@ class PagamentoService
                         'estado' => 'ativa',
                         'inicio_em' => $subscricao->inicio_em ?? $agora,
                         'termina_em' => $terminaEm,
+                        // Reativada (ex.: confirmação manual após cancelamento pela rotina):
+                        // deixa de constar como cancelada, salvo se a renovação foi cancelada.
+                        'cancelada_em' => $subscricao->renovacao_automatica ? null : $subscricao->cancelada_em,
                     ]);
 
                     // Uma empresa só tem uma subscrição ativa de cada vez
@@ -146,13 +150,14 @@ class PagamentoService
                     // O pacote pago define os serviços da empresa. Os que ficam
                     // de fora são desativados, nunca apagados. Planos sem
                     // 'servicos' (ex.: antigos) não alteram nada.
-                    if ($subscricao->servicos !== null) {
-                        if (! empty($subscricao->servicos)) {
-                            $empresa->definirServicos($subscricao->servicos);
-                        }
-                    } elseif (! empty($subscricao->plano->servicos)) {
-                        // Compatibilidade com subscrições antigas sem snapshot.
-                        $empresa->definirServicos($subscricao->plano->servicos);
+                    // Snapshot da compra; subscrições antigas, sem snapshot, usam o plano.
+                    $servicosContratados = $subscricao->servicos ?? $subscricao->plano->servicos;
+
+                    // Só aplica se a lista tiver pelo menos um serviço conhecido:
+                    // definirServicos() recusa uma lista final vazia, e isso faria
+                    // falhar (e reverter) a confirmação de um pagamento já recebido.
+                    if (! empty($servicosContratados) && Servico::comDependencias($servicosContratados) !== []) {
+                        $empresa->definirServicos($servicosContratados);
                     }
 
                     Log::info('Pagamento confirmado e subscrição ativada', [

@@ -11,6 +11,7 @@ use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantService;
 use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
+use Modules\Subscricoes\Exceptions\PedidoEmPreparacaoException;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Models\Subscricao;
@@ -61,6 +62,14 @@ class SubscricaoService
                         ->latest('id')
                         ->first();
 
+                    // Pedido que nunca chegou a ter referência e já passou do tempo razoável
+                    // de uma chamada ao gateway: foi abandonado (processo morto a meio).
+                    // Descarta-o em vez de bloquear a empresa até ele expirar (dias).
+                    if ($existente && $this->descartarPreparacaoAbandonada($existente)) {
+                        $existente->subscricao->update(['estado' => 'cancelada', 'cancelada_em' => now()]);
+                        $existente = null;
+                    }
+
                     if ($existente) {
                         if ((int) $existente->subscricao->plano_id !== (int) $plano->id) {
                             throw new DomainException(
@@ -91,7 +100,7 @@ class SubscricaoService
 
             if ($reutilizado) {
                 if (! $pagamento->referencia_externa) {
-                    throw new RuntimeException(
+                    throw new PedidoEmPreparacaoException(
                         'Já existe um pedido de pagamento em preparação para este plano. Tente novamente dentro de instantes.'
                     );
                 }
@@ -177,6 +186,11 @@ class SubscricaoService
                     ->latest('id')
                     ->first();
 
+                // Referência de renovação abandonada a meio (sem referência externa).
+                if ($existente && $this->descartarPreparacaoAbandonada($existente)) {
+                    $existente = null;
+                }
+
                 if ($existente) {
                     return [$subscricaoBloqueada, $existente, true];
                 }
@@ -189,7 +203,7 @@ class SubscricaoService
             });
 
             if ($reutilizado && ! $pagamento->referencia_externa) {
-                throw new RuntimeException(
+                throw new PedidoEmPreparacaoException(
                     'Já existe uma referência de renovação em preparação. Tente novamente dentro de instantes.'
                 );
             }
@@ -286,6 +300,12 @@ class SubscricaoService
                 ->lockForUpdate()
                 ->findOrFail($subscricao->id);
 
+            if ($bloqueada->estado !== 'ativa') {
+                throw new DomainException(
+                    'Só é possível cancelar a renovação de uma subscrição ativa.'
+                );
+            }
+
             $bloqueada->update([
                 'renovacao_automatica' => false,
                 'cancelada_em' => now(),
@@ -359,6 +379,35 @@ class SubscricaoService
         Log::info('Renovação automática retomada', ['subscricao_id' => $atualizada->id]);
 
         return $atualizada;
+    }
+
+    /**
+     * Um pagamento 'pendente' sem referência externa só é legítimo enquanto o
+     * pedido que o criou está a falar com o gateway (segundos). Passado esse
+     * prazo o processo morreu a meio: a referência nunca foi mostrada a ninguém
+     * e deixá-lo vivo bloquearia novas tentativas até expirar (dias).
+     * Chamado sob lock da empresa/subscrição.
+     */
+    protected function descartarPreparacaoAbandonada(Pagamento $pagamento): bool
+    {
+        if ($pagamento->referencia_externa || $pagamento->created_at === null) {
+            return false;
+        }
+
+        $minutos = max(1, (int) Config::get('subscricoes.preparacao_abandonada_minutos', 2));
+
+        if ($pagamento->created_at->gt(now()->subMinutes($minutos))) {
+            return false;
+        }
+
+        $pagamento->update(['estado' => 'expirado']);
+
+        Log::warning('Pedido de pagamento sem referência abandonado — descartado', [
+            'pagamento_id' => $pagamento->id,
+            'subscricao_id' => $pagamento->subscricao_id,
+        ]);
+
+        return true;
     }
 
     protected function precoAplicavel(Subscricao $subscricao, Plano $plano): mixed

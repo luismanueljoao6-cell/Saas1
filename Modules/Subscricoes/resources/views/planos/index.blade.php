@@ -7,11 +7,7 @@
         <h1 class="text-center text-2xl font-semibold text-slate-900">Escolhe o teu plano</h1>
         <p class="mt-1 text-center text-sm text-slate-500">Podes mudar de plano a qualquer momento.</p>
 
-        @if (session('erro'))
-            <div class="mt-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-                {{ session('erro') }}
-            </div>
-        @endif
+        {{-- Os avisos (sucesso/erro) já são mostrados pelo layout core::layouts.app. --}}
 
         @if ($subscricaoAtual)
             <div class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900">
@@ -46,7 +42,7 @@
                     <p class="mt-1 text-sm text-slate-500">{{ $plano->descricao }}</p>
 
                     <p class="mt-4 text-2xl font-bold text-slate-900">
-                        {{ number_format((float) $plano->preco, 0, ',', ' ') }} {{ $plano->moeda }}
+                        {{ number_format((float) $plano->preco, fmod((float) $plano->preco, 1.0) === 0.0 ? 0 : 2, ',', ' ') }} {{ $plano->moeda }}
                         <span class="text-sm font-normal text-slate-500">/ {{ $plano->periodo_dias }} dias</span>
                     </p>
 
@@ -63,14 +59,20 @@
                         </p>
                     @endif
 
-                    <form method="POST" action="{{ route('subscricoes.iniciar') }}" class="mt-6">
-                        @csrf
-                        <input type="hidden" name="plano_id" value="{{ $plano->id }}">
-                        <button type="submit"
-                                class="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
-                            Subscrever
-                        </button>
-                    </form>
+                    @if (auth()->user()->hasRole('Administrador'))
+                        <form method="POST" action="{{ route('subscricoes.iniciar') }}" class="mt-6">
+                            @csrf
+                            <input type="hidden" name="plano_id" value="{{ $plano->id }}">
+                            <button type="submit"
+                                    class="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                                Subscrever
+                            </button>
+                        </form>
+                    @else
+                        <p class="mt-6 text-xs text-slate-500">
+                            Só um administrador da empresa pode contratar ou mudar de plano.
+                        </p>
+                    @endif
                 </div>
             @empty
                 <p class="col-span-3 text-center text-sm text-slate-500">

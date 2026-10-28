@@ -34,7 +34,7 @@
             <div class="flex items-center justify-between gap-4 p-4">
                 <dt class="text-xs uppercase tracking-wide text-slate-500">Entidade</dt>
                 <dd class="font-mono text-xl font-semibold text-slate-900"
-                    @click="navigator.clipboard.writeText('{{ $entidade }}'); copiado = 'entidade'">
+                    @click="navigator.clipboard.writeText(@js((string) $entidade)); copiado = 'entidade'">
                     {{ $entidade ?? '—' }}
                     <span x-show="copiado === 'entidade'" class="ml-2 text-xs font-normal text-emerald-600">copiado</span>
                 </dd>
@@ -42,7 +42,7 @@
             <div class="flex items-center justify-between gap-4 p-4">
                 <dt class="text-xs uppercase tracking-wide text-slate-500">Referência</dt>
                 <dd class="font-mono text-xl font-semibold text-slate-900"
-                    @click="navigator.clipboard.writeText('{{ $referencia }}'); copiado = 'referencia'">
+                    @click="navigator.clipboard.writeText(@js($referencia)); copiado = 'referencia'">
                     {{ trim(chunk_split($referencia, 3, ' ')) }}
                     <span x-show="copiado === 'referencia'" class="ml-2 text-xs font-normal text-emerald-600">copiado</span>
                 </dd>
@@ -81,3 +81,12 @@
         </a>
     </div>
 @endsection
+
+@if ($pagamento->estado === 'pendente')
+    @push('scripts')
+        <script>
+            // Verifica a confirmação sem obrigar a atualizar a página à mão.
+            setTimeout(function () { window.location.reload(); }, 30000);
+        </script>
+    @endpush
+@endif

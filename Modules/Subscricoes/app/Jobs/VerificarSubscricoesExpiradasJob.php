@@ -252,7 +252,16 @@ class VerificarSubscricoesExpiradasJob implements ShouldQueue
 
         // Resolvido só aqui: se o gateway estiver mal configurado, falha
         // apenas este passo, não os cinco anteriores.
-        $subscricaoService = app(SubscricaoService::class);
+        try {
+            $subscricaoService = app(SubscricaoService::class);
+        } catch (Throwable $e) {
+            $this->falhas++;
+            Log::error('Não foi possível preparar o serviço de renovações (gateway mal configurado?)', [
+                'erro' => $e->getMessage(),
+            ]);
+
+            return;
+        }
 
         Subscricao::query()
             ->where('estado', 'ativa')
