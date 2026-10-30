@@ -349,6 +349,27 @@ Acrescenta ao que está acima o que ainda faltava. Cada ponto tem teste automát
 
 **Continua em aberto** (não se resolve só com código): conformidade fiscal integral e certificação do
 software; XSD oficial e estrutura SAF-T completa; confirmação da tabela de motivos de isenção (Anexo 6.4);
-homologação real com a AGT; descontos, divisas, retenções e os restantes tipos de documento; interface
-para notas de crédito parciais, notas de débito e recibos.
+homologação real com a AGT; descontos, divisas, retenções e os restantes tipos de documento; versão
+para impressão com o layout fiscal.
+
+## Fase 3 da auditoria (interface)
+
+A interface passa a mostrar o que o serviço já fazia. Cada ponto tem teste HTTP.
+
+- **Estado na AGT à vista** (com a comunicação AGT ativa) nas faturas, notas e recibos e nas listas:
+  «Enviado» não é confirmação fiscal — só «Válido» o é; erros da AGT visíveis.
+- **Correção de fatura inválida/rejeitada** pelo botão «Criar rascunho de correção» (Administrador), com a
+  mesma lógica do comando `faturacao:agt-corrigir`: a fatura rejeitada e a correção apontam uma para a outra.
+- **Notas de crédito e de débito**: lista, rascunho, emissão (Administrador) e eliminação de rascunhos. A
+  nota de crédito parte das linhas da fatura (reduz quantidades para creditar só uma parte); a de débito
+  não leva IVA. Erros de regra voltam ao formulário com a mensagem, sem perder as linhas.
+- **Recibos**: lista e emissão a partir da fatura (Administrador), com o valor em dívida
+  (total − recibos − notas de crédito) e recusa de valores acima disso.
+- **Na fatura**: «Recebimentos» (recebido, creditado, em dívida) e as ações «Registar recibo», «Nota de
+  crédito (parcial)» e «Nota de débito».
+- O formulário de nova fatura conserva as linhas depois de um erro.
+
+Fica por fazer: versão para impressão (o layout fiscal tem de ser validado contra a lei), recibos de
+adiantamento (a AGT ainda não os suporta aqui), edição de notas em rascunho (elimina-se e recria-se) e
+correção assistida de notas de crédito/débito e recibos rejeitados.
 

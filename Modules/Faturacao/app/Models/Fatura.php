@@ -5,6 +5,7 @@ namespace Modules\Faturacao\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Modules\Core\Traits\BelongsToTenant;
 use Modules\Faturacao\Contracts\DocumentoFiscalInterface;
 use Modules\Faturacao\Support\Dinheiro;
@@ -64,6 +65,17 @@ class Fatura extends Model implements DocumentoFiscalInterface
     public function linhas(): HasMany
     {
         return $this->hasMany(FaturaLinha::class)->orderBy('ordem');
+    }
+
+    public function recibos(): HasMany
+    {
+        return $this->hasMany(Recibo::class);
+    }
+
+    /** Fatura nova que corrige esta, quando a AGT a rejeitou (liga-se pelo número do documento rejeitado). */
+    public function correcao(): HasOne
+    {
+        return $this->hasOne(self::class, 'rejeitado_documento_no', 'numero_documento');
     }
 
     public function notasCreditoDebito(): HasMany
