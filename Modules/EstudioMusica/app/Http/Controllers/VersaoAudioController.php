@@ -6,11 +6,11 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Storage;
-use Throwable;
 use Modules\EstudioMusica\Models\FaixaMusical;
 use Modules\EstudioMusica\Models\VersaoAudio;
 use Modules\EstudioMusica\Services\NotificacaoEstudioService;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Throwable;
 
 /**
  * "Upload de arquivos de áudio/demos para o portal" (secção H — papel do
