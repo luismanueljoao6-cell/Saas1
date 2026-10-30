@@ -123,5 +123,5 @@
 
     {{-- Alpine.js só é necessário para o filtro do portfólio; o layout público não o
          carrega por omissão (ao contrário de core::layouts.app), por isso vem aqui. --}}
-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.4/dist/cdn.min.js" integrity="sha384-5/joNqFnRyVWzXp99bHot6RHG+EksGp+USSgZwPar7T9SD9PKKER37n/8bXBAZGd" crossorigin="anonymous" defer></script>
 @endsection
