@@ -2,8 +2,11 @@
     "$schema": "https://getcomposer.org/schema.json",
     "name": "laravel/laravel",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "Plataforma SaaS multi-tenant de faturação e gestão para o mercado angolano (Laravel + módulos).",
+    "keywords": [
+        "laravel",
+        "framework"
+    ],
     "license": "MIT",
     "require": {
         "php": "^8.4",
@@ -24,26 +27,30 @@
         "phpunit/phpunit": "^12.5.12"
     },
     "autoload": {
-    "psr-4": {
-        "App\\": "app/",
-        "Database\\Factories\\": "database/factories/",
-        "Database\\Seeders\\": "database/seeders/",
-        "Modules\\Core\\": "Modules/Core/app/",
-"Modules\\Subscricoes\\": "Modules/Subscricoes/app/",
-"Modules\\Faturacao\\": "Modules/Faturacao/app/",
-"Modules\\Core\\Database\\Seeders\\": "Modules/Core/database/seeders/",
-"Modules\\Subscricoes\\Database\\Seeders\\": "Modules/Subscricoes/database/seeders/",
-"Modules\\Faturacao\\Database\\Seeders\\": "Modules/Faturacao/database/seeders/",
- "Modules\\Atelier\\": "Modules/Atelier/app/",
-"Modules\\Atelier\\Database\\Seeders\\": "Modules/Atelier/database/seeders/",
-"Modules\\EstudioMusica\\": "Modules/EstudioMusica/app/",
-"Modules\\EstudioMusica\\Database\\Seeders\\": "Modules/EstudioMusica/database/seeders/"       
-    }
-},
-
+        "psr-4": {
+            "App\\": "app/",
+            "Database\\Factories\\": "database/factories/",
+            "Database\\Seeders\\": "database/seeders/",
+            "Modules\\Core\\": "Modules/Core/app/",
+            "Modules\\Subscricoes\\": "Modules/Subscricoes/app/",
+            "Modules\\Faturacao\\": "Modules/Faturacao/app/",
+            "Modules\\Core\\Database\\Seeders\\": "Modules/Core/database/seeders/",
+            "Modules\\Subscricoes\\Database\\Seeders\\": "Modules/Subscricoes/database/seeders/",
+            "Modules\\Faturacao\\Database\\Seeders\\": "Modules/Faturacao/database/seeders/",
+            "Modules\\Atelier\\": "Modules/Atelier/app/",
+            "Modules\\Atelier\\Database\\Seeders\\": "Modules/Atelier/database/seeders/",
+            "Modules\\EstudioMusica\\": "Modules/EstudioMusica/app/",
+            "Modules\\EstudioMusica\\Database\\Seeders\\": "Modules/EstudioMusica/database/seeders/"
+        }
+    },
     "autoload-dev": {
         "psr-4": {
-            "Tests\\": "tests/"
+            "Tests\\": "tests/",
+            "Modules\\Atelier\\Tests\\": "Modules/Atelier/tests/",
+            "Modules\\Core\\Tests\\": "Modules/Core/tests/",
+            "Modules\\EstudioMusica\\Tests\\": "Modules/EstudioMusica/tests/",
+            "Modules\\Faturacao\\Tests\\": "Modules/Faturacao/tests/",
+            "Modules\\Subscricoes\\Tests\\": "Modules/Subscricoes/tests/"
         }
     },
     "scripts": {
