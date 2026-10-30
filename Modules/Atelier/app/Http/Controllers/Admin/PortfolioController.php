@@ -23,6 +23,7 @@ class PortfolioController extends Controller
 
     public function guardar(GuardarPortfolioItemRequest $request): RedirectResponse
     {
+        // O portfólio é público por desenho (aparece na landing page): disco 'public'.
         $caminho = $request->file('foto')->store('atelier/portfolio', 'public');
 
         PortfolioItem::create([
@@ -44,7 +45,7 @@ class PortfolioController extends Controller
      */
     public function destruir(PortfolioItem $portfolioItem): RedirectResponse
     {
-        abort_unless($portfolioItem->empresa_id === request()->user()->empresa_id, 403);
+        abort_unless((int) $portfolioItem->empresa_id === (int) request()->user()->empresa_id, 403);
         abort_unless(request()->user()->hasRole('Administrador'), 403);
 
         Storage::disk('public')->delete($portfolioItem->caminho_foto);

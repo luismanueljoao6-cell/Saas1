@@ -15,6 +15,7 @@ use Modules\Atelier\Http\Requests\GuardarPedidoRequest;
 use Modules\Atelier\Http\Requests\RegistarPagamentoFinalRequest;
 use Modules\Atelier\Http\Requests\RegistarSinalRequest;
 use Modules\Atelier\Models\Pedido;
+use Modules\Atelier\Models\PedidoFoto;
 use Modules\Atelier\Models\PedidoMaterial;
 use Modules\Atelier\Services\PedidoFaturacaoService;
 use Modules\Atelier\Services\PedidoStatusService;
@@ -33,15 +34,22 @@ class PedidoController extends Controller
 
     public function index(): View
     {
+        $query = Pedido::with(['cliente', 'responsavel'])->latest('id');
+
+        // A Costureira só vê os pedidos que lhe estão atribuídos.
+        if (! $this->podeGerir()) {
+            $query->where('responsavel_id', request()->user()->id);
+        }
+
         return view('atelier::pedidos.index', [
-            'pedidos' => Pedido::with(['cliente', 'responsavel'])
-                ->latest('id')
-                ->paginate(20),
+            'pedidos' => $query->paginate(20),
         ]);
     }
 
     public function criar(): View
     {
+        abort_unless($this->podeGerir(), 403);
+
         return view('atelier::pedidos.criar', [
             'clientes' => Cliente::orderBy('nome')->get(),
             'costureiras' => request()->user()->empresa->utilizadores()->orderBy('name')->get(),
@@ -78,8 +86,10 @@ class PedidoController extends Controller
                 $material->calcularValores()->save();
             }
 
+            // Fotos de clientes são dados pessoais: disco PRIVADO, servidas
+            // só por rota autenticada (Admin\FotoController).
             foreach ($request->file('fotos', []) as $ficheiro) {
-                $caminho = $ficheiro->store('atelier/pedidos', 'public');
+                $caminho = $ficheiro->store('atelier/pedidos', PedidoFoto::DISCO);
                 $pedido->fotos()->create(['caminho' => $caminho]);
             }
 
@@ -93,6 +103,8 @@ class PedidoController extends Controller
     public function mostrar(int $pedido): View
     {
         $pedido = Pedido::findOrFail($pedido);
+        $this->garantirAcessoAoPedido($pedido);
+
         $pedido->load(['cliente', 'medida', 'responsavel', 'fotos', 'materiais', 'provas', 'fatura', 'reciboSinal', 'reciboSaldoFinal']);
 
         return view('atelier::pedidos.mostrar', [
@@ -103,7 +115,7 @@ class PedidoController extends Controller
             // Requisito G.3: a Costureira vê o painel de tarefas mas não
             // dados financeiros — a view usa isto para esconder valores,
             // sinal, fatura e recibos, não só os formulários de ação.
-            'podeVerFinancas' => request()->user()->hasAnyRole(['Administrador', 'Secretária']),
+            'podeVerFinancas' => $this->podeGerir(),
         ]);
     }
 
@@ -129,7 +141,13 @@ class PedidoController extends Controller
             return back()->with('erro', $e->getMessage());
         }
 
-        return back()->with('sucesso', 'Estado do pedido atualizado.');
+        $mensagem = 'Estado do pedido atualizado.';
+
+        if ($pedido->status === 'cancelado' && $pedido->jaTemSinalRegistado()) {
+            $mensagem .= ' Atenção: este pedido tinha um sinal recebido — regulariza a devolução ou retenção desse valor com a contabilidade.';
+        }
+
+        return back()->with('sucesso', $mensagem);
     }
 
     public function registarSinal(RegistarSinalRequest $request, int $pedido): RedirectResponse
@@ -181,6 +199,20 @@ class PedidoController extends Controller
         }
 
         return back()->with('sucesso', 'Pagamento do saldo registado e recibo emitido.');
+    }
+
+    /** Administrador e Secretária gerem tudo; os restantes (Costureira) só os pedidos que lhes estão atribuídos. */
+    protected function podeGerir(): bool
+    {
+        return (bool) request()->user()?->hasAnyRole(['Administrador', 'Secretária']);
+    }
+
+    protected function garantirAcessoAoPedido(Pedido $pedido): void
+    {
+        abort_unless(
+            $this->podeGerir() || (int) $pedido->responsavel_id === (int) request()->user()->id,
+            403
+        );
     }
 
     /** Mesma distinção que FaturaController já aplica: grace period dá acesso de leitura, mas não deixa emitir novos documentos fiscais. */

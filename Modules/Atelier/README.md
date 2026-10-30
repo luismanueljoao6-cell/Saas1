@@ -137,3 +137,39 @@ A funcionalidade de gestão de equipa no Core (convidar/criar utilizadores
 com um papel já atribuído) desbloquearia por completo o requisito G deste
 módulo — hoje a Secretária/Costureira têm de ser criadas manualmente antes
 de `EquipaService` lhes poder atribuir o papel.
+
+
+## Auditoria técnica e de conformidade (outubro de 2026)
+
+Alterações feitas:
+
+- **Campanhas**: todas as ações exigem Administrador; lock por campanha (clique duplo não duplica envios); campanhas já enviadas podem reenviar só os envios que falharam; o job ignora empresas sem acesso ativo/serviço atelier.
+- **Aniversários**: só empresas ativas com o serviço atelier; no máximo uma mensagem por cliente por dia.
+- **Estado do pedido**: o evento `PedidoMudouEstado` é disparado só depois do commit; a entrega exige fatura final emitida (e saldo pago, quando houver); cancelar com fatura emitida é recusado (exige nota de crédito no módulo Faturação); cancelar com sinal recebido avisa para regularizar a devolução/retenção.
+- **Total do pedido**: `Pedido::totalComIvaEmCentimos()` usa `Dinheiro::calcularLinha` linha a linha, igual à fatura.
+- **Autorização**: a Costureira só vê/avança os pedidos que lhe estão atribuídos; lista da equipa só para Administrador; leads de orçamento só para Administrador/Secretária.
+- **Portal**: `throttle` nas rotas; links gerados a partir de um link aberto nunca expiram depois dele; só reagenda provas futuras em estado reagendável; exige empresa ativa com o serviço atelier.
+- **Proteção de dados (Lei n.º 22/11)**: marketing passa a ser opt-in com prova (`consentimento_em`, `consentimento_origem`, revogação); ecrã para registar o consentimento (`atelier.crm.editar`); link de cancelamento em todas as mensagens de marketing; formulário público com aviso, consentimento e honeypot; fotos de pedidos em disco privado servidas por rota autenticada; `atelier_pedidos.empresa_id` deixa de apagar em cascata.
+
+Por fazer (precisa de decisão ou de alterações no módulo Faturacao):
+
+- Ligar o recibo do sinal à fatura final no SAF-T (AO) e rever o tratamento de IVA do adiantamento com o contabilista/AGT.
+- Fluxo de nota de crédito/devolução do sinal ao cancelar pedidos já faturados.
+- Exportação/eliminação de dados de um cliente a pedido (respeitando a retenção fiscal).
+- Confirmar com a APD as obrigações de notificação do tratamento de dados.
+
+### 2.ª varredura
+
+- **Provas**: não se agendam em pedidos entregues/cancelados; a nova data tem de ser futura; os lembretes ignoram pedidos finalizados e empresas sem acesso/serviço.
+- **Medidas corporais**: a Costureira só vê o histórico dos clientes dos pedidos que lhe estão atribuídos; o formulário de novas medidas é só para Administrador/Secretária.
+- **Pedidos**: a medida tem de ser do mesmo cliente; limites de valores, datas e fotos (máx. 10, jpg/png/webp); pedidos cancelados não recebem sinal, fatura final nem pagamentos.
+- **Notificações**: números angolanos normalizados para +244; timeout nas chamadas HTTP; logs sem o número completo; a mensagem de cancelamento ao cliente já não inclui o motivo interno.
+- **Direitos do titular (Lei n.º 22/11)**: `php artisan atelier:exportar-dados-cliente {empresa} {cliente}` e `php artisan atelier:eliminar-dados-cliente {empresa} {cliente} [--force]` (mantêm-se pedidos, faturas e recibos por retenção fiscal).
+
+### 2.ª varredura
+
+- **Provas**: não se agendam em pedidos entregues/cancelados; a nova data tem de ser futura; os lembretes ignoram pedidos finalizados e empresas sem acesso/serviço.
+- **Medidas corporais**: a Costureira só vê o histórico dos clientes dos pedidos que lhe estão atribuídos; o formulário de novas medidas é só para Administrador/Secretária.
+- **Pedidos**: a medida tem de ser do mesmo cliente; limites de valores, datas e fotos (máx. 10, jpg/png/webp); pedidos cancelados não recebem sinal, fatura final nem pagamentos.
+- **Notificações**: números angolanos normalizados para +244; timeout nas chamadas HTTP; logs sem o número completo; a mensagem de cancelamento ao cliente já não inclui o motivo interno.
+- **Direitos do titular (Lei n.º 22/11)**: `php artisan atelier:exportar-dados-cliente {empresa} {cliente}` e `php artisan atelier:eliminar-dados-cliente {empresa} {cliente} [--force]` (mantêm-se pedidos, faturas e recibos por retenção fiscal).

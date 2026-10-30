@@ -15,7 +15,7 @@ class AtualizarEstadoProvaRequest extends FormRequest
     {
         return [
             'estado' => ['required', 'string', 'in:agendada,confirmada,reagendada,concluida,falta'],
-            'nova_data_hora_agendada' => ['nullable', 'date'],
+            'nova_data_hora_agendada' => ['nullable', 'date', 'after:now'],
             'notas' => ['nullable', 'string', 'max:1000'],
         ];
     }

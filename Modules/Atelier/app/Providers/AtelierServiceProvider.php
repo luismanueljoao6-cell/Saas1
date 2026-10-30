@@ -5,6 +5,8 @@ namespace Modules\Atelier\Providers;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Modules\Atelier\Console\EliminarDadosClienteCommand;
+use Modules\Atelier\Console\ExportarDadosClienteCommand;
 use Modules\Atelier\Events\PedidoMudouEstado;
 use Modules\Atelier\Jobs\EnviarCampanhasAgendadasJob;
 use Modules\Atelier\Jobs\LembretesProvaJob;
@@ -32,6 +34,7 @@ class AtelierServiceProvider extends ServiceProvider
 
         $this->registarMenu();
         $this->registarListeners();
+        $this->registarComandos();
         $this->agendarTarefas();
     }
 
@@ -49,6 +52,17 @@ class AtelierServiceProvider extends ServiceProvider
     protected function registarListeners(): void
     {
         Event::listen(PedidoMudouEstado::class, EnviarNotificacaoMudancaEstado::class);
+    }
+
+    /** Direitos do titular dos dados (acesso e eliminação) — ver os comandos. */
+    protected function registarComandos(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                ExportarDadosClienteCommand::class,
+                EliminarDadosClienteCommand::class,
+            ]);
+        }
     }
 
     /**

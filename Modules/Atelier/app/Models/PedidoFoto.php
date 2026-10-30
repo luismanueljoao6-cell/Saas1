@@ -4,10 +4,18 @@ namespace Modules\Atelier\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
 
+/**
+ * Fotos de referência de um pedido. São dados pessoais: ficam no disco
+ * PRIVADO e só são servidas por rota autenticada (FotoController).
+ * DISCO_LEGADO existe apenas para ficheiros antigos ainda não movidos.
+ */
 class PedidoFoto extends Model
 {
+    public const DISCO = 'local';
+
+    public const DISCO_LEGADO = 'public';
+
     protected $table = 'atelier_pedido_fotos';
 
     protected $fillable = ['pedido_id', 'caminho', 'legenda'];
@@ -19,6 +27,6 @@ class PedidoFoto extends Model
 
     public function url(): string
     {
-        return Storage::disk('public')->url($this->caminho);
+        return route('atelier.pedidos.foto', $this->id);
     }
 }

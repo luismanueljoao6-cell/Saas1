@@ -15,6 +15,9 @@ class PerfilController extends Controller
 
     public function editar(): View
     {
+        // Gravar o perfil já exige Administrador (GuardarPerfilRequest); o formulário também.
+        abort_unless(request()->user()?->hasRole('Administrador'), 403);
+
         $empresa = request()->user()->empresa;
 
         return view('atelier::perfil.editar', [

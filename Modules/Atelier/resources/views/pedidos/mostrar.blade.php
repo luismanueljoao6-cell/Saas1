@@ -11,6 +11,9 @@
         <div>
             <h1 class="text-lg font-semibold text-slate-900">Pedido #{{ $pedido->id }} — {{ $pedido->cliente?->nome }}</h1>
             <p class="text-sm text-slate-500">{{ $pedido->tipoServicoRotulo() }}</p>
+            @if ($podeVerFinancas && $pedido->cliente)
+                <a href="{{ route('atelier.crm.editar', $pedido->cliente->id) }}" class="text-xs text-indigo-600">Marketing e consentimento do cliente →</a>
+            @endif
         </div>
         @include('atelier::partials.estado-badge', ['estado' => $pedido->status, 'rotulo' => $pedido->statusRotulo(), 'classe' => 'text-sm'])
     </div>

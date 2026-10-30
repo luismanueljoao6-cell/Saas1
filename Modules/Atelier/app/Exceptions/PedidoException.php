@@ -35,4 +35,19 @@ class PedidoException extends Exception
     {
         return new self('O valor indicado tem de ser maior que zero.');
     }
+
+    public static function entregaSemFaturaEmitida(): self
+    {
+        return new self('Não é possível marcar como entregue sem a fatura final emitida: gera e emite a fatura antes da entrega.');
+    }
+
+    public static function entregaComSaldoPorPagar(): self
+    {
+        return new self('Não é possível marcar como entregue: falta registar o pagamento do saldo final.');
+    }
+
+    public static function cancelamentoComFaturaEmitida(): self
+    {
+        return new self('Este pedido já tem fatura final emitida e não pode ser cancelado aqui. Anula primeiro a fatura com uma nota de crédito no módulo Faturação.');
+    }
 }

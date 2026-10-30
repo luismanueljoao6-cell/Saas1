@@ -49,6 +49,8 @@ class LandingController extends Controller
             'contacto' => $request->validated('contacto'),
             'categoria_interesse' => $request->validated('categoria_interesse'),
             'mensagem' => $request->validated('mensagem'),
+            // Prova de que o visitante aceitou o tratamento dos dados (Lei n.º 22/11).
+            'consentimento_em' => now(),
         ]);
 
         return back()->with('sucesso', 'Pedido enviado! Entraremos em contacto brevemente.');

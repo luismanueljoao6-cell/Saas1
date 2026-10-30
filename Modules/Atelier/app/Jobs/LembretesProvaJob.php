@@ -18,6 +18,9 @@ use Throwable;
  * Percorre provas de TODAS as empresas — por isso corre dentro do bypass
  * explícito do TenantManager, tal como VerificarSubscricoesExpiradasJob já
  * faz no módulo Subscricoes.
+ *
+ * Não envia lembretes de provas de pedidos já entregues/cancelados, nem de
+ * empresas sem acesso ativo ou sem o serviço atelier.
  */
 class LembretesProvaJob implements ShouldQueue
 {
@@ -36,6 +39,17 @@ class LembretesProvaJob implements ShouldQueue
                 ->with(['pedido.cliente', 'pedido.empresa'])
                 ->chunkById(100, function ($provas) use ($notificador) {
                     foreach ($provas as $prova) {
+                        $pedido = $prova->pedido;
+                        $empresa = $pedido?->empresa;
+
+                        if (! $pedido || $pedido->estaFinalizado()) {
+                            continue;
+                        }
+
+                        if (! $empresa || ! $empresa->temAcesso() || ! $empresa->temServico('atelier')) {
+                            continue;
+                        }
+
                         if (! $prova->precisaDeLembrete()) {
                             continue;
                         }

@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Notification;
 use Modules\Atelier\Exceptions\NotificacaoException;
 use Modules\Atelier\Notifications\ClienteAtelierNotification;
 use Modules\Atelier\Services\Notificacoes\Contracts\CanalNotificacaoInterface;
+use Modules\Atelier\Support\NumeroTelefone;
 use Modules\Faturacao\Models\Cliente;
 use Throwable;
 
@@ -17,6 +18,9 @@ use Throwable;
  * as credenciais em .env estiverem preenchidas (ver WhatsAppCanal/SmsCanal).
  * Falha num canal nunca impede os restantes — cada envio é isolado e só
  * regista um warning.
+ *
+ * Telefones: normalizados para o formato internacional (Angola, +244, por
+ * omissão) antes de chegarem aos canais — ver Support\NumeroTelefone.
  */
 class NotificadorClienteService
 {
@@ -79,11 +83,13 @@ class NotificadorClienteService
 
     protected function enviarOuFalhar(CanalNotificacaoInterface $canal, Cliente $cliente, string $mensagem): void
     {
-        if (! $cliente->telefone) {
+        $destino = NumeroTelefone::internacional($cliente->telefone);
+
+        if ($destino === null) {
             throw NotificacaoException::contactoEmFalta($canal->identificador());
         }
 
-        $canal->enviar($cliente->telefone, $mensagem);
+        $canal->enviar($destino, $mensagem);
     }
 
     protected function enviarMail(Cliente $cliente, string $assunto, string $mensagem, ?string $linkAcao, ?string $textoAcao): void
@@ -98,12 +104,14 @@ class NotificadorClienteService
 
     protected function enviarViaCanal(CanalNotificacaoInterface $canal, Cliente $cliente, string $mensagem): void
     {
-        if (! $cliente->telefone) {
+        $destino = NumeroTelefone::internacional($cliente->telefone);
+
+        if ($destino === null) {
             return;
         }
 
         try {
-            $canal->enviar($cliente->telefone, $mensagem);
+            $canal->enviar($destino, $mensagem);
         } catch (NotificacaoException $e) {
             Log::warning('Atelier: falha ao notificar cliente', [
                 'canal' => $canal->identificador(),

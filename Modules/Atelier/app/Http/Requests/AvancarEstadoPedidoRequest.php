@@ -3,6 +3,7 @@
 namespace Modules\Atelier\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Atelier\Models\Pedido;
 
 class AvancarEstadoPedidoRequest extends FormRequest
 {
@@ -27,7 +28,15 @@ class AvancarEstadoPedidoRequest extends FormRequest
         }
 
         if ($user->hasRole('Costureira')) {
-            return ! in_array($this->input('novo_estado'), self::ESTADOS_RESTRITOS_A_GESTAO, true);
+            if (in_array($this->input('novo_estado'), self::ESTADOS_RESTRITOS_A_GESTAO, true)) {
+                return false;
+            }
+
+            // A Costureira só avança os pedidos que lhe estão atribuídos.
+            // Pedido inexistente: deixa passar para o controller devolver 404.
+            $pedido = Pedido::query()->find((int) $this->route('pedido'));
+
+            return $pedido === null || (int) $pedido->responsavel_id === (int) $user->id;
         }
 
         return false;
