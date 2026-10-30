@@ -68,6 +68,17 @@ return [
     | da AGT para o regime fiscal de cada empresa/produto; nem todos os bens
     | e serviços estão sujeitos à taxa geral.
     */
+    /*
+    | Meios de pagamento aceites nos recibos emitidos pela interface (código => rótulo).
+    | São os mesmos que o Atelier e o Estúdio já usam.
+    */
+    'meios_pagamento' => [
+        'dinheiro' => 'Dinheiro',
+        'transferencia' => 'Transferência bancária',
+        'multicaixa' => 'Multicaixa',
+        'outro' => 'Outro',
+    ],
+
     'taxa_iva_geral' => (float) env('FATURACAO_TAXA_IVA_GERAL', 14.0),
 
     /*

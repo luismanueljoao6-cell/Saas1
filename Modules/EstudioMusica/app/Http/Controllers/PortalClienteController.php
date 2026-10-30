@@ -86,7 +86,10 @@ class PortalClienteController extends Controller
      * usa para saltar para um ponto da faixa (ex.: o marcador 01:23) sem
      * ter de descarregar o ficheiro inteiro antes.
      */
-    public function reproduzir(Request $request, int $versao): BinaryFileResponse
+    // Todas as rotas do portal têm o prefixo /portal/{token}: o Laravel passa os parâmetros da rota por
+    // posição, por isso {token} tem de constar das assinaturas antes de {versao} (senão o token chegava
+    // ao parâmetro int $versao e dava TypeError).
+    public function reproduzir(Request $request, string $token, int $versao): BinaryFileResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
         $projeto = $versao->faixaMusical->projetoMusical;
@@ -113,7 +116,7 @@ class PortalClienteController extends Controller
      * saldo do projeto" (secção C) — o único ponto de todo o módulo onde
      * isto é verificado, de propósito (ver ProjetoMusical::financeiramenteQuitado()).
      */
-    public function descarregar(Request $request, int $versao): StreamedResponse|RedirectResponse
+    public function descarregar(Request $request, string $token, int $versao): StreamedResponse|RedirectResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
         $projeto = $versao->faixaMusical->projetoMusical;
@@ -133,7 +136,7 @@ class PortalClienteController extends Controller
         return Storage::disk('local')->download($versao->caminho_ficheiro, "{$versao->rotulo}.{$extensao}");
     }
 
-    public function comentar(Request $request, int $versao): RedirectResponse
+    public function comentar(Request $request, string $token, int $versao): RedirectResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
 
@@ -152,7 +155,7 @@ class PortalClienteController extends Controller
         return back()->with('sucesso', 'Comentário adicionado.');
     }
 
-    public function aprovar(Request $request, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
+    public function aprovar(Request $request, string $token, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
 
@@ -166,7 +169,7 @@ class PortalClienteController extends Controller
         return back()->with('sucesso', 'Versão aprovada!');
     }
 
-    public function solicitarAjustes(Request $request, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
+    public function solicitarAjustes(Request $request, string $token, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
 

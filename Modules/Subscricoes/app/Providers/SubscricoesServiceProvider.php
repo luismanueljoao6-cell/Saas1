@@ -7,10 +7,10 @@ use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Services\MenuRegistry;
-use Modules\Subscricoes\Console\ReconciliarPagamentosCommand;
 use Modules\Subscricoes\Console\ConfirmarPagamentoManualCommand;
-use Modules\Subscricoes\Console\VerificarConfiguracaoCommand;
+use Modules\Subscricoes\Console\ReconciliarPagamentosCommand;
 use Modules\Subscricoes\Console\SaudeSubscricoesCommand;
+use Modules\Subscricoes\Console\VerificarConfiguracaoCommand;
 use Modules\Subscricoes\Console\VerificarSubscricoesCommand;
 use Modules\Subscricoes\Http\Middleware\VerificarAssinaturaWebhook;
 use Modules\Subscricoes\Jobs\VerificarSubscricoesExpiradasJob;
@@ -79,7 +79,11 @@ class SubscricoesServiceProvider extends ServiceProvider
             ]);
         }
 
-        $this->agendarVerificacaoDiaria();
+        // O agendamento só interessa a schedule:run / schedule:work (consola);
+        // registá-lo em cada pedido HTTP seria trabalho inútil.
+        if ($this->app->runningInConsole()) {
+            $this->agendarVerificacaoDiaria();
+        }
     }
 
     /**

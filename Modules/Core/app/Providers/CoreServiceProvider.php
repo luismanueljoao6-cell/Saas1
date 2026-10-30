@@ -2,13 +2,16 @@
 
 namespace Modules\Core\Providers;
 
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 use Modules\Core\Contracts\LimitesDaEmpresa;
+use Modules\Core\Http\Middleware\CabecalhosDeSeguranca;
 use Modules\Core\Http\Middleware\ExigirPapel;
 use Modules\Core\Http\Middleware\ExigirServico;
 use Modules\Core\Http\Middleware\ExigirServicoDaEmpresa;
@@ -57,12 +60,35 @@ class CoreServiceProvider extends ServiceProvider
         $this->registerMiddlewareAliases();
         $this->registerMenuItems();
         $this->limparTenantEntreJobs();
+        $this->configurarPoliticaDePasswords();
+        $this->registarCabecalhosDeSeguranca();
 
         $this->app->register(RouteServiceProvider::class);
 
         $this->publishes([
             __DIR__.'/../../config/config.php' => config_path('core.php'),
         ], 'core-config');
+    }
+
+    /**
+     * Em produção exige 10+ caracteres com maiúsculas, minúsculas e números;
+     * fora de produção mantém o mínimo de 8 para não atrapalhar o desenvolvimento.
+     */
+    protected function configurarPoliticaDePasswords(): void
+    {
+        Password::defaults(fn () => $this->app->isProduction()
+            ? Password::min(10)->letters()->mixedCase()->numbers()
+            : Password::min(8));
+    }
+
+    /**
+     * Cabeçalhos de segurança em TODAS as respostas. É middleware global e não
+     * de grupo porque o middleware auth tem prioridade na ordenação e responde
+     * (401/redirect) antes de um middleware de grupo chegar a correr.
+     */
+    protected function registarCabecalhosDeSeguranca(): void
+    {
+        $this->app->make(HttpKernel::class)->pushMiddleware(CabecalhosDeSeguranca::class);
     }
 
     protected function registerViews(): void

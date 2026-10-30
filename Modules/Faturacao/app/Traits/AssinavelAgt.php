@@ -2,6 +2,7 @@
 
 namespace Modules\Faturacao\Traits;
 
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Models\AgtSubmissao;
@@ -31,6 +32,12 @@ trait AssinavelAgt
                 );
             }
         });
+    }
+
+    /** Registo de envio deste documento à AGT (um por documento; só existe com a comunicação AGT ativa). */
+    public function agtSubmissao(): MorphOne
+    {
+        return $this->morphOne(AgtSubmissao::class, 'documento');
     }
 
     /**
