@@ -11,13 +11,15 @@ class PagamentoConfirmadoNotification extends Notification implements ShouldQueu
 {
     use Queueable;
 
-    public bool $afterCommit = true;
-
     public function __construct(
         protected string $valor,
         protected string $moeda,
         protected string $terminaEm,
-    ) {}
+    ) {
+        // $afterCommit já é declarada pelo trait Queueable (sem tipo): redeclará-la aqui com outro
+        // tipo ou valor é erro fatal ao carregar a classe. Assim a notificação só segue depois do commit.
+        $this->afterCommit();
+    }
 
     public function via(object $notifiable): array
     {
