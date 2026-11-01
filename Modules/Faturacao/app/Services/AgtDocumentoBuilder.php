@@ -206,7 +206,7 @@ class AgtDocumentoBuilder
     {
         $tipo = strtoupper(trim((string) ($valor ?: config('faturacao.agt.operation_type_padrao', 'SG'))));
 
-        if (! in_array($tipo, \\Modules\\Faturacao\\Support\\ValidacaoLinhas::TIPOS_OPERACAO_AGT, true)) {
+        if (! in_array($tipo, \Modules\Faturacao\Support\ValidacaoLinhas::TIPOS_OPERACAO_AGT, true)) {
             throw AgtException::configuracaoInvalida("tipo de operação AGT '{$tipo}' inválido na linha do documento.");
         }
 
