@@ -46,12 +46,12 @@ final class ValidacaoLinhas
 
             // O preço base não pode ser inferior ao preço final: a diferença
             // representa o desconto comercial declarado à AGT.
-            if (array_key_exists('preco_unitario_base', $linha)
+            if (isset($linha['preco_unitario_base']) && trim((string) $linha['preco_unitario_base']) !== ''
                 && Dinheiro::centimos($linha['preco_unitario_base']) < Dinheiro::centimos($linha['preco_unitario'])) {
                 throw new \DomainException("Linha {$n}: o preço base não pode ser inferior ao preço final.");
             }
 
-            if (array_key_exists('preco_unitario_base', $linha)) {
+            if (isset($linha['preco_unitario_base']) && trim((string) $linha['preco_unitario_base']) !== '') {
                 Dinheiro::calcularLinha($linha['quantidade'], $linha['preco_unitario_base'], $linha['taxa_iva']);
             }
 
