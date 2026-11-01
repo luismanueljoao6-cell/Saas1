@@ -261,7 +261,6 @@ class FaturacaoEstudioService
         });
     }
 
-
     /**
      * @param  array<int, array{descricao: string, quantidade: int|float, preco_unitario: string|float, taxa_iva: float}>  $linhas
      */
