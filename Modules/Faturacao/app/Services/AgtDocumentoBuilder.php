@@ -104,7 +104,7 @@ class AgtDocumentoBuilder
 
             $item = [
                 'lineNumber' => $indice + 1,
-                'operationType' => (string) config('faturacao.agt.operation_type_padrao', 'SG'),
+                'operationType' => $this->tipoOperacao($linha->operation_type ?? null),
                 'productCode' => mb_substr((string) ($produto?->codigo ?: (($linha->produto_id ?? null) ? 'P'.$linha->produto_id : 'SERVICO')), 0, 60),
                 'productDescription' => mb_substr((string) $linha->descricao, 0, 200),
                 'quantity' => NumeroJson::deDecimal((string) $linha->quantidade),
@@ -200,6 +200,17 @@ class AgtDocumentoBuilder
             'taxPercentage' => NumeroJson::deDecimal($taxa),
             'taxContribution' => NumeroJson::deCentimos(Dinheiro::centimos($linha->valor_iva)),
         ]];
+    }
+
+    protected function tipoOperacao(mixed $valor): string
+    {
+        $tipo = strtoupper(trim((string) ($valor ?: config('faturacao.agt.operation_type_padrao', 'SG'))));
+
+        if (! in_array($tipo, \\Modules\\Faturacao\\Support\\ValidacaoLinhas::TIPOS_OPERACAO_AGT, true)) {
+            throw AgtException::configuracaoInvalida("tipo de operação AGT '{$tipo}' inválido na linha do documento.");
+        }
+
+        return $tipo;
     }
 
     /** @return array<string, mixed> */
