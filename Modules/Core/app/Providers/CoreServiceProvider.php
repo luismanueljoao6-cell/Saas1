@@ -20,6 +20,7 @@ use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Services\SemLimites;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantProvisionerRegistry;
+use Spatie\Permission\PermissionRegistrar;
 
 class CoreServiceProvider extends ServiceProvider
 {
@@ -131,6 +132,13 @@ class CoreServiceProvider extends ServiceProvider
             }
 
             $this->app->make(TenantManager::class)->clear();
+
+            // O team resolver do Spatie é estado separado do TenantManager.
+            // Um worker persistente não pode herdar a empresa definida por
+            // um job anterior, mesmo que esse job tenha terminado com erro.
+            if (class_exists(PermissionRegistrar::class)) {
+                $this->app->make(PermissionRegistrar::class)->setPermissionsTeamId(null);
+            }
         });
     }
 }
