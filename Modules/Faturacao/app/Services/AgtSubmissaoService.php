@@ -136,6 +136,7 @@ class AgtSubmissaoService
         if ($codigoErro !== 'REDE') {
             $dados['submission_uuid'] = null;
             $dados['submission_timestamp'] = null;
+            $dados['submission_payload_hash'] = null;
         }
 
         $submissao->update($dados);
@@ -219,6 +220,32 @@ class AgtSubmissaoService
             'documents' => $documentos,
         ]);
 
+        $hashPayload = hash('sha256', $corpo);
+        $hashesExistentes = collect($enviar)
+            ->pluck('submission_payload_hash')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($hashesExistentes->isNotEmpty()
+            && ($hashesExistentes->count() !== 1 || $hashesExistentes->first() !== $hashPayload)) {
+            // O UUID já foi usado com outro corpo (por exemplo, código alterado
+            // entre tentativas). Nunca reutilizar o UUID com conteúdo diferente.
+            foreach ($enviar as $submissao) {
+                $submissao->update([
+                    'estado' => AgtSubmissao::AGUARDA_INTERVENCAO,
+                    'erros' => [['codigo' => 'PAYLOAD_DIVERGENTE', 'descricao' => 'O conteúdo reconstruído difere do pedido original associado ao UUID. Não foi reenviado para evitar duplicação fiscal.']],
+                ]);
+                $res['erros']++;
+            }
+
+            return $res;
+        }
+
+        foreach ($enviar as $submissao) {
+            $submissao->update(['submission_payload_hash' => $hashPayload]);
+        }
+
         try {
             $resposta = $this->cliente->enviar('registar_factura', $corpo);
         } catch (AgtException $e) {
@@ -291,7 +318,7 @@ class AgtSubmissaoService
             } else {
                 // A AGT recusou o pedido/lote e identificou outros documentos;
                 // os restantes seguem num pedido novo, com UUID novo.
-                $submissao->update(['submission_uuid' => null, 'submission_timestamp' => null]);
+                $submissao->update(['submission_uuid' => null, 'submission_timestamp' => null, 'submission_payload_hash' => null]);
             }
         }
 
