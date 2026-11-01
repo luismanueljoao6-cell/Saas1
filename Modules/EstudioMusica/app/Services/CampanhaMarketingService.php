@@ -52,7 +52,7 @@ class CampanhaMarketingService
                 ->where('aceita_marketing', true)
                 ->chunkById(100, function ($clientes) use ($hoje, &$enviados): void {
                     foreach ($clientes as $cliente) {
-                        if (! Aniversario::hoje($cliente->data_nascimento, $hoje)) {
+                        if (!Aniversario::hoje($cliente->data_nascimento, $hoje)) {
                             continue;
                         }
 
@@ -60,17 +60,17 @@ class CampanhaMarketingService
                             continue;
                         }
 
-                        if (! $this->notificacao->podeEnviar($cliente)) {
+                        if (!$this->notificacao->podeEnviar($cliente)) {
                             continue;
                         }
 
                         $cupom = $this->cupomAniversarioDoAno($cliente) ?? $this->gerarCupomAniversario($cliente);
                         $nome = $cliente->nome_artistico ?: $cliente->nome;
 
-                        if (! $this->notificacao->enviar(
+                        if (!$this->notificacao->enviar(
                             $cliente,
                             'Parabéns!',
-                            "Parabéns pelo teu dia, {$nome}! Ganhaste {$this->percentagemLegivel($cupom->percentual_desconto)}% de desconto em horas de estúdio, válido até {$cupom->valido_ate->format('d/m/Y')} — aplicado automaticamente na tua próxima sessão (cupão {$cupom->codigo}).".$this->rodapeSaida($cliente)
+                            "Parabéns pelo teu dia, {$nome}!Ganhaste {$this->percentagemLegivel($cupom->percentual_desconto)}% de desconto em horas de estúdio, válido até {$cupom->valido_ate->format('d/m/Y')} — aplicado automaticamente na tua próxima sessão (cupão {$cupom->codigo}).".$this->rodapeSaida($cliente)
                         )) {
                             continue;
                         }
@@ -110,16 +110,16 @@ class CampanhaMarketingService
                         }
 
                         // Mensagem promocional: só com consentimento (Lei n.º 22/11 / 23/11).
-                        if (! $projeto->cliente->aceita_marketing) {
+                        if (!$projeto->cliente->aceita_marketing) {
                             continue;
                         }
 
                         if ($this->jaEnviadaEsteAno($projeto->cliente, 'follow_up_lancamento', (string) $projeto->id)
-                            || ! $this->notificacao->podeEnviar($projeto->cliente)) {
+                            || !$this->notificacao->podeEnviar($projeto->cliente)) {
                             continue;
                         }
 
-                        if (! $this->notificacao->enviar(
+                        if (!$this->notificacao->enviar(
                             $projeto->cliente,
                             'Como foi o lançamento?',
                             "Como foi o lançamento de \"{$projeto->nome}\"? Que tal gravar o próximo?".$this->rodapeSaida($projeto->cliente)
@@ -154,7 +154,7 @@ class CampanhaMarketingService
             ->chunkById(100, function ($clientes) use ($referencia, $assunto, $mensagem, &$enviados): void {
                 foreach ($clientes as $cliente) {
                     if ($this->jaEnviadaEsteAno($cliente, 'data_comemorativa', $referencia)
-                        || ! $this->notificacao->enviar($cliente, $assunto, $mensagem.$this->rodapeSaida($cliente))) {
+                        || !$this->notificacao->enviar($cliente, $assunto, $mensagem.$this->rodapeSaida($cliente))) {
                         continue;
                     }
 
