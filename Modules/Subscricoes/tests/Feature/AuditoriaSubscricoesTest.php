@@ -111,10 +111,9 @@ class AuditoriaSubscricoesTest extends TestCase
         $this->assertTrue((bool) Subscricao::withoutGlobalScopes()->findOrFail($subscricao->id)->renovacao_automatica);
     }
 
-    public function test_retomar_renovacao_de_subscricao_vencida_mostra_erro_em_vez_de_falhar(): void
+    public function test_servico_recusa_retoma_de_renovacao_de_subscricao_vencida(): void
     {
         $empresa = $this->criarEmpresa('840000002');
-        $admin = $this->criarUtilizador($empresa);
         $pagamento = $this->cobrancaDe($empresa, $this->plano('plano-840000002'));
         app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
 
@@ -125,16 +124,39 @@ class AuditoriaSubscricoesTest extends TestCase
             'termina_em' => now()->subDay(),
         ]);
 
+        $this->expectException(\\DomainException::class);
+        $this->expectExceptionMessage('Só é possível retomar a renovação automática');
+
+        app(SubscricaoService::class)->retomarRenovacao($subscricao->fresh());
+    }
+
+    public function test_controller_mostra_erro_quando_a_retoma_da_renovacao_e_recusada(): void
+    {
+        $empresa = $this->criarEmpresa('840000012');
+        $admin = $this->criarUtilizador($empresa);
+        $pagamento = $this->cobrancaDe($empresa, $this->plano('plano-840000012'));
+        app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
+
+        $subscricao = Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->firstOrFail();
+        $subscricao->update([
+            'renovacao_automatica' => false,
+            'cancelada_em' => now(),
+            'termina_em' => now()->subDay(),
+        ]);
+
+        $servico = \\Mockery::mock(SubscricaoService::class);
+        $servico->shouldReceive('retomarRenovacao')
+            ->once()
+            ->andThrow(new \\DomainException('Só é possível retomar a renovação automática de uma subscrição ativa e ainda válida.'));
+        $this->app->instance(SubscricaoService::class, $servico);
+
         $this->actingAs($admin)
             ->from(route('subscricoes.planos'))
             ->post(route('subscricoes.renovacao', ['subscricao' => $subscricao->id]))
             ->assertRedirect(route('subscricoes.planos'))
-            ->assertSessionHas('erro');
-
-        $this->assertFalse((bool) Subscricao::withoutGlobalScopes()->findOrFail($subscricao->id)->renovacao_automatica);
+            ->assertSessionHas('erro', 'Só é possível retomar a renovação automática de uma subscrição ativa e ainda válida.');
     }
 
-    #[Group('auditoria')]
     public function test_iniciar_para_outro_plano_com_pagamento_pendente_mostra_a_mensagem_de_negocio(): void
     {
         $empresa = $this->criarEmpresa('840000003');
