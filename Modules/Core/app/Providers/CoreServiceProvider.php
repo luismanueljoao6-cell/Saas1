@@ -42,6 +42,7 @@ class CoreServiceProvider extends ServiceProvider
         // ser a MESMA instância em toda a aplicação, daí o singleton.
         $this->app->singleton(MenuRegistry::class);
         $this->app->singleton(TenantProvisionerRegistry::class);
+        $this->app->singleton(\Modules\Core\Notifications\NotificationChannelRegistry::class);
 
         // Por omissão, sem limites. bindIf: se o módulo Subscrições já
         // registou a sua implementação (por ordem de carregamento), esta
@@ -55,6 +56,7 @@ class CoreServiceProvider extends ServiceProvider
     {
         $this->registerViews();
         $this->registerMigrations();
+        $this->commands([\Modules\Core\Console\Commands\RecoverNotificationOutbox::class]);
         $this->registerMiddlewareAliases();
         $this->registerMenuItems();
         $this->limparTenantEntreJobs();
