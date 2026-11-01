@@ -2,11 +2,14 @@
 
 namespace Modules\Subscricoes\Tests\Feature;
 
+use DomainException;
+use Mockery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
+use Modules\Core\Services\TenantManager;
 use Modules\Subscricoes\Exceptions\PedidoEmPreparacaoException;
 use Modules\Subscricoes\Http\Controllers\SubscricaoController;
 use Modules\Subscricoes\Models\Pagamento;
@@ -147,13 +150,13 @@ class AuditoriaSubscricoesTest extends TestCase
             'termina_em' => now()->subDay(),
         ]);
 
-        app(\\Modules\\Core\\Services\\TenantManager::class)->set($empresa->id);
+        app(TenantManager::class)->set($empresa->id);
 
         $mensagem = 'Só é possível retomar a renovação automática de uma subscrição ativa e ainda válida.';
-        $servico = \\Mockery::mock(SubscricaoService::class);
+        $servico = Mockery::mock(SubscricaoService::class);
         $servico->shouldReceive('retomarRenovacao')
             ->once()
-            ->andThrow(new \\DomainException($mensagem));
+            ->andThrow(new DomainException($mensagem));
 
         $request = Request::create('/subscricoes/renovacao', 'POST');
         $request->headers->set('referer', route('subscricoes.planos'));
