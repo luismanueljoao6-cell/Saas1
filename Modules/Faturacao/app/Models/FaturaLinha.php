@@ -20,6 +20,7 @@ class FaturaLinha extends Model
         'quantidade',
         'preco_unitario',
         'taxa_iva',
+        'operation_type',
         'motivo_isencao',
         'valor_sem_iva',
         'valor_iva',
