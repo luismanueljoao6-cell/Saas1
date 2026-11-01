@@ -4,6 +4,8 @@ namespace Modules\Faturacao\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Services\MenuRegistry;
+use Modules\Faturacao\Contracts\FaturacaoGateway;
+use Modules\Faturacao\Services\FaturacaoGatewayService;
 
 class FaturacaoServiceProvider extends ServiceProvider
 {
