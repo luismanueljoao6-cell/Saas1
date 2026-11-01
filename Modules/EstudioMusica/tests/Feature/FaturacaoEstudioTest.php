@@ -30,7 +30,9 @@ class FaturacaoEstudioTest extends TestCase
     use RefreshDatabase;
 
     protected Empresa $empresa;
+
     protected Cliente $cliente;
+
     protected FaturacaoEstudioService $faturacao;
 
     protected function setUp(): void
