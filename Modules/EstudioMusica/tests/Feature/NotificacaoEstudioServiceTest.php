@@ -59,4 +59,46 @@ class NotificacaoEstudioServiceTest extends TestCase
         $this->assertTrue($resultado);
         Queue::assertPushed(EnviarMensagemClienteJob::class, fn (EnviarMensagemClienteJob $job): bool => $job->email === 'cliente@example.com');
     }
+    public function test_bloqueia_telefone_sem_autorizacao_de_transferencia_internacional(): void
+    {
+        Queue::fake();
+        config([
+            'estudiomusica.exigir_autorizacao_apd' => true,
+            'estudiomusica.apd_autorizacao_transferencia' => null,
+        ]);
+
+        $cliente = new Cliente;
+        $cliente->forceFill(['telefone' => '923000000']);
+
+        $resultado = app(NotificacaoEstudioService::class)->enviar(
+            $cliente,
+            'Assunto',
+            'Mensagem'
+        );
+
+        $this->assertFalse($resultado);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_telefone_pode_ser_enfileirado_quando_a_transferencia_esta_autorizada(): void
+    {
+        Queue::fake();
+        config([
+            'estudiomusica.exigir_autorizacao_apd' => true,
+            'estudiomusica.apd_autorizacao_transferencia' => 'APD-TESTE-123',
+        ]);
+
+        $cliente = new Cliente;
+        $cliente->forceFill(['telefone' => '923000000']);
+
+        $resultado = app(NotificacaoEstudioService::class)->enviar(
+            $cliente,
+            'Assunto',
+            'Mensagem'
+        );
+
+        $this->assertTrue($resultado);
+        Queue::assertPushed(EnviarMensagemClienteJob::class);
+    }
+
 }
