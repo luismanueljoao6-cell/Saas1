@@ -193,7 +193,7 @@ class AgtSubmissaoTest extends TestCase
     {
         $fatura = $this->emitirFatura();
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('tipo RG');
 
         app(ReciboService::class)->emitir($this->empresa->id, $this->cliente->id, '500.00', 'dinheiro', $fatura->id);
@@ -399,7 +399,7 @@ class AgtSubmissaoTest extends TestCase
         try {
             $servico->reenviar($submissao);
             $this->fail('Uma submissão com requestID não pode ser enviada de novo.');
-        } catch (\\DomainException $e) {
+        } catch (\DomainException $e) {
             $this->assertStringContainsString('consulta o estado original', $e->getMessage());
         }
 
