@@ -60,7 +60,8 @@ jobs:
         run: |
           testes=(
             test_cancelar_renovacao_de_subscricao_pendente_e_recusado_e_preserva_o_pagamento
-            test_retomar_renovacao_de_subscricao_vencida_mostra_erro_em_vez_de_falhar
+            test_servico_recusa_retoma_de_renovacao_de_subscricao_vencida
+            test_controller_mostra_erro_quando_a_retoma_da_renovacao_e_recusada
             test_iniciar_para_outro_plano_com_pagamento_pendente_mostra_a_mensagem_de_negocio
             test_pedido_recente_sem_referencia_continua_a_bloquear_com_excecao_especifica
             test_pedido_abandonado_sem_referencia_e_descartado_e_a_empresa_pode_tentar_de_novo
