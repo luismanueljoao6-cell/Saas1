@@ -1,17 +1,17 @@
 <?php
 
-namespace Modules\\EstudioMusica\\Jobs;
+namespace Modules\EstudioMusica\Jobs;
 
-use Illuminate\\Bus\\Queueable;
-use Illuminate\\Contracts\\Queue\\ShouldQueue;
-use Illuminate\\Foundation\\Bus\\Dispatchable;
-use Illuminate\\Queue\\InteractsWithQueue;
-use Illuminate\\Queue\\SerializesModels;
-use Illuminate\\Support\\Facades\\Log;
-use Modules\\Core\\Services\\TenantManager;
-use Modules\\EstudioMusica\\Models\\SessaoEstudio;
-use Modules\\EstudioMusica\\Services\\NotificacaoEstudioService;
-use Modules\\EstudioMusica\\Support\\EmpresasDoEstudio;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Modules\Core\Services\TenantManager;
+use Modules\EstudioMusica\Models\SessaoEstudio;
+use Modules\EstudioMusica\Services\NotificacaoEstudioService;
+use Modules\EstudioMusica\Support\EmpresasDoEstudio;
 use Throwable;
 
 /**
