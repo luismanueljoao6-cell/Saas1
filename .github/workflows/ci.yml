@@ -55,7 +55,8 @@ jobs:
           fi
       # Os testes de auditoria de subscrições são executados numa etapa própria.
       - run: php artisan test --exclude-group=auditoria
-      - run: php artisan test --group=auditoria
+      - run: php artisan test --group=auditoria --exclude-group=auditoria-retomar
+      - run: php artisan test --group=auditoria-retomar
       - run: composer audit
 
   testes-mysql:
@@ -92,4 +93,5 @@ jobs:
       - run: cp .env.example .env && php artisan key:generate
       # Triggers de imutabilidade, locks e snapshots só se testam em MySQL.
       - run: php artisan test --exclude-group=auditoria
-      - run: php artisan test --group=auditoria
+      - run: php artisan test --group=auditoria --exclude-group=auditoria-retomar
+      - run: php artisan test --group=auditoria-retomar
