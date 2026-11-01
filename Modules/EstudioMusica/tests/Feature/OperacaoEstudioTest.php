@@ -251,7 +251,8 @@ class OperacaoEstudioTest extends TestCase
         config(['estudiomusica.percentual_desconto_aniversario' => 15]);
 
         $nascimento = now()->subYears(30)->toDateString();
-        $meu = $this->cliente(['data_nascimento' => $nascimento, 'aceita_marketing' => true]);
+        $meu = $this->cliente(['data_nascimento' => $nascimento, 'aceita_marketing' => true, 'email' => 'artista@example.test']);
+        $semContacto = $this->cliente(['data_nascimento' => $nascimento, 'aceita_marketing' => true]);
 
         $exCliente = $this->empresaSemServico('510000303');
         app(TenantManager::class)->semTenant(fn () => (new Cliente)
@@ -268,6 +269,8 @@ class OperacaoEstudioTest extends TestCase
         $this->noTenantDe($this->admin);
         $this->assertSame(1, CupomDesconto::query()->count());
         $this->assertSame($meu->id, CupomDesconto::query()->sole()->cliente_id);
+        $this->assertSame(1, app(\Modules\EstudioMusica\Models\CampanhaEnviada::class)::query()->count());
+        $this->assertDatabaseMissing('cupons_desconto', ['cliente_id' => $semContacto->id, 'motivo' => 'aniversario']);
     }
 
     public function test_excecao_do_whatsapp_nao_impede_o_envio_do_email(): void
