@@ -147,4 +147,15 @@ class FormularioFaturaIsencaoTest extends TestCase
 
         $this->assertSame(['M10'], $fatura->linhas()->pluck('motivo_isencao')->all());
     }
+
+    public function test_depois_de_um_erro_o_formulario_conserva_as_linhas_escritas(): void
+    {
+        $volta = route('faturacao.faturas.criar');
+
+        $this->actingAs($this->admin)->from($volta)->post(route('faturacao.faturas.guardar'), $this->pedido(['descricao' => 'Linha-a-reter-ABC']))
+            ->assertRedirect($volta)
+            ->assertSessionHasErrors(['fatura']);
+
+        $this->actingAs($this->admin)->get($volta)->assertOk()->assertSee('Linha-a-reter-ABC');
+    }
 }

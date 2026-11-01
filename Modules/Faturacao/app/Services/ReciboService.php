@@ -133,7 +133,38 @@ class ReciboService
             throw new \DomainException('O cliente do recibo tem de ser o da fatura.');
         }
 
-        $jaRecebido = Recibo::withoutGlobalScopes()
+        [$jaRecebido, $creditado] = $this->recebidoECreditado($empresaId, $faturaId);
+
+        if ($jaRecebido + $centimos > Dinheiro::centimos($fatura->valor_total) - $creditado) {
+            throw new \DomainException('O total recebido excede o valor em dívida da fatura (já deduzidas as notas de crédito).');
+        }
+    }
+
+    /**
+     * Valor ainda em dívida de uma fatura, em cêntimos: total − recibos emitidos − notas de
+     * crédito emitidas. É a mesma conta que recusa recibos a mais.
+     */
+    public function saldoEmCentimos(Fatura $fatura): int
+    {
+        return $this->resumoDaFatura($fatura)['saldo'];
+    }
+
+    /** @return array{recebido: int, creditado: int, saldo: int} em cêntimos */
+    public function resumoDaFatura(Fatura $fatura): array
+    {
+        [$recebido, $creditado] = $this->recebidoECreditado((int) $fatura->empresa_id, (int) $fatura->id);
+
+        return [
+            'recebido' => $recebido,
+            'creditado' => $creditado,
+            'saldo' => Dinheiro::centimos($fatura->valor_total) - $recebido - $creditado,
+        ];
+    }
+
+    /** @return array{0: int, 1: int} [recebido, creditado] em cêntimos */
+    protected function recebidoECreditado(int $empresaId, int $faturaId): array
+    {
+        $recebido = Recibo::withoutGlobalScopes()
             ->where('empresa_id', $empresaId)
             ->where('fatura_id', $faturaId)
             ->where('estado', 'emitido')
@@ -148,8 +179,6 @@ class ReciboService
             ->get(['valor_total'])
             ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_total));
 
-        if ($jaRecebido + $centimos > Dinheiro::centimos($fatura->valor_total) - $creditado) {
-            throw new \DomainException('O total recebido excede o valor em dívida da fatura (já deduzidas as notas de crédito).');
-        }
+        return [(int) $recebido, (int) $creditado];
     }
 }

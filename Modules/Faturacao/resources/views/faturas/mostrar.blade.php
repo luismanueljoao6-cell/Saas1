@@ -29,6 +29,12 @@
             <div class="mt-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{{ session('erro') }}</div>
         @endif
 
+        @if ($fatura->rejeitado_documento_no)
+            <div class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Esta fatura corrige o documento <strong>{{ $fatura->rejeitado_documento_no }}</strong>, que a AGT não aceitou.
+            </div>
+        @endif
+
         <table class="mt-6 w-full text-sm">
             <thead>
                 <tr class="border-b border-slate-200 text-left text-slate-500">
@@ -97,13 +103,62 @@
                 <p class="mt-1">Versão da chave: {{ $fatura->chave_versao }}</p>
             </div>
 
+            @include('faturacao::partials.estado-agt', ['documento' => $fatura])
+
+            @if ($fatura->correcao)
+                <div class="mt-4 rounded-md border border-slate-200 px-4 py-3 text-sm text-slate-600">
+                    Corrigida por
+                    <a href="{{ route('faturacao.faturas.mostrar', $fatura->correcao->id) }}" class="font-medium text-indigo-600 hover:text-indigo-500">
+                        {{ $fatura->correcao->numero_documento ?? 'rascunho #'.$fatura->correcao->id }}
+                    </a>.
+                </div>
+            @elseif (config('faturacao.agt.ativo') && in_array($fatura->agtSubmissao?->estado, ['invalido', 'rejeitado'], true))
+                <form method="POST" action="{{ route('faturacao.faturas.corrigir', $fatura->id) }}" class="mt-4 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                    @csrf
+                    <p>A AGT não aceita reenviar este documento: a correção é uma fatura nova (com outro número) que segue como correção desta.</p>
+                    <button type="submit" class="mt-3 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500">
+                        Criar rascunho de correção
+                    </button>
+                </form>
+            @endif
+
+            @if ($resumo)
+                <div class="mt-4 rounded-lg border border-slate-200 p-4 text-sm">
+                    <p class="font-medium text-slate-700">Recebimentos</p>
+                    <div class="mt-2 space-y-1 text-slate-600">
+                        <div class="flex justify-between"><span>Recebido (recibos)</span><span>{{ number_format($resumo['recebido'] / 100, 2, ',', ' ') }}</span></div>
+                        <div class="flex justify-between"><span>Creditado (notas de crédito)</span><span>{{ number_format($resumo['creditado'] / 100, 2, ',', ' ') }}</span></div>
+                        <div class="flex justify-between border-t border-slate-200 pt-1 font-semibold text-slate-800"><span>Em dívida</span><span>{{ number_format($resumo['saldo'] / 100, 2, ',', ' ') }} {{ $fatura->moeda }}</span></div>
+                    </div>
+
+                    @if ($fatura->recibos->isNotEmpty())
+                        <ul class="mt-3 space-y-1 border-t border-slate-100 pt-2 text-slate-600">
+                            @foreach ($fatura->recibos as $recibo)
+                                <li class="flex justify-between">
+                                    <a href="{{ route('faturacao.recibos.mostrar', $recibo->id) }}" class="text-indigo-600 hover:text-indigo-500">{{ $recibo->numero_documento ?? 'Recibo #'.$recibo->id }}</a>
+                                    <span>{{ number_format((float) $recibo->valor, 2, ',', ' ') }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+
+                    <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 pt-3 font-medium">
+                        @if ($resumo['saldo'] > 0)
+                            <a href="{{ route('faturacao.recibos.criar', ['fatura' => $fatura->id]) }}" class="text-indigo-600 hover:text-indigo-500">Registar recibo</a>
+                        @endif
+                        <a href="{{ route('faturacao.notas.criar', ['tipo' => 'credito', 'fatura' => $fatura->id]) }}" class="text-indigo-600 hover:text-indigo-500">Nota de crédito (parcial)</a>
+                        <a href="{{ route('faturacao.notas.criar', ['tipo' => 'debito', 'fatura' => $fatura->id]) }}" class="text-indigo-600 hover:text-indigo-500">Nota de débito</a>
+                    </div>
+                </div>
+            @endif
+
             @if ($fatura->notasCreditoDebito->isNotEmpty())
                 <div class="mt-4 rounded-lg border border-slate-200 p-4 text-sm">
                     <p class="font-medium text-slate-700">Notas associadas</p>
                     <ul class="mt-2 space-y-1 text-slate-600">
                         @foreach ($fatura->notasCreditoDebito as $nota)
                             <li class="flex justify-between">
-                                <span>{{ $nota->numero_documento ?? 'Rascunho #'.$nota->id }} — {{ $nota->tipo === 'credito' ? 'Crédito' : 'Débito' }} ({{ $nota->estado }})</span>
+                                <a href="{{ route('faturacao.notas.mostrar', $nota->id) }}" class="text-indigo-600 hover:text-indigo-500">{{ $nota->numero_documento ?? 'Rascunho #'.$nota->id }} — {{ $nota->tipo === 'credito' ? 'Crédito' : 'Débito' }} ({{ $nota->estado }})</a>
                                 <span>{{ number_format((float) $nota->valor_total, 2, ',', ' ') }}</span>
                             </li>
                         @endforeach

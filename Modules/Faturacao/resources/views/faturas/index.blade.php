@@ -30,6 +30,9 @@
                         <span class="text-xs {{ $fatura->estado === 'emitida' ? 'text-emerald-600' : 'text-amber-600' }}">
                             {{ ucfirst($fatura->estado) }}
                         </span>
+                        @if (config('faturacao.agt.ativo') && $fatura->estado === 'emitida')
+                            <span class="block text-xs text-slate-400">AGT: {{ $fatura->agtSubmissao?->rotulo() ?? 'sem registo de envio' }}</span>
+                        @endif
                     </div>
                 </a>
             @empty

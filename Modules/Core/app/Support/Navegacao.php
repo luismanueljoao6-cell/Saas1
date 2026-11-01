@@ -47,6 +47,8 @@ class Navegacao
                 'id' => 'faturacao', 'rotulo' => 'Faturação e SAF-T', 'servico' => 'faturacao',
                 'itens' => [
                     ['rota' => 'faturacao.faturas.index', 'rotulo' => 'Faturas', 'icone' => 'fatura', 'ativo' => 'faturacao.faturas.*'],
+                    ['rota' => 'faturacao.notas.index', 'rotulo' => 'Notas de crédito e débito', 'icone' => 'fatura', 'ativo' => 'faturacao.notas.*'],
+                    ['rota' => 'faturacao.recibos.index', 'rotulo' => 'Recibos', 'icone' => 'recibo', 'ativo' => 'faturacao.recibos.*'],
                     ['rota' => 'faturacao.clientes.index', 'rotulo' => 'Clientes', 'icone' => 'cliente', 'ativo' => 'faturacao.clientes.*'],
                     ['rota' => 'faturacao.produtos.index', 'rotulo' => 'Produtos', 'icone' => 'pacote', 'ativo' => 'faturacao.produtos.*'],
                     ['rota' => 'faturacao.saft.criar', 'rotulo' => 'Exportação SAF-T', 'icone' => 'exportar', 'ativo' => 'faturacao.saft.*', 'admin' => true],

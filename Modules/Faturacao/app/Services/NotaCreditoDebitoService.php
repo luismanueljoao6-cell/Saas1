@@ -72,6 +72,29 @@ class NotaCreditoDebitoService
     /**
      * @param  array<int, array{descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float}>  $linhas
      */
+    /** Elimina uma nota ainda em rascunho; uma nota emitida é um documento fiscal e não se apaga. */
+    public function eliminarRascunho(NotaCreditoDebito $nota): void
+    {
+        DB::transaction(function () use ($nota) {
+            $atual = NotaCreditoDebito::withoutGlobalScopes()
+                ->where('empresa_id', $nota->empresa_id)
+                ->lockForUpdate()
+                ->findOrFail($nota->id);
+
+            if ($atual->estado !== 'rascunho') {
+                throw new \DomainException('Só é possível apagar notas em rascunho.');
+            }
+
+            $atual->linhas()->delete();
+            $atual->delete();
+        });
+
+        Log::info('Rascunho de nota eliminado', [
+            'nota_id' => $nota->id,
+            'empresa_id' => $nota->empresa_id,
+        ]);
+    }
+
     public function criarRascunho(
         int $empresaId,
         int $clienteId,

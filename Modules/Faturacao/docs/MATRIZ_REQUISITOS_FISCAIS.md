@@ -39,3 +39,15 @@ motivo e fundamento legal da isenção na própria fatura impressa; descontos e 
 distribuição fiscal; menções específicas por tipo de documento. ❔ Para cada um: ler o
 artigo aplicável, acrescentar uma linha a esta matriz com campo, validação, elemento
 assinado, elemento SAF-T e teste, e só então marcar ✅.
+
+## Interface
+
+| Capacidade | Estado | Teste |
+|---|---|---|
+| Faturas: criar, editar e eliminar rascunhos, emitir, anular | ✅ | RascunhoFaturaTest, FormularioFaturaIsencaoTest |
+| Notas de crédito/débito: rascunho, emissão, eliminação de rascunho, listas | ✅ | NotasInterfaceTest |
+| Recibos de faturas emitidas, com saldo | ✅ | RecibosInterfaceTest |
+| Estado AGT visível e correção de faturas rejeitadas | ✅ | EstadoAgtInterfaceTest |
+| Versão para impressão com o layout fiscal | ⛔ por validar contra a lei | — |
+| Recibos de adiantamento | ⛔ a AGT ainda não os suporta aqui | — |
+
