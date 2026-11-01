@@ -10,6 +10,7 @@ use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
 use Modules\Faturacao\Support\Jws;
 use Modules\Faturacao\Support\NumeroJson;
+use Modules\Faturacao\Support\ValidacaoLinhas;
 
 /**
  * Monta o objecto "document" do serviço registarFactura da AGT a partir de um
@@ -213,7 +214,7 @@ class AgtDocumentoBuilder
     {
         $tipo = strtoupper(trim((string) ($valor ?: config('faturacao.agt.operation_type_padrao', 'SG'))));
 
-        if (! in_array($tipo, \Modules\Faturacao\Support\ValidacaoLinhas::TIPOS_OPERACAO_AGT, true)) {
+        if (! in_array($tipo, ValidacaoLinhas::TIPOS_OPERACAO_AGT, true)) {
             throw AgtException::configuracaoInvalida("tipo de operação AGT '{$tipo}' inválido na linha do documento.");
         }
 
