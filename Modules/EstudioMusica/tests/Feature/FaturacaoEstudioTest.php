@@ -270,7 +270,7 @@ class FaturacaoEstudioTest extends TestCase
     {
         config(['faturacao.agt.ativo' => true]);
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('tipo FA');
 
         $this->faturacao->gerarFaturaSinal($this->projeto());
