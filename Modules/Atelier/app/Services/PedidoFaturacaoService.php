@@ -5,8 +5,8 @@ namespace Modules\Atelier\Services;
 use Illuminate\Support\Facades\DB;
 use Modules\Atelier\Exceptions\PedidoException;
 use Modules\Atelier\Models\Pedido;
-use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Contracts\FaturacaoGateway;
+use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
 use Throwable;
@@ -26,7 +26,6 @@ use Throwable;
  */
 class PedidoFaturacaoService
 {
-
     protected FaturacaoGateway $faturacao;
 
     public function __construct(FaturacaoGateway $faturacao)
@@ -195,5 +194,4 @@ class PedidoFaturacaoService
             ->lockForUpdate()
             ->findOrFail($pedido->id);
     }
-
 }
