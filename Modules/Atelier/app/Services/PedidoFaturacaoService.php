@@ -26,6 +26,7 @@ use Throwable;
  */
 class PedidoFaturacaoService
 {
+
     public function __construct(protected FaturacaoGateway $faturacao) {}
 
     /**
