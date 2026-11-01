@@ -27,7 +27,12 @@ use Throwable;
 class PedidoFaturacaoService
 {
 
-    public function __construct(protected FaturacaoGateway $faturacao) {}
+    protected FaturacaoGateway $faturacao;
+
+    public function __construct(FaturacaoGateway $faturacao)
+    {
+        $this->faturacao = $faturacao;
+    }
 
     /**
      * @throws PedidoException|Throwable
