@@ -153,7 +153,7 @@ class AssinaturaJwsTest extends TestCase
     {
         config(['faturacao.agt.ativo' => true]);
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('tipo RG');
 
         app(ReciboService::class)->emitir(1, 1, '100.00', 'dinheiro');
