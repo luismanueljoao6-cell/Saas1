@@ -73,10 +73,6 @@ jobs:
           for teste in "${testes[@]}"; do
             php artisan test Modules/Subscricoes/tests/Feature/AuditoriaSubscricoesTest.php --filter="$teste"
           done
-      - name: Diagnóstico da atualização de Symfony Mime
-        run: |
-          composer update symfony/mime --with-dependencies --no-interaction --prefer-dist --no-progress
-          git diff -- composer.lock
       - run: composer audit
 
   testes-mysql:
