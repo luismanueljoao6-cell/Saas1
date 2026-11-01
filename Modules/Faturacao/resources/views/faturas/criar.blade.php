@@ -48,9 +48,9 @@
                     <template x-for="(linha, indice) in linhas" :key="indice">
                         <div class="grid grid-cols-12 gap-2 rounded-md border border-slate-200 p-2">
                             <input type="text" :name="`linhas[${indice}][descricao]`" x-model="linha.descricao" placeholder="Descrição" required
-                                   class="col-span-12 sm:col-span-5 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                                   class="col-span-12 sm:col-span-4 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
                             <input type="number" step="0.001" min="0.001" :name="`linhas[${indice}][quantidade]`" x-model.number="linha.quantidade" placeholder="Qtd"
-                                   class="col-span-4 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                                   class="col-span-4 sm:col-span-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
                             <input type="number" step="0.01" min="0" :name="`linhas[${indice}][preco_unitario_base]`" x-model.number="linha.preco_unitario_base" placeholder="Preço base (opcional)"
                                    class="col-span-4 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
                             <input type="number" step="0.01" min="0" :name="`linhas[${indice}][preco_unitario]`" x-model.number="linha.preco_unitario" placeholder="Preço final"
