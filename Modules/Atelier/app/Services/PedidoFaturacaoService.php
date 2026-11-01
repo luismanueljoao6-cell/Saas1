@@ -18,7 +18,7 @@ use Throwable;
  *   fiscal AGT, não entra na cadeia de numeração/hash).
  * - A fatura final é sempre criada como RASCUNHO; a emissão fica no ecrã
  *   normal de faturas do módulo Faturacao.
- * - Toda a emissão de Recibos passa pelo ReciboService (caminho único).
+ * - Toda a emissão de documentos passa pelo FaturacaoGateway (contrato público único).
  * - Cada operação relê o Pedido com lock: um duplo clique não emite dois
  *   recibos nem gera duas faturas finais.
  * - Um pedido CANCELADO nunca recebe sinal, fatura nem pagamento novos; o
