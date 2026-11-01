@@ -12,6 +12,7 @@ use Modules\Faturacao\Models\Produto;
 final class ValidacaoLinhas
 {
     public const TIPOS_OPERACAO_AGT = ['SE', 'SS', 'STP', 'SR', 'SIF', 'SHS', 'ST', 'SG', 'TB', 'AS', 'QT', 'RD'];
+
     /**
      * @param  array<int, array<string, mixed>>  $linhas
      * @param  bool  $verificarTaxas  false em notas de crédito (espelham a fatura original) e de débito (não liquidam IVA)
