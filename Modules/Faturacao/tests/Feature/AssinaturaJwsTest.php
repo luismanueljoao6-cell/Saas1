@@ -15,6 +15,7 @@ use Tests\TestCase;
 
 class AssinaturaJwsTest extends TestCase
 {
+
     use RefreshDatabase;
 
     protected string $privada;
