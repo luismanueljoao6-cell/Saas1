@@ -51,7 +51,7 @@
                                    class="col-span-12 sm:col-span-5 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
                             <input type="number" step="0.001" min="0.001" :name="`linhas[${indice}][quantidade]`" x-model.number="linha.quantidade" placeholder="Qtd"
                                    class="col-span-4 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
-                            <input type="number" step="0.01" min="0" :name="`linhas[${indice}][preco_unitario_base]`" x-model.number="linha.preco_unitario_base" placeholder="Preço base"
+                            <input type="number" step="0.01" min="0" :name="`linhas[${indice}][preco_unitario_base]`" x-model.number="linha.preco_unitario_base" placeholder="Preço base (opcional)"
                                    class="col-span-4 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
                             <input type="number" step="0.01" min="0" :name="`linhas[${indice}][preco_unitario]`" x-model.number="linha.preco_unitario" placeholder="Preço final"
                                    class="col-span-4 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
@@ -107,7 +107,7 @@
                     ? linhasIniciais
                     : [{ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral, motivo_isencao: '' }],
                 adicionarLinha() {
-                    this.linhas.push({ descricao: '', quantidade: 1, preco_unitario_base: 0, preco_unitario: 0, taxa_iva: taxaIvaGeral, operation_type: 'SG', motivo_isencao: '' });
+                    this.linhas.push({ descricao: '', quantidade: 1, preco_unitario_base: null, preco_unitario: 0, taxa_iva: taxaIvaGeral, operation_type: 'SG', motivo_isencao: '' });
                 },
                 removerLinha(indice) {
                     this.linhas.splice(indice, 1);
@@ -116,7 +116,7 @@
                     return this.linhas.reduce((soma, l) => soma + (Number(l.quantidade) || 0) * (Number(l.preco_unitario) || 0), 0);
                 },
                 totalDescontos() {
-                    return this.linhas.reduce((soma, l) => soma + Math.max(0, (Number(l.preco_unitario_base) || 0) - (Number(l.preco_unitario) || 0)) * (Number(l.quantidade) || 0), 0);
+                    return this.linhas.reduce((soma, l) => soma + Math.max(0, (Number(l.preco_unitario_base ?? l.preco_unitario) || 0) - (Number(l.preco_unitario) || 0)) * (Number(l.quantidade) || 0), 0);
                 },
                 totalIva() {
                     return this.linhas.reduce((soma, l) => {
