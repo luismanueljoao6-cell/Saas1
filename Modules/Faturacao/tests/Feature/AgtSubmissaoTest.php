@@ -218,6 +218,28 @@ class AgtSubmissaoTest extends TestCase
         $this->assertSame('TB', $documento['lines'][0]['operationType']);
     }
 
+    public function test_desconto_da_linha_e_enviado_com_preco_base_e_settlement_amount(): void
+    {
+        $servico = app(FaturaService::class);
+        $fatura = $servico->criarRascunho($this->empresa, $this->cliente, [[
+            'descricao' => 'Serviço com desconto',
+            'quantidade' => 2,
+            'preco_unitario_base' => '1000.00',
+            'preco_unitario' => '900.00',
+            'taxa_iva' => 14,
+            'operation_type' => 'SG',
+        ]]);
+        $servico->emitir($fatura);
+
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $linha = $this->pedidoPara('registarFactura')->data()['documents'][0]['lines'][0];
+
+        $this->assertEqualsWithDelta(1000.00, $linha['unitPriceBase'], 0.0001);
+        $this->assertEqualsWithDelta(900.00, $linha['unitPrice'], 0.0001);
+        $this->assertEqualsWithDelta(200.00, $linha['settlementAmount'], 0.0001);
+    }
+
     public function test_estado_valido_e_invalido_sao_registados(): void
     {
         $this->emitirFatura();
