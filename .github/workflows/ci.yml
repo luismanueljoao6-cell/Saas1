@@ -50,6 +50,7 @@ jobs:
           fi
           if (("${#ficheiros[@]}")); then
             vendor/bin/pint "${ficheiros[@]}"
+            git diff -- "${ficheiros[@]}"
           else
             echo "Nenhum ficheiro PHP alterado."
           fi
@@ -88,5 +89,7 @@ jobs:
 
       - run: composer install --no-interaction --prefer-dist --no-progress
       - run: cp .env.example .env && php artisan key:generate
+      # Diagnóstico isolado do teste que encerrou o processo no último CI.
+      - run: php artisan test Modules/Subscricoes/tests/Feature/AuditoriaSubscricoesTest.php --filter=test_retomar_renovacao_de_subscricao_vencida_mostra_erro_em_vez_de_falhar
       # Triggers de imutabilidade, locks e snapshots só se testam em MySQL.
       - run: php artisan test
