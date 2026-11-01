@@ -168,6 +168,8 @@ class FaturacaoEstudioService
             Dinheiro::formatar($precoHora),
         );
 
+        $precoUnitarioBase = $total;
+
         // Cupão de aniversário (secção F): "X% de desconto em horas de
         // estúdio" — aplicado aqui, na cobrança por hora, ao cupão válido
         // que expira primeiro. Corre dentro da transação do check-out, por
@@ -196,6 +198,7 @@ class FaturacaoEstudioService
             'descricao' => $descricao,
             'quantidade' => 1,
             'preco_unitario' => Dinheiro::formatar($total),
+            'preco_unitario_base' => Dinheiro::formatar($precoUnitarioBase),
             'taxa_iva' => (float) config('faturacao.taxa_iva_geral'),
         ]]);
 
