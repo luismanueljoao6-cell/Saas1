@@ -11,6 +11,7 @@ use Modules\Faturacao\Models\Produto;
  */
 final class ValidacaoLinhas
 {
+    public const TIPOS_OPERACAO_AGT = ['SE', 'SS', 'STP', 'SR', 'SIF', 'SHS', 'ST', 'SG', 'TB', 'AS', 'QT', 'RD'];
     /**
      * @param  array<int, array<string, mixed>>  $linhas
      * @param  bool  $verificarTaxas  false em notas de crédito (espelham a fatura original) e de débito (não liquidam IVA)
@@ -48,6 +49,12 @@ final class ValidacaoLinhas
                 Dinheiro::calcularLinha($linha['quantidade'], $linha['preco_unitario'], $linha['taxa_iva']);
             } catch (\InvalidArgumentException $e) {
                 throw new \InvalidArgumentException("Linha {$n}: ".$e->getMessage(), 0, $e);
+            }
+
+            $operacao = $linha['operation_type'] ?? null;
+
+            if ($operacao !== null && (! is_string($operacao) || ! in_array(strtoupper(trim($operacao)), self::TIPOS_OPERACAO_AGT, true))) {
+                throw new \\InvalidArgumentException("Linha {$n}: o tipo de operação AGT '{$operacao}' não é válido.");
             }
 
             if ($verificarTaxas) {
