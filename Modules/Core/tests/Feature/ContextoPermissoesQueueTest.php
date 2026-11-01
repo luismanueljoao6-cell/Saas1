@@ -2,12 +2,12 @@
 
 namespace Modules\Core\Tests\Feature;
 
+use Illuminate\Contracts\Queue\Job;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Contracts\Queue\Job;
 use Mockery;
 use Modules\Core\Services\TenantManager;
 use RuntimeException;
