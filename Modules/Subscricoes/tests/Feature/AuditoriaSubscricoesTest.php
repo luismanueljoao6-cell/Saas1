@@ -36,6 +36,7 @@ class AuditoriaSubscricoesTest extends TestCase
         parent::setUp();
 
         $this->withoutVite();
+        Notification::fake();
 
         $this->app->singleton(GatewayPagamentoInterface::class, fn () => new class implements GatewayPagamentoInterface
         {
