@@ -201,6 +201,8 @@ class AgtSubmissaoTest extends TestCase
 
     public function test_tipo_de_operacao_da_linha_e_preservado_no_payload_agt(): void
     {
+        app(AgtSerieService::class)->solicitar($this->empresa, 'FT', now()->year);
+
         $servico = app(FaturaService::class);
         $fatura = $servico->criarRascunho($this->empresa, $this->cliente, [[
             'descricao' => 'Material de produção',
@@ -220,6 +222,8 @@ class AgtSubmissaoTest extends TestCase
 
     public function test_desconto_da_linha_e_enviado_com_preco_base_e_settlement_amount(): void
     {
+        app(AgtSerieService::class)->solicitar($this->empresa, 'FT', now()->year);
+
         $servico = app(FaturaService::class);
         $fatura = $servico->criarRascunho($this->empresa, $this->cliente, [[
             'descricao' => 'Serviço com desconto',
@@ -498,7 +502,7 @@ class AgtSubmissaoTest extends TestCase
                 app(AgtSubmissaoService::class)->reenviar($submissao);
                 $this->fail("Reenvio de '{$estado}' devia ser recusado.");
             } catch (\DomainException $e) {
-                $this->assertStringContainsString('documento de correção', $e->getMessage());
+                $this->assertStringContainsString('Só se pode reenviar uma submissão em erro técnico', $e->getMessage());
             }
         }
     }
