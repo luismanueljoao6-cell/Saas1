@@ -10,6 +10,9 @@ use Modules\EstudioMusica\Models\ProjetoMusical;
 use Modules\EstudioMusica\Models\Reclamacao;
 use Modules\EstudioMusica\Models\SessaoEstudio;
 use Modules\EstudioMusica\Models\VersaoAudio;
+use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
+use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
+use Modules\EstudioMusica\Support\TransferenciaInternacional;
 use Modules\Faturacao\Models\Cliente;
 
 /**
@@ -20,27 +23,47 @@ use Modules\Faturacao\Models\Cliente;
 class NotificacaoEstudioService
 {
     /**
+     * Verifica se existe pelo menos um canal que o sistema pode usar.
+     * E-mail não depende da autorização de transferência internacional;
+     * telefone só é elegível quando WhatsApp ou SMS estão autorizados.
+     */
+    public function podeEnviar(Cliente $cliente): bool
+    {
+        if ($cliente->trashed()) {
+            return false;
+        }
+
+        if (trim((string) $cliente->email) !== '') {
+            return true;
+        }
+
+        if (trim((string) $cliente->telefone) === '') {
+            return false;
+        }
+
+        return TransferenciaInternacional::permitida(app(CanalWhatsAppInterface::class))
+            || TransferenciaInternacional::permitida(app(CanalSmsInterface::class));
+    }
+
+    /**
      * @return bool true quando o dispatch foi aceite; false quando não há
-     *              destinatário/contacto elegível ou o cliente foi apagado.
+     *              destinatário ou canal legal/técnico elegível.
      */
     public function enviar(Cliente $cliente, string $assunto, string $mensagem): bool
     {
-        // Um cliente apagado mantém-se nos registos históricos, mas deixa de receber mensagens.
-        if ($cliente->trashed()) {
+        if (! $this->podeEnviar($cliente)) {
+            Log::notice('EstudioMusica: notificação não enfileirada — cliente sem canal elegível.', [
+                'cliente_id' => $cliente->id,
+                'empresa_id' => $cliente->empresa_id,
+                'tem_telefone' => trim((string) $cliente->telefone) !== '',
+                'tem_email' => trim((string) $cliente->email) !== '',
+            ]);
+
             return false;
         }
 
         $telefone = trim((string) $cliente->telefone);
         $email = trim((string) $cliente->email);
-
-        if ($telefone === '' && $email === '') {
-            Log::notice('EstudioMusica: notificação não enfileirada — cliente sem telefone e e-mail.', [
-                'cliente_id' => $cliente->id,
-                'empresa_id' => $cliente->empresa_id,
-            ]);
-
-            return false;
-        }
 
         EnviarMensagemClienteJob::dispatch(
             $telefone !== '' ? $telefone : null,
