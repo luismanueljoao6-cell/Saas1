@@ -51,6 +51,10 @@ final class ValidacaoLinhas
                 throw new \DomainException("Linha {$n}: o preço base não pode ser inferior ao preço final.");
             }
 
+            if (array_key_exists('preco_unitario_base', $linha)) {
+                Dinheiro::calcularLinha($linha['quantidade'], $linha['preco_unitario_base'], $linha['taxa_iva']);
+            }
+
             // Quantidade, preço e taxa: a própria aritmética rejeita o que é inválido.
             try {
                 Dinheiro::calcularLinha($linha['quantidade'], $linha['preco_unitario'], $linha['taxa_iva']);
