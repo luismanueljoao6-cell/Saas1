@@ -158,7 +158,7 @@ class AuditoriaSubscricoesTest extends TestCase
             ->once()
             ->andThrow(new DomainException($mensagem));
 
-        $request = Request::create('/subscricoes/renovacao', 'POST');
+        $request = request();
         $request->headers->set('referer', route('subscricoes.planos'));
         $request->setUserResolver(fn () => $admin);
 
