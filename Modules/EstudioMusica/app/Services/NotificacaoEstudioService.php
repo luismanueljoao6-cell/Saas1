@@ -3,12 +3,12 @@
 namespace Modules\EstudioMusica\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Core\Models\Empresa;
 use Modules\EstudioMusica\Jobs\EnviarMensagemClienteJob;
 use Modules\EstudioMusica\Models\FaixaMusical;
 use Modules\EstudioMusica\Models\ProjetoMusical;
-use Modules\EstudioMusica\Models\SessaoEstudio;
-use Modules\Core\Models\Empresa;
 use Modules\EstudioMusica\Models\Reclamacao;
+use Modules\EstudioMusica\Models\SessaoEstudio;
 use Modules\EstudioMusica\Models\VersaoAudio;
 use Modules\Faturacao\Models\Cliente;
 
