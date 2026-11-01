@@ -34,6 +34,9 @@ class SafTRegrasEValidacaoTest extends TestCase
         config(['faturacao.saft_numero_certificado' => '0']);
         $this->assertTrue(app(SafTExportService::class)->exportacaoBloqueada());
 
+        config(['faturacao.saft_numero_certificado' => '']);
+        $this->assertTrue(app(SafTExportService::class)->exportacaoBloqueada());
+
         config(['faturacao.saft_numero_certificado' => '12345']);
         $this->assertFalse(app(SafTExportService::class)->exportacaoBloqueada());
 
