@@ -415,6 +415,24 @@ class AgtSubmissaoTest extends TestCase
         $this->assertSame('SEM_RESPOSTA', $submissao->erros[0]['codigo']);
     }
 
+    public function test_submissao_a_aguardar_intervencao_com_request_id_continua_a_ser_consultada(): void
+    {
+        $this->emitirFatura();
+        $servico = app(AgtSubmissaoService::class);
+        $servico->enviarPendentes();
+        AgtSubmissao::query()->update(['enviado_em' => now()->subHours(25)]);
+
+        $this->respostaEstado = [
+            'resultCode' => '0',
+            'documentStatusList' => [['documentNo' => 'FT FT6325S2C/1', 'documentStatus' => 'V']],
+        ];
+
+        $res = $servico->consultarEstados();
+
+        $this->assertSame(1, $res['validos']);
+        $this->assertSame(AgtSubmissao::VALIDO, AgtSubmissao::query()->firstOrFail()->estado);
+    }
+
     public function test_enviado_recentemente_continua_a_aguardar_a_agt(): void
     {
         $this->emitirFatura();
