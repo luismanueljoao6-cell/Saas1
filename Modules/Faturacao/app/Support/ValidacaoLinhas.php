@@ -63,7 +63,7 @@ final class ValidacaoLinhas
                 throw new \InvalidArgumentException("Linha {$n}: ".$e->getMessage(), 0, $e);
             }
 
-            $operacao = $linha['operation_type'] ?? null;
+            $operacao = $linha['operation_type'] ?? config('faturacao.agt.operation_type_padrao', 'SG');
 
             if ($operacao !== null && (! is_string($operacao) || ! in_array(strtoupper(trim($operacao)), self::TIPOS_OPERACAO_AGT, true))) {
                 throw new \InvalidArgumentException("Linha {$n}: o tipo de operação AGT '{$operacao}' não é válido.");
