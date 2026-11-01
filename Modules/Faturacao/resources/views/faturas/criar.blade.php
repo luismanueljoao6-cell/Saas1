@@ -55,7 +55,7 @@
                                    class="col-span-4 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
                             <input type="number" step="0.01" min="0" max="100" :name="`linhas[${indice}][taxa_iva]`" x-model.number="linha.taxa_iva" placeholder="IVA %"
                                    class="col-span-3 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
-                            <input type="hidden" :name="`linhas[${indice}][produto_id]`" :value="linha.produto_id ?? ''">
+                            <select :name="`linhas[${indice}][operation_type]`" x-model="linha.operation_type" required\n                                    class="col-span-11 rounded-md border border-slate-300 px-2 py-1.5 text-sm">\n                                @foreach ($tiposOperacao as $codigo => $rotulo)\n                                    <option value="{{ $codigo }}">{{ $codigo }} — {{ $rotulo }}</option>\n                                @endforeach\n                            </select>\n                            <input type="hidden" :name="`linhas[${indice}][produto_id]`" :value="linha.produto_id ?? ''">
                             <button type="button" @click="removerLinha(indice)" class="col-span-1 text-red-500 hover:text-red-700" title="Remover">✕</button>
                             @if ($aceitaIsencao)
                                 {{-- Linhas a 0% exigem o motivo de isenção; desativado (não enviado) nas restantes. --}}
@@ -98,7 +98,7 @@
                     ? linhasIniciais
                     : [{ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral, motivo_isencao: '' }],
                 adicionarLinha() {
-                    this.linhas.push({ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral, motivo_isencao: '' });
+                    this.linhas.push({ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral, operation_type: 'SG', motivo_isencao: '' });
                 },
                 removerLinha(indice) {
                     this.linhas.splice(indice, 1);
