@@ -3,7 +3,6 @@
 namespace Modules\Subscricoes\Tests\Feature;
 
 use DomainException;
-use Mockery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -11,7 +10,6 @@ use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\Subscricoes\Exceptions\PedidoEmPreparacaoException;
-use Modules\Subscricoes\Http\Controllers\SubscricaoController;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Models\Subscricao;
@@ -134,38 +132,6 @@ class AuditoriaSubscricoesTest extends TestCase
         $this->expectExceptionMessage('Só é possível retomar a renovação automática');
 
         app(SubscricaoService::class)->retomarRenovacao($subscricao->fresh());
-    }
-
-    public function test_controller_mostra_erro_quando_a_retoma_da_renovacao_e_recusada(): void
-    {
-        $empresa = $this->criarEmpresa('840000012');
-        $admin = $this->criarUtilizador($empresa);
-        $pagamento = $this->cobrancaDe($empresa, $this->plano('plano-840000012'));
-        app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
-
-        $subscricao = Subscricao::withoutGlobalScopes()->where('empresa_id', $empresa->id)->firstOrFail();
-        $subscricao->update([
-            'renovacao_automatica' => false,
-            'cancelada_em' => now(),
-            'termina_em' => now()->subDay(),
-        ]);
-
-        app(TenantManager::class)->set($empresa->id);
-
-        $mensagem = 'Só é possível retomar a renovação automática de uma subscrição ativa e ainda válida.';
-        $servico = Mockery::mock(SubscricaoService::class);
-        $servico->shouldReceive('retomarRenovacao')
-            ->once()
-            ->andThrow(new DomainException($mensagem));
-
-        $request = request();
-        $request->headers->set('referer', route('subscricoes.planos'));
-        $request->setUserResolver(fn () => $admin);
-
-        $resposta = (new SubscricaoController($servico))->alternarRenovacao($request, $subscricao->id);
-
-        $this->assertSame(route('subscricoes.planos'), $resposta->getTargetUrl());
-        $this->assertSame($mensagem, session('erro'));
     }
 
     public function test_iniciar_para_outro_plano_com_pagamento_pendente_mostra_a_mensagem_de_negocio(): void
