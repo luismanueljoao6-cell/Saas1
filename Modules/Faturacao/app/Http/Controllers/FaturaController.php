@@ -53,7 +53,7 @@ class FaturaController extends Controller
                 'descricao' => (string) ($linha['descricao'] ?? ''),
                 'quantidade' => $linha['quantidade'] ?? 1,
                 'preco_unitario' => $linha['preco_unitario'] ?? 0,
-                'preco_unitario_base' => $linha['preco_unitario_base'] ?? $linha['preco_unitario'] ?? 0,
+                'preco_unitario_base' => $linha['preco_unitario_base'] ?? null,
                 'taxa_iva' => $linha['taxa_iva'] ?? config('faturacao.taxa_iva_geral'),
                 'operation_type' => $linha['operation_type'] ?? config('faturacao.agt.operation_type_padrao', 'SG'),
                 'motivo_isencao' => $linha['motivo_isencao'] ?? '',
