@@ -18,7 +18,6 @@ use Modules\Subscricoes\Models\Subscricao;
 use Modules\Subscricoes\Notifications\RenovacaoProximaNotification;
 use Modules\Subscricoes\Services\Gateways\Contracts\GatewayPagamentoInterface;
 use Modules\Subscricoes\Services\Gateways\ProxyPayGateway;
-use RuntimeException;
 use Throwable;
 
 class SubscricaoService

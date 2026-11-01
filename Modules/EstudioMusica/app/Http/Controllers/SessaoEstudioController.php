@@ -4,8 +4,8 @@ namespace Modules\EstudioMusica\Http\Controllers;
 
 use Carbon\Carbon;
 use DomainException;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
