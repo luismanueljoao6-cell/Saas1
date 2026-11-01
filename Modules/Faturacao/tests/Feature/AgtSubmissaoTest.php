@@ -199,6 +199,25 @@ class AgtSubmissaoTest extends TestCase
         app(ReciboService::class)->emitir($this->empresa->id, $this->cliente->id, '500.00', 'dinheiro', $fatura->id);
     }
 
+    public function test_tipo_de_operacao_da_linha_e_preservado_no_payload_agt(): void
+    {
+        $servico = app(FaturaService::class);
+        $fatura = $servico->criarRascunho($this->empresa, $this->cliente, [[
+            'descricao' => 'Material de produção',
+            'quantidade' => 1,
+            'preco_unitario' => 1000,
+            'taxa_iva' => 14,
+            'operation_type' => 'TB',
+        ]]);
+        $servico->emitir($fatura);
+
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $documento = $this->pedidoPara('registarFactura')->data()['documents'][0];
+
+        $this->assertSame('TB', $documento['lines'][0]['operationType']);
+    }
+
     public function test_estado_valido_e_invalido_sao_registados(): void
     {
         $this->emitirFatura();
