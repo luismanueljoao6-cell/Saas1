@@ -1,16 +1,16 @@
 <?php
 
-namespace Modules\\EstudioMusica\\Services;
+namespace Modules\EstudioMusica\Services;
 
-use Illuminate\\Support\\Facades\\Log;
-use Modules\\EstudioMusica\\Jobs\\EnviarMensagemClienteJob;
-use Modules\\EstudioMusica\\Models\\FaixaMusical;
-use Modules\\EstudioMusica\\Models\\ProjetoMusical;
-use Modules\\EstudioMusica\\Models\\SessaoEstudio;
-use Modules\\Core\\Models\\Empresa;
-use Modules\\EstudioMusica\\Models\\Reclamacao;
-use Modules\\EstudioMusica\\Models\\VersaoAudio;
-use Modules\\Faturacao\\Models\\Cliente;
+use Illuminate\Support\Facades\Log;
+use Modules\EstudioMusica\Jobs\EnviarMensagemClienteJob;
+use Modules\EstudioMusica\Models\FaixaMusical;
+use Modules\EstudioMusica\Models\ProjetoMusical;
+use Modules\EstudioMusica\Models\SessaoEstudio;
+use Modules\Core\Models\Empresa;
+use Modules\EstudioMusica\Models\Reclamacao;
+use Modules\EstudioMusica\Models\VersaoAudio;
+use Modules\Faturacao\Models\Cliente;
 
 /**
  * Compõe notificações do Estúdio e enfileira o envio fora do pedido HTTP.
@@ -68,7 +68,7 @@ class NotificacaoEstudioService
         $this->enviar(
             $projeto->cliente,
             'Atualização do teu projeto',
-            "O teu projeto \\"{$projeto->nome}\\" entrou em fase de {$projeto->rotuloEstado()}!"
+            "O teu projeto \"{$projeto->nome}\" entrou em fase de {$projeto->rotuloEstado()}!"
         );
     }
 
@@ -81,7 +81,7 @@ class NotificacaoEstudioService
         $this->enviar(
             $faixa->projetoMusical->cliente,
             'Atualização da tua música',
-            "A tua música \\"{$faixa->nome}\\" entrou em fase de {$faixa->rotuloEstado()}!"
+            "A tua música \"{$faixa->nome}\" entrou em fase de {$faixa->rotuloEstado()}!"
         );
     }
 
@@ -101,7 +101,7 @@ class NotificacaoEstudioService
         $this->enviar(
             $faixa->projetoMusical->cliente,
             'Nova versão disponível',
-            "A versão \\"{$versao->rotulo}\\" da faixa \\"{$faixa->nome}\\" já está no teu Portal do Cliente para audição!"
+            "A versão \"{$versao->rotulo}\" da faixa \"{$faixa->nome}\" já está no teu Portal do Cliente para audição!"
         );
     }
 
@@ -110,7 +110,7 @@ class NotificacaoEstudioService
         $this->enviar(
             $projeto->cliente,
             'Projeto finalizado',
-            "O teu projeto \\"{$projeto->nome}\\" foi concluído! Já podes aceder a tudo no teu Portal do Cliente."
+            "O teu projeto \"{$projeto->nome}\" foi concluído! Já podes aceder a tudo no teu Portal do Cliente."
         );
     }
 
@@ -137,7 +137,7 @@ class NotificacaoEstudioService
                 null,
                 $email,
                 'Decisão do cliente no portal',
-                "{$nome} {$acao} versão \\"{$versao->rotulo}\\" da faixa \\"{$faixa->nome}\\" (projeto \\"{$projeto->nome}\\")."
+                "{$nome} {$acao} versão \"{$versao->rotulo}\" da faixa \"{$faixa->nome}\" (projeto \"{$projeto->nome}\")."
             ));
     }
 
@@ -157,7 +157,7 @@ class NotificacaoEstudioService
             $reclamacao->telefone,
             $reclamacao->email,
             'Recebemos a tua reclamação',
-            "Recebemos a tua reclamação (ref. #{$reclamacao->id}) sobre \\"{$reclamacao->assunto}\\". Vamos responder o mais depressa possível."
+            "Recebemos a tua reclamação (ref. #{$reclamacao->id}) sobre \"{$reclamacao->assunto}\". Vamos responder o mais depressa possível."
         );
     }
 
@@ -178,7 +178,7 @@ class NotificacaoEstudioService
         $this->enviar(
             $faixa->projetoMusical->cliente,
             'Aprovação pendente',
-            "A versão \\"{$versao->rotulo}\\" da faixa \\"{$faixa->nome}\\" está à espera da tua aprovação no Portal do Cliente."
+            "A versão \"{$versao->rotulo}\" da faixa \"{$faixa->nome}\" está à espera da tua aprovação no Portal do Cliente."
         );
     }
 }
