@@ -203,6 +203,7 @@ class AuditoriaSubscricoesTest extends TestCase
     {
         $empresa = $this->criarEmpresa('840000007');
         $operador = $this->criarUtilizador($empresa);
+        $operador->update(['ativo' => false]); // Não enviar notificações reais durante a reconciliação manual.
         $pagamento = $this->cobrancaDe($empresa, $this->plano('plano-840000007'));
 
         // Estado deixado pela rotina diária: pagamento expirado e subscrição cancelada.
