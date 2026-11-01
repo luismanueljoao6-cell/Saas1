@@ -29,7 +29,12 @@ use Modules\Faturacao\Support\Dinheiro;
 class FaturacaoEstudioService
 {
 
-    public function __construct(protected FaturacaoGateway $faturacao) {}
+    protected FaturacaoGateway $faturacao;
+
+    public function __construct(FaturacaoGateway $faturacao)
+    {
+        $this->faturacao = $faturacao;
+    }
 
     /**
      * Fatura de sinal/adiantamento (secção E: "30% a 50% para confirmar a
