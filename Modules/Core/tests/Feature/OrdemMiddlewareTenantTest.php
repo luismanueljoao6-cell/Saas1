@@ -99,5 +99,4 @@ class OrdemMiddlewareTenantTest extends TestCase
         $this->assertFalse($utilizador->relationLoaded('roles'));
         $this->assertFalse($utilizador->relationLoaded('permissions'));
     }
-
 }
