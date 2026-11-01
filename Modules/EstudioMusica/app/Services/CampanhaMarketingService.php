@@ -60,14 +60,20 @@ class CampanhaMarketingService
                             continue;
                         }
 
+                        if (! $this->notificacao->podeEnviar($cliente)) {
+                            continue;
+                        }
+
                         $cupom = $this->cupomAniversarioDoAno($cliente) ?? $this->gerarCupomAniversario($cliente);
                         $nome = $cliente->nome_artistico ?: $cliente->nome;
 
-                        $this->notificacao->enviar(
+                        if (! $this->notificacao->enviar(
                             $cliente,
                             'Parabéns!',
                             "Parabéns pelo teu dia, {$nome}! Ganhaste {$this->percentagemLegivel($cupom->percentual_desconto)}% de desconto em horas de estúdio, válido até {$cupom->valido_ate->format('d/m/Y')} — aplicado automaticamente na tua próxima sessão (cupão {$cupom->codigo}).".$this->rodapeSaida($cliente)
-                        );
+                        )) {
+                            continue;
+                        }
 
                         $this->registarEnvio($cliente, 'aniversario', (string) $hoje->year);
                         $enviados++;
@@ -108,15 +114,18 @@ class CampanhaMarketingService
                             continue;
                         }
 
-                        if ($this->jaEnviadaEsteAno($projeto->cliente, 'follow_up_lancamento', (string) $projeto->id)) {
+                        if ($this->jaEnviadaEsteAno($projeto->cliente, 'follow_up_lancamento', (string) $projeto->id)
+                            || ! $this->notificacao->podeEnviar($projeto->cliente)) {
                             continue;
                         }
 
-                        $this->notificacao->enviar(
+                        if (! $this->notificacao->enviar(
                             $projeto->cliente,
                             'Como foi o lançamento?',
                             "Como foi o lançamento de \"{$projeto->nome}\"? Que tal gravar o próximo?".$this->rodapeSaida($projeto->cliente)
-                        );
+                        )) {
+                            continue;
+                        }
 
                         $this->registarEnvio($projeto->cliente, 'follow_up_lancamento', (string) $projeto->id);
                         $enviados++;
@@ -144,11 +153,11 @@ class CampanhaMarketingService
             ->where('aceita_marketing', true)
             ->chunkById(100, function ($clientes) use ($referencia, $assunto, $mensagem, &$enviados): void {
                 foreach ($clientes as $cliente) {
-                    if ($this->jaEnviadaEsteAno($cliente, 'data_comemorativa', $referencia)) {
+                    if ($this->jaEnviadaEsteAno($cliente, 'data_comemorativa', $referencia)
+                        || ! $this->notificacao->enviar($cliente, $assunto, $mensagem.$this->rodapeSaida($cliente))) {
                         continue;
                     }
 
-                    $this->notificacao->enviar($cliente, $assunto, $mensagem.$this->rodapeSaida($cliente));
                     $this->registarEnvio($cliente, 'data_comemorativa', $referencia);
                     $enviados++;
                 }
