@@ -213,7 +213,7 @@ class FaturacaoEstudioService
      * Regista o recebimento de um pagamento contra uma fatura já emitida
      * DESTE projeto. Sem valor, recebe o que ainda falta na fatura (já deduzidas as notas
      * de crédito e os recibos anteriores). A emissão (lock, teto do saldo, numeração e
-     * hash) é do ReciboService.
+     * hash) é responsabilidade do FaturacaoGateway.
      *
      * @throws InvalidArgumentException|DomainException
      */
