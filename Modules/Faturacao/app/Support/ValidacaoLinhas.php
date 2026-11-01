@@ -54,7 +54,7 @@ final class ValidacaoLinhas
             $operacao = $linha['operation_type'] ?? null;
 
             if ($operacao !== null && (! is_string($operacao) || ! in_array(strtoupper(trim($operacao)), self::TIPOS_OPERACAO_AGT, true))) {
-                throw new \\InvalidArgumentException("Linha {$n}: o tipo de operação AGT '{$operacao}' não é válido.");
+                throw new \InvalidArgumentException("Linha {$n}: o tipo de operação AGT '{$operacao}' não é válido.");
             }
 
             if ($verificarTaxas) {
