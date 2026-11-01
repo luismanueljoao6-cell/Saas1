@@ -15,6 +15,7 @@ class NotaCreditoDebitoLinha extends Model
         'descricao',
         'quantidade',
         'preco_unitario',
+        'preco_unitario_base',
         'taxa_iva',
         'operation_type',
         'motivo_isencao',
@@ -29,6 +30,7 @@ class NotaCreditoDebitoLinha extends Model
         return [
             'quantidade' => 'decimal:3',
             'preco_unitario' => 'decimal:2',
+            'preco_unitario_base' => 'decimal:2',
             'taxa_iva' => 'decimal:2',
             'valor_sem_iva' => 'decimal:2',
             'valor_iva' => 'decimal:2',
