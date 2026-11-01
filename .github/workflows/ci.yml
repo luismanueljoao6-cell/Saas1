@@ -53,8 +53,7 @@ jobs:
           else
             echo "Nenhum ficheiro PHP alterado."
           fi
-      # O grupo de auditoria de subscrições corre num processo separado para evitar
-      # contaminação de estado global entre suites HTTP/fiscais.
+      # Os testes de auditoria de subscrições são executados numa etapa própria.
       - run: php artisan test --exclude-group=auditoria
       - run: php artisan test --group=auditoria
       - run: composer audit
