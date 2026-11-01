@@ -61,7 +61,7 @@ jobs:
             Modules/Faturacao/tests/Feature/CorrecaoDocumentoRejeitadoTest.php \
             Modules/Faturacao/tests/Feature/FormularioFaturaIsencaoTest.php \
             Modules/Faturacao/tests/Feature/NotaDebitoEIsencaoAgtTest.php; do
-            php artisan test \"$ficheiro\" || true
+            php artisan test "$ficheiro" || true
           done
       - run: php artisan test
       - run: composer audit
