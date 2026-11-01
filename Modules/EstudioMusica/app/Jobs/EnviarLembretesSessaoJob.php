@@ -1,27 +1,23 @@
 <?php
 
-namespace Modules\EstudioMusica\Jobs;
+namespace Modules\\EstudioMusica\\Jobs;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
-use Modules\Core\Services\TenantManager;
-use Modules\EstudioMusica\Models\SessaoEstudio;
-use Modules\EstudioMusica\Services\NotificacaoEstudioService;
-use Modules\EstudioMusica\Support\EmpresasDoEstudio;
+use Illuminate\\Bus\\Queueable;
+use Illuminate\\Contracts\\Queue\\ShouldQueue;
+use Illuminate\\Foundation\\Bus\\Dispatchable;
+use Illuminate\\Queue\\InteractsWithQueue;
+use Illuminate\\Queue\\SerializesModels;
+use Illuminate\\Support\\Facades\\Log;
+use Modules\\Core\\Services\\TenantManager;
+use Modules\\EstudioMusica\\Models\\SessaoEstudio;
+use Modules\\EstudioMusica\\Services\\NotificacaoEstudioService;
+use Modules\\EstudioMusica\\Support\\EmpresasDoEstudio;
 use Throwable;
 
 /**
- * "Lembrete de Sessão de Gravação 24h e 2h antes" (secção D). Pensado
- * para correr de hora a hora (ver EstudioMusicaServiceProvider) — por
- * isso cada janela tem tolerância de +/-30min em vez de exigir que o job
- * corra exatamente ao segundo do alvo. As colunas
- * lembrete_24h_enviado_em/lembrete_2h_enviado_em (não um booleano genérico)
- * garantem que cada sessão recebe CADA lembrete no máximo uma vez, mesmo
- * que o job corra várias vezes dentro da mesma janela de tolerância.
+ * Enfileira lembretes de sessão 24h e 2h antes. As colunas
+ * lembrete_24h_enviado_em/lembrete_2h_enviado_em registam a hora em que
+ * o lembrete foi aceite para a fila — NÃO confirmam entrega pelo canal.
  *
  * Percorre TODAS as empresas — precisa por isso do bypass explícito do
  * TenantManager, tal como VerificarSubscricoesExpiradasJob (Subscricoes).
@@ -61,10 +57,18 @@ class EnviarLembretesSessaoJob implements ShouldQueue
             ->chunkById(100, function ($sessoes) use ($coluna, $horasAntes, $notificacao): void {
                 foreach ($sessoes as $sessao) {
                     try {
-                        $notificacao->lembreteSessao($sessao, $horasAntes);
-                        $sessao->update([$coluna => now()]);
+                        if ($notificacao->lembreteSessao($sessao, $horasAntes)) {
+                            // Marca apenas depois de a fila aceitar o dispatch.
+                            $sessao->update([$coluna => now()]);
+                        } else {
+                            Log::warning('EstudioMusica: lembrete não enfileirado — cliente sem contacto elegível.', [
+                                'sessao_id' => $sessao->id,
+                                'empresa_id' => $sessao->empresa_id,
+                                'horas_antes' => $horasAntes,
+                            ]);
+                        }
                     } catch (Throwable $e) {
-                        Log::error('EstudioMusica: falha ao enviar lembrete de sessão', [
+                        Log::error('EstudioMusica: falha ao enfileirar lembrete de sessão', [
                             'sessao_id' => $sessao->id,
                             'horas_antes' => $horasAntes,
                             'erro' => $e->getMessage(),
