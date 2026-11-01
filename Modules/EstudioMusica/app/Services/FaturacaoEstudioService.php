@@ -43,6 +43,12 @@ class FaturacaoEstudioService
     {
         $this->exigirCobrancaPorPacote($projeto);
 
+        // Sinal/adiantamento não pode ser emitido como FT. A AGT prevê FA;
+        // aguardar o suporte fiscal explícito desse tipo no módulo Faturação.
+        if (config('faturacao.agt.ativo')) {
+            throw new DomainException('A faturação de sinais do Estúdio ainda não está habilitada com a AGT ativa: o adiantamento deve usar o tipo FA, não uma fatura FT normal.');
+        }
+
         return DB::transaction(function () use ($projeto) {
             // Lock na linha do projeto: um duplo clique (ou dois pedidos em
             // simultâneo) não pode emitir dois sinais — um documento fiscal
