@@ -53,7 +53,10 @@ jobs:
           else
             echo "Nenhum ficheiro PHP alterado."
           fi
-      - run: php artisan test
+      # O grupo de auditoria de subscrições corre num processo separado para evitar
+      # contaminação de estado global entre suites HTTP/fiscais.
+      - run: php artisan test --exclude-group=auditoria
+      - run: php artisan test --group=auditoria
       - run: composer audit
 
   testes-mysql:
@@ -89,4 +92,5 @@ jobs:
       - run: composer install --no-interaction --prefer-dist --no-progress
       - run: cp .env.example .env && php artisan key:generate
       # Triggers de imutabilidade, locks e snapshots só se testam em MySQL.
-      - run: php artisan test
+      - run: php artisan test --exclude-group=auditoria
+      - run: php artisan test --group=auditoria
