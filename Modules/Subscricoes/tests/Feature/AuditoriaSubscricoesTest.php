@@ -24,6 +24,7 @@ use Tests\TestCase;
  * Regressões da auditoria de 26/10/2026 ao módulo Subscrições.
  * Correr só estes: php artisan test --group=auditoria
  */
+#[Group('auditoria')]
 class AuditoriaSubscricoesTest extends TestCase
 {
     use RefreshDatabase;
@@ -93,7 +94,6 @@ class AuditoriaSubscricoesTest extends TestCase
         return app(SubscricaoService::class)->iniciar($empresa, $plano);
     }
 
-    #[Group('auditoria')]
     public function test_cancelar_renovacao_de_subscricao_pendente_e_recusado_e_preserva_o_pagamento(): void
     {
         $empresa = $this->criarEmpresa('840000001');
@@ -111,8 +111,6 @@ class AuditoriaSubscricoesTest extends TestCase
         $this->assertTrue((bool) Subscricao::withoutGlobalScopes()->findOrFail($subscricao->id)->renovacao_automatica);
     }
 
-    #[Group('auditoria')]
-    #[Group('auditoria-retomar')]
     public function test_retomar_renovacao_de_subscricao_vencida_mostra_erro_em_vez_de_falhar(): void
     {
         $empresa = $this->criarEmpresa('840000002');
