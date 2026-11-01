@@ -6,6 +6,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Validator;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Http\Requests\GuardarFaturaRequest;
+use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Services\SafTExportService;
 use Tests\TestCase;
 
@@ -54,14 +55,13 @@ class SafTRegrasEValidacaoTest extends TestCase
         app(SafTExportService::class)->gerar(new Empresa, now()->startOfMonth(), now());
     }
 
-
     public function test_saft_recusa_taxa_sem_codigo_configurado(): void
     {
         config(['faturacao.agt.codigos_taxa' => []]);
 
-        $metodo = new \\ReflectionMethod(SafTExportService::class, 'classificarImposto');
+        $metodo = new \ReflectionMethod(SafTExportService::class, 'classificarImposto');
 
-        $this->expectException(\\RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         $metodo->invoke(app(SafTExportService::class), new Fatura, (object) ['taxa_iva' => 14]);
     }
 
@@ -69,9 +69,9 @@ class SafTRegrasEValidacaoTest extends TestCase
     {
         config(['faturacao.motivos_isencao' => []]);
 
-        $metodo = new \\ReflectionMethod(SafTExportService::class, 'classificarImposto');
+        $metodo = new \ReflectionMethod(SafTExportService::class, 'classificarImposto');
 
-        $this->expectException(\\RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         $metodo->invoke(app(SafTExportService::class), new Fatura, (object) ['taxa_iva' => 0, 'motivo_isencao' => '']);
     }
 
