@@ -54,6 +54,27 @@ class SafTRegrasEValidacaoTest extends TestCase
         app(SafTExportService::class)->gerar(new Empresa, now()->startOfMonth(), now());
     }
 
+
+    public function test_saft_recusa_taxa_sem_codigo_configurado(): void
+    {
+        config(['faturacao.agt.codigos_taxa' => []]);
+
+        $metodo = new \\ReflectionMethod(SafTExportService::class, 'classificarImposto');
+
+        $this->expectException(\\RuntimeException::class);
+        $metodo->invoke(app(SafTExportService::class), new Fatura, (object) ['taxa_iva' => 14]);
+    }
+
+    public function test_saft_recusa_linha_isenta_sem_motivo_valido(): void
+    {
+        config(['faturacao.motivos_isencao' => []]);
+
+        $metodo = new \\ReflectionMethod(SafTExportService::class, 'classificarImposto');
+
+        $this->expectException(\\RuntimeException::class);
+        $metodo->invoke(app(SafTExportService::class), new Fatura, (object) ['taxa_iva' => 0, 'motivo_isencao' => '']);
+    }
+
     public function test_pedido_de_fatura_limita_casas_decimais(): void
     {
         $request = new GuardarFaturaRequest;
