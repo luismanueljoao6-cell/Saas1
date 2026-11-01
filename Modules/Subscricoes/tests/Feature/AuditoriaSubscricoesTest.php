@@ -124,6 +124,8 @@ class AuditoriaSubscricoesTest extends TestCase
             'termina_em' => now()->subDay(),
         ]);
 
+        app(\\Modules\\Core\\Services\\TenantManager::class)->set($empresa->id);
+
         $this->expectException(\\DomainException::class);
         $this->expectExceptionMessage('Só é possível retomar a renovação automática');
 
