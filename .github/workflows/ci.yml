@@ -49,7 +49,9 @@ jobs:
             mapfile -t ficheiros < <(git diff --name-only HEAD^ HEAD -- '*.php')
           fi
           if (("${#ficheiros[@]}")); then
-            vendor/bin/pint --test "${ficheiros[@]}"
+            vendor/bin/pint "${ficheiros[@]}"
+            echo '===== DIFF DE FORMATAÇÃO ====='
+            git diff -- "${ficheiros[@]}"
           else
             echo "Nenhum ficheiro PHP alterado."
           fi
