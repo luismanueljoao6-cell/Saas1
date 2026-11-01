@@ -7,9 +7,9 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | API do módulo Core
 |--------------------------------------------------------------------------
-| Requer laravel/sanctum instalado e configurado (não incluído neste
-| módulo). Serve principalmente para uma futura app móvel ou SPA separada
-| consultar a empresa do utilizador autenticado.
+| Autenticação por tokens do Laravel Sanctum (tabela personal_access_tokens,
+| criada em database/migrations). Serve principalmente para uma futura app
+| móvel ou SPA separada consultar a empresa do utilizador autenticado.
 */
 Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/core/empresa', function (Request $request) {

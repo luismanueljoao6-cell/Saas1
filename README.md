@@ -227,7 +227,7 @@ Além das do Laravel, o `.env.example` traz as da plataforma:
 | `FATURACAO_TAXA_IVA_GERAL`, `FATURACAO_TAXAS_IVA_PERMITIDAS` | Taxas de IVA aceites na emissão |
 | `FATURACAO_SAFT_NUMERO_CERTIFICADO` | Em produção, o SAF-T fica bloqueado enquanto for `0` |
 | `TRUSTED_PROXIES` | IPs do proxy/load balancer; vazio = não confiar em ninguém |
-| `SUBSCRICOES_GATEWAY`, `PROXYPAY_BASE_URL`, `PROXYPAY_API_KEY`, `PROXYPAY_ENTITY_ID`, `PROXYPAY_WEBHOOK_TOKEN` | Gateway de pagamentos ProxyPay |
+| `SUBSCRICOES_GATEWAY`, `PROXYPAY_BASE_URL`, `PROXYPAY_API_KEY`, `PROXYPAY_ENTITY_ID` | Gateway de pagamentos ProxyPay |
 
 ## Correr a aplicação
 
@@ -285,7 +285,7 @@ atraso do agendador não dá acesso gratuito; o job apenas atualiza estados e ge
 
 ### Webhook ProxyPay
 
-URL a configurar no painel: `https://SEU-DOMINIO/api/webhooks/proxypay?token=<PROXYPAY_WEBHOOK_TOKEN>`.
+URL a configurar no painel: `https://SEU-DOMINIO/api/webhooks/proxypay` (sem token na query string: o pedido é autenticado pela assinatura `X-Signature`, HMAC-SHA-256 do corpo com a `PROXYPAY_API_KEY`).
 Os pagamentos com valor inferior ao devido são rejeitados e ficam em `failed_jobs` para revisão manual
 (`php artisan queue:failed`).
 
