@@ -53,6 +53,12 @@ class AgtDocumentoBuilder
         ];
 
         if ($documento instanceof Recibo) {
+            // A AGT só aceita paymentReceipt em AR/RG. RC exige "lines";
+            // não se pode enviar o recibo actual (tipo RC) como paymentReceipt.
+            if (! in_array($documento->tipoDocumentoFiscal(), ['AR', 'RG'], true)) {
+                throw AgtException::configuracaoInvalida("o recibo {$documento->numero_documento} usa o tipo {$documento->tipoDocumentoFiscal()}, que exige linhas próprias; paymentReceipt só é permitido para AR/RG. O envio foi bloqueado para evitar rejeição estrutural da AGT.");
+            }
+
             $resultado['paymentReceipt'] = $this->recibo($documento, $assinado['documentTotals']);
         } else {
             $resultado['lines'] = $this->linhas($documento);
