@@ -291,16 +291,24 @@ class SafTExportService
         if ($documento instanceof NotaCreditoDebito && $documento->tipo === 'debito') {
             $codigo = strtoupper(trim((string) config('faturacao.agt.nd_codigo_nao_sujeicao')));
 
-            return ['NS', 'NS', $codigo !== '' ? $codigo : null];
+            if ($codigo === '') {
+                throw new \RuntimeException('A nota de débito não tem código de não sujeição configurado para o SAF-T (AO).');
+            }
+
+            return ['NS', 'NS', $codigo];
         }
 
         $motivo = strtoupper(trim((string) ($linha->motivo_isencao ?? '')));
         $entrada = ((array) config('faturacao.motivos_isencao', []))[$motivo] ?? null;
 
-        if (is_array($entrada) && ($entrada['tipo'] ?? 'ISE') === 'NS') {
+        if ($motivo === '' || ! is_array($entrada)) {
+            throw new \RuntimeException('Uma linha isenta não tem um motivo de isenção SAF-T (AO) válido.');
+        }
+
+        if (($entrada['tipo'] ?? 'ISE') === 'NS') {
             return ['NS', 'NS', $motivo];
         }
 
-        return ['IVA', 'ISE', $motivo !== '' ? $motivo : null];
+        return ['IVA', 'ISE', $motivo];
     }
 }
