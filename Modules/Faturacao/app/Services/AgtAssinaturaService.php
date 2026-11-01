@@ -2,6 +2,7 @@
 
 namespace Modules\Faturacao\Services;
 
+use Modules\Faturacao\Exceptions\AgtException;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Support\Jws;
 use OpenSSLAsymmetricKey;
