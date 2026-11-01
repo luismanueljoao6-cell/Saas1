@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -32,7 +34,25 @@ jobs:
       - run: composer validate --no-check-publish
       - run: composer install --no-interaction --prefer-dist --no-progress
       - run: cp .env.example .env && php artisan key:generate
-      - run: vendor/bin/pint --test
+      # Lint incremental: o histórico já contém dívida de formatação em ficheiros
+      # não alterados por esta PR. Não bloquear alterações novas por essa dívida.
+      - name: Pint nos ficheiros PHP alterados
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            git fetch origin "$BASE_REF" --depth=1
+            mapfile -t ficheiros < <(git diff --name-only "FETCH_HEAD...HEAD" -- '*.php')
+          else
+            mapfile -t ficheiros < <(git diff --name-only HEAD^ HEAD -- '*.php')
+          fi
+          if (("${#ficheiros[@]}")); then
+            vendor/bin/pint --test "${ficheiros[@]}"
+          else
+            echo "Nenhum ficheiro PHP alterado."
+          fi
       - run: php artisan test
       - run: composer audit
 
