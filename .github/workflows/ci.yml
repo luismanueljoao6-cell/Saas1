@@ -53,16 +53,6 @@ jobs:
           else
             echo "Nenhum ficheiro PHP alterado."
           fi
-      - name: Diagnóstico dos testes de integração fiscal
-        shell: bash
-        run: |
-          for ficheiro in \
-            Modules/Faturacao/tests/Feature/AgtSubmissaoTest.php \
-            Modules/Faturacao/tests/Feature/CorrecaoDocumentoRejeitadoTest.php \
-            Modules/Faturacao/tests/Feature/FormularioFaturaIsencaoTest.php \
-            Modules/Faturacao/tests/Feature/NotaDebitoEIsencaoAgtTest.php; do
-            php artisan test "$ficheiro" || true
-          done
       - run: php artisan test
       - run: composer audit
 
