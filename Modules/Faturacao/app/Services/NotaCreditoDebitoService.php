@@ -71,7 +71,7 @@ class NotaCreditoDebitoService
     }
 
     /**
-     * @param  array<int, array{descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float}>  $linhas
+     * @param  array<int, array{descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float, operation_type?: string|null}>  $linhas
      */
     /** Elimina uma nota ainda em rascunho; uma nota emitida é um documento fiscal e não se apaga. */
     public function eliminarRascunho(NotaCreditoDebito $nota): void
