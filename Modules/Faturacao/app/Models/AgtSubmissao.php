@@ -45,6 +45,7 @@ class AgtSubmissao extends Model
         'estado',
         'submission_uuid',
         'submission_timestamp',
+        'submission_payload_hash',
         'request_id',
         'tentativas',
         'erros',
