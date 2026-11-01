@@ -2,11 +2,13 @@
 
 namespace Modules\Subscricoes\Http\Controllers;
 
+use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
 use Modules\Subscricoes\Exceptions\GatewayPagamentoException;
+use Modules\Subscricoes\Exceptions\PedidoEmPreparacaoException;
 use Modules\Subscricoes\Http\Requests\IniciarSubscricaoRequest;
 use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Models\Subscricao;
@@ -27,6 +29,10 @@ class SubscricaoController extends Controller
             Log::error('Não foi possível gerar referência de pagamento', ['erro' => $e->getMessage()]);
 
             return back()->with('erro', 'Não foi possível gerar a referência de pagamento neste momento. Tenta novamente em instantes.');
+        } catch (DomainException|PedidoEmPreparacaoException $e) {
+            // Mensagens de negócio escritas para o utilizador: plano indisponível,
+            // pagamento pendente para outro plano, pedido de pagamento em preparação.
+            return back()->with('erro', $e->getMessage());
         } catch (Throwable $e) {
             Log::error('Falha inesperada ao iniciar subscrição', ['erro' => $e->getMessage()]);
 
@@ -50,13 +56,23 @@ class SubscricaoController extends Controller
 
         $modelo = Subscricao::findOrFail($subscricao);
 
-        if ($modelo->renovacao_automatica) {
-            $this->subscricaoService->cancelarRenovacao($modelo);
-
-            return back()->with('sucesso', 'Renovação cancelada. Manténs o acesso até ao fim do período pago.');
+        // Só uma subscrição ativa tem renovação para gerir. Numa subscrição
+        // pendente, "cancelar a renovação" invalidaria o primeiro pagamento.
+        if ($modelo->estado !== 'ativa') {
+            return back()->with('erro', 'Só é possível gerir a renovação de uma subscrição ativa.');
         }
 
-        $this->subscricaoService->retomarRenovacao($modelo);
+        try {
+            if ($modelo->renovacao_automatica) {
+                $this->subscricaoService->cancelarRenovacao($modelo);
+
+                return back()->with('sucesso', 'Renovação cancelada. Manténs o acesso até ao fim do período pago.');
+            }
+
+            $this->subscricaoService->retomarRenovacao($modelo);
+        } catch (DomainException $e) {
+            return back()->with('erro', $e->getMessage());
+        }
 
         return back()->with('sucesso', 'Renovação retomada.');
     }

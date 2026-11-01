@@ -38,11 +38,13 @@ class ReconciliarPagamentosCommand extends Command
             $resolvidos = $this->resolverManuais();
             $reprocessados = $this->reprocessarEventos($gateway);
             $cancelados = $this->repetirCancelamentosRemotos($gateway);
+            $descartados = $this->descartarPagamentosSemReferencia();
             $anomalias = $this->detetarAnomalias();
 
             $this->info("Eventos resolvidos manualmente: {$resolvidos}");
             $this->info("Eventos reprocessados: {$reprocessados}");
             $this->info("Cancelamentos remotos repetidos com sucesso: {$cancelados}");
+            $this->info("Pagamentos sem referência descartados: {$descartados}");
 
             if ($anomalias === []) {
                 $this->info('Sem anomalias.');
@@ -73,6 +75,47 @@ class ReconciliarPagamentosCommand extends Command
             'estado' => WebhookEvento::RESOLVIDO,
             'processado_em' => now(),
         ]);
+    }
+
+    /**
+     * Um pagamento 'pendente' sem referência há mais de 15 minutos nunca chegou
+     * a ser mostrado a ninguém (o pedido que o criou morreu a meio): não há
+     * nada a cobrar nem a reconciliar. Expira-o e cancela a subscrição ainda
+     * pendente, em vez de o deixar a bloquear a empresa e a gerar alertas.
+     */
+    protected function descartarPagamentosSemReferencia(): int
+    {
+        $total = 0;
+
+        Pagamento::query()
+            ->where('estado', 'pendente')
+            ->whereNull('referencia_externa')
+            ->where('created_at', '<', now()->subMinutes(15))
+            ->with('subscricao')
+            ->chunkById(100, function ($pagamentos) use (&$total) {
+                foreach ($pagamentos as $pagamento) {
+                    try {
+                        $pagamento->update(['estado' => 'expirado']);
+
+                        if ($pagamento->subscricao?->estado === 'pendente') {
+                            $pagamento->subscricao->update(['estado' => 'cancelada', 'cancelada_em' => now()]);
+                        }
+
+                        $total++;
+                    } catch (Throwable $e) {
+                        Log::error('Reconciliação: falha ao descartar pagamento sem referência', [
+                            'pagamento_id' => $pagamento->id,
+                            'erro' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            });
+
+        if ($total > 0) {
+            Log::warning('Reconciliação: pagamentos sem referência descartados', ['total' => $total]);
+        }
+
+        return $total;
     }
 
     protected function reprocessarEventos(GatewayPagamentoInterface $gateway): int
@@ -117,8 +160,8 @@ class ReconciliarPagamentosCommand extends Command
                     }
 
                     try {
-                        $evento->increment('tentativas');
-
+                        // `tentativas` já é incrementado pelo próprio job (atualizarEvento):
+                        // contar também aqui duplicava o contador a cada reprocessamento.
                         ProcessarPagamentoConfirmadoJob::dispatch(
                             $evento->gateway,
                             $notificacao['referencia_externa'],

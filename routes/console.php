@@ -10,8 +10,8 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Artisan::command('planos:preco {slug : Slug do plano} {preco : Novo preço em Kz, ex.: 6500}', function (string $slug, string $preco) {
-    if (! is_numeric($preco) || (float) $preco <= 0) {
-        $this->error('O preço tem de ser um número positivo.');
+    if (! preg_match('/^\d{1,8}(?:\.\d{1,2})?$/', $preco) || (float) $preco < 0.01) {
+        $this->error('O preço tem de ser positivo, com no máximo 8 inteiros e 2 casas decimais (ex.: 6500 ou 6500.50).');
 
         return 1;
     }

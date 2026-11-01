@@ -76,4 +76,15 @@ return [
     */
     'renovacao_preco' => env('SUBSCRICOES_RENOVACAO_PRECO', 'contratado'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Pedidos de pagamento abandonados (minutos)
+    |--------------------------------------------------------------------------
+    | Um pagamento 'pendente' sem referência externa só é legítimo durante a
+    | chamada ao gateway (segundos). Passado este prazo considera-se que o
+    | processo morreu a meio e o pedido é descartado, para a empresa poder
+    | tentar de novo em vez de ficar bloqueada até a referência expirar.
+    */
+    'preparacao_abandonada_minutos' => (int) env('SUBSCRICOES_PREPARACAO_ABANDONADA_MINUTOS', 2),
+
 ];

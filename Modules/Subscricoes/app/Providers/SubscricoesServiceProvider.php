@@ -79,7 +79,11 @@ class SubscricoesServiceProvider extends ServiceProvider
             ]);
         }
 
-        $this->agendarVerificacaoDiaria();
+        // O agendamento só interessa a schedule:run / schedule:work (consola);
+        // registá-lo em cada pedido HTTP seria trabalho inútil.
+        if ($this->app->runningInConsole()) {
+            $this->agendarVerificacaoDiaria();
+        }
     }
 
     /**
