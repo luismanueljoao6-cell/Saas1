@@ -66,6 +66,8 @@ class NotificacaoEstudioServiceTest extends TestCase
         config([
             'estudiomusica.exigir_autorizacao_apd' => true,
             'estudiomusica.apd_autorizacao_transferencia' => null,
+            'estudiomusica.canal_whatsapp' => 'whatsapp_cloud_api',
+            'estudiomusica.canal_sms' => 'twilio',
         ]);
 
         $cliente = new Cliente;
@@ -87,6 +89,8 @@ class NotificacaoEstudioServiceTest extends TestCase
         config([
             'estudiomusica.exigir_autorizacao_apd' => true,
             'estudiomusica.apd_autorizacao_transferencia' => 'APD-TESTE-123',
+            'estudiomusica.canal_whatsapp' => 'whatsapp_cloud_api',
+            'estudiomusica.canal_sms' => 'twilio',
         ]);
 
         $cliente = new Cliente;
