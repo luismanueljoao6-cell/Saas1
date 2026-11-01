@@ -189,22 +189,14 @@ class AgtSubmissaoTest extends TestCase
         $this->assertSame($assinado['documentNo'], $documento['documentNo']);
     }
 
-    public function test_recibo_vai_com_payment_receipt_e_sem_linhas(): void
+    public function test_recibo_rc_nao_e_enviado_como_payment_receipt(): void
     {
         $fatura = $this->emitirFatura();
+
+        $this->expectException(\\DomainException::class);
+        $this->expectExceptionMessage('tipo RG');
+
         app(ReciboService::class)->emitir($this->empresa->id, $this->cliente->id, '500.00', 'dinheiro', $fatura->id);
-
-        $this->assertSame(2, app(AgtSubmissaoService::class)->enviarPendentes()['enviados']);
-
-        $documentos = $this->pedidoPara('registarFactura')->data()['documents'];
-        $recibo = $documentos[1];
-
-        $this->assertSame('RC', $recibo['documentType']);
-        $this->assertArrayNotHasKey('lines', $recibo);
-        $origem = $recibo['paymentReceipt']['sourceDocuments'][0];
-        $this->assertSame(1, $origem['lineNo']);
-        $this->assertSame('FT FT6325S2C/1', $origem['sourceDocumentID']['OriginatingON']);
-        $this->assertEqualsWithDelta(438.59, $origem['creditAmount'], 0.0001);
     }
 
     public function test_estado_valido_e_invalido_sao_registados(): void
@@ -299,6 +291,37 @@ class AgtSubmissaoTest extends TestCase
         $submissao = AgtSubmissao::query()->firstOrFail();
         $this->assertSame('pendente', $submissao->estado);
         $this->assertSame(1, $submissao->tentativas);
+        $this->assertNotEmpty($submissao->submission_uuid);
+        $this->assertNotNull($submissao->enviado_em);
+    }
+
+    public function test_retentativa_de_rede_reutiliza_uuid_e_timestamp_originais(): void
+    {
+        $this->emitirFatura();
+        $servico = app(AgtSubmissaoService::class);
+
+        $this->falharRede = true;
+        $servico->enviarPendentes();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $uuidOriginal = $submissao->submission_uuid;
+        $timestampOriginal = $submissao->enviado_em->copy();
+
+        $this->falharRede = false;
+        $servico->enviarPendentes();
+
+        $submissao->refresh();
+        $this->assertSame(AgtSubmissao::ENVIADO, $submissao->estado);
+        $this->assertSame($uuidOriginal, $submissao->submission_uuid);
+        $this->assertTrue($timestampOriginal->equalTo($submissao->enviado_em));
+
+        $pedidos = collect(Http::recorded())
+            ->map(fn ($par) => $par[0])
+            ->filter(fn (Request $pedido) => str_contains($pedido->url(), 'registarFactura'));
+        $ultimo = $pedidos->last();
+
+        $this->assertSame($uuidOriginal, $ultimo->data()['submissionUUID']);
+        $this->assertSame($timestampOriginal->copy()->utc()->format('Y-m-d\\TH:i:s\\Z'), $ultimo->data()['submissionTimeStamp']);
     }
 
     public function test_documento_que_nao_pode_ir_para_a_agt_fica_em_erro_sem_bloquear_o_envio(): void
@@ -356,13 +379,31 @@ class AgtSubmissaoTest extends TestCase
     {
         $this->emitirFatura();
         $submissao = AgtSubmissao::query()->firstOrFail();
-        $submissao->update(['estado' => AgtSubmissao::AGUARDA_INTERVENCAO, 'tentativas' => 3]);
+        $submissao->update(['estado' => AgtSubmissao::ERRO, 'tentativas' => 3, 'erros' => [['codigo' => 'REDE', 'descricao' => 'timeout']]]);
 
         $nova = app(AgtSubmissaoService::class)->reenviar($submissao);
 
         $this->assertSame(AgtSubmissao::PENDENTE, $nova->estado);
         $this->assertSame(0, $nova->tentativas);
         $this->assertSame(1, app(AgtSubmissaoService::class)->enviarPendentes()['enviados']);
+    }
+
+    public function test_submissao_com_request_id_nao_pode_ser_reenviada(): void
+    {
+        $this->emitirFatura();
+        $servico = app(AgtSubmissaoService::class);
+        $servico->enviarPendentes();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+
+        try {
+            $servico->reenviar($submissao);
+            $this->fail('Uma submissão com requestID não pode ser enviada de novo.');
+        } catch (\\DomainException $e) {
+            $this->assertStringContainsString('consulta o estado original', $e->getMessage());
+        }
+
+        $this->assertSame(AgtSubmissao::ENVIADO, $submissao->fresh()->estado);
     }
 
     public function test_documento_invalido_ou_rejeitado_nao_pode_ser_reenviado(): void
