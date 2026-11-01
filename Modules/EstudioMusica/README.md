@@ -4,9 +4,9 @@ Gestão de estúdio de música para o SaaS: artistas, projetos/faixas, agendamen
 cliente com player de demos, notificações automáticas, faturação por hora ou pacote (com sinal),
 marketing automático e landing page pública.
 
-Depende de **Core** (tenancy, menu, `RegistoEmpresaService`) e **Faturacao** (`FaturaService`,
-`NumeracaoService`, `AssinaturaFiscalService`, `Cliente`, `Fatura`, `Recibo`). **Não altera nenhum
-ficheiro desses módulos** — tudo o que precisa deles é feito a partir daqui.
+Depende de **Core** (tenancy, menu, `RegistoEmpresaService`) e **Faturacao** (contrato público
+`FaturacaoGateway`, além dos modelos `Cliente`, `Fatura` e `Recibo`). A numeração, assinatura,
+emissão e validação de pagamentos são responsabilidade exclusiva do módulo Faturação.
 
 > ✅ **Verificação.** O módulo tem testes de feature (`php artisan test --testsuite=Modules --filter=EstudioMusica`)
 > que correm contra o motor real do Faturação (emissão, notas de crédito, recibos), o portal por HTTP e os jobs.
@@ -105,6 +105,8 @@ php artisan test                             # inclui os testes do módulo
   (WhatsApp/SMS/e-mail) — e também mostrado numa mensagem flash à equipa, para reenvio manual se precisar.
 
 ## Limitações conhecidas
+
+- **Adiantamentos/sinais com AGT ativa**: o fluxo de sinal atual emite uma fatura normal (`FT`). A especificação AGT prevê o tipo `FA` para factura de adiantamento. Até existir suporte fiscal explícito para `FA` no núcleo Faturação, não se deve considerar este fluxo pronto para produção com submissão AGT ativa.
 
 - **WhatsApp Cloud API e Twilio** foram reconstruídos da documentação pública, sem teste real. Por
   omissão os dois canais são `log` (só registam). WhatsApp fora da janela de 24h exige *message
