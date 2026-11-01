@@ -62,7 +62,7 @@ php artisan test                             # inclui os testes do módulo
 | B. Salas, sessões, sem double booking | `SalaEstudio`, `SessaoEstudio`, `AgendamentoService` (transação + `lockForUpdate` na sala) |
 | C. Portal (token temporário, player, marcadores, aprovação, download só após quitação) | `VerificarTokenPortalCliente`, `PortalClienteController`, `VersaoAudio`, `MarcadorAudio`, view `portal/mostrar` |
 | D. Notificações (WhatsApp/SMS/e-mail) | `NotificacaoEstudioService` → `EnviarMensagemClienteJob`; canais em `Notifications/Channels`; `EnviarLembretesSessaoJob` (24h e 2h) |
-| E. Cobrança por hora/pacote, sinal, faturas/recibos | `FaturacaoEstudioService` (usa `FaturaService`), pivots `projeto_musical_fatura/recibo` |
+| E. Cobrança por hora/pacote, sinal, faturas/recibos | `FaturacaoEstudioService` (usa `FaturacaoGateway`), pivots `projeto_musical_fatura/recibo` |
 | F. Marketing (aniversário + cupão, follow-up 30 dias) | `CampanhaMarketingService`, `EnviarCampanhaAniversarioJob`, `EnviarFollowUpPosLancamentoJob`, `CupomDesconto`, `CampanhaEnviada` |
 | G. Landing pública + formulário | `LandingController`, `SolicitacaoOrcamento`, view `landing/index`; rota `/estudio/{empresa}` |
 | H. Papéis | `EstudioMusicaPermissoesSeeder` + `permission:` nas rotas. **Artista/Cliente não é um `User`** — acede só pelo portal |
@@ -80,7 +80,7 @@ php artisan test                             # inclui os testes do módulo
 3. **Quitação** (`ProjetoMusical::financeiramenteQuitado()`): mede contra o **valor do pacote**, não só
    contra o faturado — pagar apenas o sinal não liberta o download. Projetos por hora: quitado quando
    tudo o que já foi faturado está recebido. A audição é livre; só o **download** é bloqueado.
-4. **Recibos**: `registrarRecibo()` usa o `ReciboService` do Faturação (caminho único de emissão). Não há ecrã
+4. **Recibos**: `registrarRecibo()` usa `FaturacaoGateway`, que encaminha para o serviço fiscal central. Não há ecrã
    que o chame ainda — regista-se hoje por código/tinker.
 5. **Jobs multi-empresa** usam `TenantManager::semTenant()` e passam sempre `empresa_id` explícito nos
    `create()` (o bypass desliga a atribuição automática).
