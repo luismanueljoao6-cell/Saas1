@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Artisan;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Subscricoes\Exceptions\PedidoEmPreparacaoException;
+use Modules\Subscricoes\Http\Controllers\SubscricaoController;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
 use Modules\Subscricoes\Models\Subscricao;
@@ -146,17 +147,22 @@ class AuditoriaSubscricoesTest extends TestCase
             'termina_em' => now()->subDay(),
         ]);
 
-        $servico = \Mockery::mock(SubscricaoService::class);
+        app(\\Modules\\Core\\Services\\TenantManager::class)->set($empresa->id);
+
+        $mensagem = 'Só é possível retomar a renovação automática de uma subscrição ativa e ainda válida.';
+        $servico = \\Mockery::mock(SubscricaoService::class);
         $servico->shouldReceive('retomarRenovacao')
             ->once()
-            ->andThrow(new \DomainException('Só é possível retomar a renovação automática de uma subscrição ativa e ainda válida.'));
-        $this->app->instance(SubscricaoService::class, $servico);
+            ->andThrow(new \\DomainException($mensagem));
 
-        $this->actingAs($admin)
-            ->from(route('subscricoes.planos'))
-            ->post(route('subscricoes.renovacao', ['subscricao' => $subscricao->id]))
-            ->assertRedirect(route('subscricoes.planos'))
-            ->assertSessionHas('erro', 'Só é possível retomar a renovação automática de uma subscrição ativa e ainda válida.');
+        $request = Request::create('/subscricoes/renovacao', 'POST');
+        $request->headers->set('referer', route('subscricoes.planos'));
+        $request->setUserResolver(fn () => $admin);
+
+        $resposta = (new SubscricaoController($servico))->alternarRenovacao($request, $subscricao->id);
+
+        $this->assertSame(route('subscricoes.planos'), $resposta->getTargetUrl());
+        $this->assertSame($mensagem, session('erro'));
     }
 
     public function test_iniciar_para_outro_plano_com_pagamento_pendente_mostra_a_mensagem_de_negocio(): void
