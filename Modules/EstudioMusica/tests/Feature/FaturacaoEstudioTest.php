@@ -26,7 +26,6 @@ require_once __DIR__.'/../Support/CriaDocumentosFiscais.php';
  */
 class FaturacaoEstudioTest extends TestCase
 {
-
     use CriaDocumentosFiscais;
     use RefreshDatabase;
 
@@ -274,5 +273,4 @@ class FaturacaoEstudioTest extends TestCase
 
         $this->faturacao->gerarFaturaSinal($this->projeto());
     }
-
 }
