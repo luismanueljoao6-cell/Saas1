@@ -28,7 +28,6 @@ use Modules\Faturacao\Support\Dinheiro;
  */
 class FaturacaoEstudioService
 {
-
     protected FaturacaoGateway $faturacao;
 
     public function __construct(FaturacaoGateway $faturacao)
