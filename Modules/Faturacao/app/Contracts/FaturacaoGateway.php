@@ -17,7 +17,7 @@ use Modules\Faturacao\Models\Recibo;
 interface FaturacaoGateway
 {
     /**
-     * @param array<int, array{produto_id?: int|null, descricao: string, quantidade: int|float, preco_unitario: int|float|string, taxa_iva: int|float|string, motivo_isencao?: string|null}> $linhas
+     * @param array<int, array{produto_id?: int|null, descricao: string, quantidade: int|float, preco_unitario: int|float|string, taxa_iva: int|float|string, motivo_isencao?: string|null, operation_type?: string|null}> $linhas
      */
     public function criarRascunho(
         Empresa $empresa,
