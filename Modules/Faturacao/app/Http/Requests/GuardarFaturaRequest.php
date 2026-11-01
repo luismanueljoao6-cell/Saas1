@@ -27,7 +27,7 @@ class GuardarFaturaRequest extends FormRequest
             'linhas.*.preco_unitario' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
             // Só linhas a 0% levam motivo de isenção (a regra completa está em ValidacaoLinhas, nos serviços).
             'linhas.*.motivo_isencao' => ['nullable', 'string', Rule::in(array_keys((array) config('faturacao.motivos_isencao', [])))],
-            'linhas.*.taxa_iva' => [
+            'linhas.*.operation_type' => ['required', 'string', Rule::in(ValidacaoLinhas::TIPOS_OPERACAO_AGT)],\n            'linhas.*.taxa_iva' => [
                 'required',
                 'numeric',
                 function (string $atributo, mixed $valor, \Closure $falhar): void {
