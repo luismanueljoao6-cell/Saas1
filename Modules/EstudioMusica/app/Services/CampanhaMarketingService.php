@@ -34,7 +34,9 @@ use Modules\Faturacao\Models\Cliente;
  */
 class CampanhaMarketingService
 {
-    public function __construct(protected NotificacaoEstudioService $notificacao) {}
+    public function __construct(protected NotificacaoEstudioService $notificacao)
+    {
+    }
 
     /**
      * Corre para TODAS as empresas — ver Jobs\EnviarCampanhaAniversarioJob
@@ -70,7 +72,7 @@ class CampanhaMarketingService
                         if (!$this->notificacao->enviar(
                             $cliente,
                             'Parabéns!',
-                            "Parabéns pelo teu dia, {$nome}!Ganhaste {$this->percentagemLegivel($cupom->percentual_desconto)}% de desconto em horas de estúdio, válido até {$cupom->valido_ate->format('d/m/Y')} — aplicado automaticamente na tua próxima sessão (cupão {$cupom->codigo}).".$this->rodapeSaida($cliente)
+                            "Parabéns pelo teu dia, {$nome}! Ganhaste {$this->percentagemLegivel($cupom->percentual_desconto)}% de desconto em horas de estúdio, válido até {$cupom->valido_ate->format('d/m/Y')} — aplicado automaticamente na tua próxima sessão (cupão {$cupom->codigo}).".$this->rodapeSaida($cliente)
                         )) {
                             continue;
                         }
