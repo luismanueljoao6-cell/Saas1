@@ -141,7 +141,7 @@ class FaturaService
                 'preco_unitario' => $dadosLinha['preco_unitario'],
                 'preco_unitario_base' => $dadosLinha['preco_unitario_base'] ?? $dadosLinha['preco_unitario'],
                 'taxa_iva' => $dadosLinha['taxa_iva'],
-                'operation_type' => isset($dadosLinha['operation_type']) ? strtoupper(trim((string) $dadosLinha['operation_type'])) : null,
+                'operation_type' => strtoupper(trim((string) ($dadosLinha['operation_type'] ?? config('faturacao.agt.operation_type_padrao', 'SG')))),
                 'motivo_isencao' => ValidacaoLinhas::normalizarMotivo($dadosLinha['motivo_isencao'] ?? null),
                 'ordem' => $indice,
             ]);
