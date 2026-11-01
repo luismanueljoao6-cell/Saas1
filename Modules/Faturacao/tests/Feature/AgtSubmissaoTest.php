@@ -326,6 +326,25 @@ class AgtSubmissaoTest extends TestCase
         $this->assertSame($timestampOriginal->copy()->utc()->format('Y-m-d\\TH:i:s\\Z'), $ultimo->data()['submissionTimeStamp']);
     }
 
+    public function test_payload_divergente_nao_reutiliza_o_mesmo_uuid(): void
+    {
+        $this->emitirFatura();
+        $this->falharRede = true;
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $submissao->update(['submission_payload_hash' => str_repeat('0', 64)]);
+        $pedidosAntes = count(Http::recorded());
+
+        $this->falharRede = false;
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $submissao->refresh();
+        $this->assertSame(AgtSubmissao::AGUARDA_INTERVENCAO, $submissao->estado);
+        $this->assertSame('PAYLOAD_DIVERGENTE', $submissao->erros[0]['codigo']);
+        $this->assertCount($pedidosAntes, Http::recorded(), 'Um payload diferente nunca deve ser reenviado com o UUID antigo.');
+    }
+
     public function test_documento_que_nao_pode_ir_para_a_agt_fica_em_erro_sem_bloquear_o_envio(): void
     {
         $this->emitirFatura();
