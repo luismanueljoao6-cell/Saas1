@@ -44,6 +44,7 @@ class AgtSubmissao extends Model
         'documento_no',
         'estado',
         'submission_uuid',
+        'submission_timestamp',
         'request_id',
         'tentativas',
         'erros',
@@ -68,6 +69,7 @@ class AgtSubmissao extends Model
         return [
             'tentativas' => 'integer',
             'erros' => 'array',
+            'submission_timestamp' => 'datetime',
             'enviado_em' => 'datetime',
             'ultima_consulta_em' => 'datetime',
             'validado_em' => 'datetime',
