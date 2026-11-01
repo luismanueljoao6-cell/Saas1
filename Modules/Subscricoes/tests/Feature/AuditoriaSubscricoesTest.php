@@ -124,9 +124,9 @@ class AuditoriaSubscricoesTest extends TestCase
             'termina_em' => now()->subDay(),
         ]);
 
-        app(\\Modules\\Core\\Services\\TenantManager::class)->set($empresa->id);
+        app(\Modules\Core\Services\TenantManager::class)->set($empresa->id);
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('Só é possível retomar a renovação automática');
 
         app(SubscricaoService::class)->retomarRenovacao($subscricao->fresh());
@@ -146,10 +146,10 @@ class AuditoriaSubscricoesTest extends TestCase
             'termina_em' => now()->subDay(),
         ]);
 
-        $servico = \\Mockery::mock(SubscricaoService::class);
+        $servico = \Mockery::mock(SubscricaoService::class);
         $servico->shouldReceive('retomarRenovacao')
             ->once()
-            ->andThrow(new \\DomainException('Só é possível retomar a renovação automática de uma subscrição ativa e ainda válida.'));
+            ->andThrow(new \DomainException('Só é possível retomar a renovação automática de uma subscrição ativa e ainda válida.'));
         $this->app->instance(SubscricaoService::class, $servico);
 
         $this->actingAs($admin)
