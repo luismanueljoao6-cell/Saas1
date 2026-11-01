@@ -31,13 +31,13 @@ class ContextoPermissoesQueueTest extends TestCase
 
         $tenant->set(84);
         $permissoes->setPermissionsTeamId(84);
-        Event::dispatch(new JobProcessed('redis', Mockery::mock(Job::class)));
+        Event::dispatch(new JobProcessed('redis', $this->job()));
         $this->assertFalse($tenant->has());
         $this->assertNull($permissoes->getPermissionsTeamId());
 
         $tenant->set(126);
         $permissoes->setPermissionsTeamId(126);
-        Event::dispatch(new JobFailed('redis', Mockery::mock(Job::class), new RuntimeException('Falha simulada')));
+        Event::dispatch(new JobFailed('redis', $this->job(), new RuntimeException('Falha simulada')));
         $this->assertFalse($tenant->has());
         $this->assertNull($permissoes->getPermissionsTeamId());
     }
@@ -48,13 +48,14 @@ class ContextoPermissoesQueueTest extends TestCase
         $permissoes = app(PermissionRegistrar::class);
         $tenant->set(42);
         $permissoes->setPermissionsTeamId(42);
-        Event::dispatch(new JobProcessing('sync', Mockery::mock(Job::class)));
+        Event::dispatch(new JobProcessing('sync', $this->job()));
         $this->assertSame(42, $tenant->id());
         $this->assertSame(42, $permissoes->getPermissionsTeamId());
     }
+
     private function job(): Job
     {
-        $job = Mockery::mock(Job::class);
+        $job = $this->job();
         $job->shouldReceive('payload')->andReturn([]);
 
         return $job;
