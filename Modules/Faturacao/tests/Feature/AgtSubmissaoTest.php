@@ -51,7 +51,7 @@ class AgtSubmissaoTest extends TestCase
             'faturacao.agt.utilizador' => 'produtor',
             'faturacao.agt.palavra_passe' => 's3nh@',
             'faturacao.agt.software.chave_privada_path' => $privadaSoftware,
-            'faturacao.agt.software.signature_version' => null,
+            'faturacao.agt.software.signature_version' => 1,
             'faturacao.saft_numero_certificado' => 'C_134',
         ]);
 
@@ -159,6 +159,7 @@ class AgtSubmissaoTest extends TestCase
         $this->assertSame('5001636863', $dados['taxRegistrationNumber']);
         $this->assertSame(1, $dados['numberOfEntries']);
         $this->assertSame('C_134', $dados['softwareInfo']['softwareInfoDetail']['softwareValidationNumber']);
+        $this->assertSame(1, $dados['softwareInfo']['softwareInfoDetail']['signatureVersion']);
 
         $documento = $dados['documents'][0];
         $this->assertSame('FT FT6325S2C/1', $documento['documentNo']);
