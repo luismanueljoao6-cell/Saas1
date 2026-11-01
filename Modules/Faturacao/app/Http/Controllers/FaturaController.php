@@ -54,6 +54,7 @@ class FaturaController extends Controller
                 'quantidade' => $linha['quantidade'] ?? 1,
                 'preco_unitario' => $linha['preco_unitario'] ?? 0,
                 'taxa_iva' => $linha['taxa_iva'] ?? config('faturacao.taxa_iva_geral'),
+                'operation_type' => $linha['operation_type'] ?? config('faturacao.agt.operation_type_padrao', 'SG'),
                 'motivo_isencao' => $linha['motivo_isencao'] ?? '',
             ])->values()->all(),
         ]);
@@ -71,6 +72,12 @@ class FaturaController extends Controller
                 ->map(fn (array $motivo, string $codigo) => "{$codigo} — {$motivo['descricao']}")
                 ->all(),
             'aceitaIsencao' => in_array(0.0, array_map('floatval', (array) config('faturacao.taxas_iva_permitidas', [])), true),
+            'tiposOperacao' => [
+                'SG' => 'Serviços gerais', 'TB' => 'Transmissão de bens', 'SE' => 'Serviços de educação',
+                'SS' => 'Serviços de saúde', 'STP' => 'Transporte de passageiros', 'SR' => 'Royalties',
+                'SIF' => 'Intermediação financeira/seguradora', 'SHS' => 'Hotelaria e similares',
+                'ST' => 'Telecomunicações', 'AS' => 'Arrendamento', 'QT' => 'Quotas', 'RD' => 'Repasse de despesas',
+            ],
         ];
     }
 
@@ -154,6 +161,7 @@ class FaturaController extends Controller
                 'preco_unitario' => (float) $linha->preco_unitario,
                 'taxa_iva' => (float) $linha->taxa_iva,
                 'motivo_isencao' => $linha->motivo_isencao ?? '',
+                'operation_type' => $linha->operation_type ?: config('faturacao.agt.operation_type_padrao', 'SG'),
             ])->values()->all(),
         ]);
     }
