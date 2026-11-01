@@ -140,6 +140,7 @@ class FaturaService
                 'quantidade' => $dadosLinha['quantidade'],
                 'preco_unitario' => $dadosLinha['preco_unitario'],
                 'taxa_iva' => $dadosLinha['taxa_iva'],
+                'operation_type' => isset($dadosLinha['operation_type']) ? strtoupper(trim((string) $dadosLinha['operation_type'])) : null,
                 'motivo_isencao' => ValidacaoLinhas::normalizarMotivo($dadosLinha['motivo_isencao'] ?? null),
                 'ordem' => $indice,
             ]);
