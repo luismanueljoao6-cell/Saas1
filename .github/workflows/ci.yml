@@ -53,10 +53,26 @@ jobs:
           else
             echo "Nenhum ficheiro PHP alterado."
           fi
-      # Os testes de auditoria de subscrições são executados numa etapa própria.
+      # A suite de subscrições é executada teste a teste em processos independentes.
       - run: php artisan test --exclude-group=auditoria
-      - run: php artisan test --group=auditoria --exclude-group=auditoria-retomar
-      - run: php artisan test --group=auditoria-retomar
+      - name: Auditoria de subscrições (SQLite)
+        shell: bash
+        run: |
+          testes=(
+            test_cancelar_renovacao_de_subscricao_pendente_e_recusado_e_preserva_o_pagamento
+            test_retomar_renovacao_de_subscricao_vencida_mostra_erro_em_vez_de_falhar
+            test_iniciar_para_outro_plano_com_pagamento_pendente_mostra_a_mensagem_de_negocio
+            test_pedido_recente_sem_referencia_continua_a_bloquear_com_excecao_especifica
+            test_pedido_abandonado_sem_referencia_e_descartado_e_a_empresa_pode_tentar_de_novo
+            test_servico_desconhecido_no_plano_nao_impede_a_confirmacao_do_pagamento
+            test_confirmacao_manual_de_subscricao_cancelada_limpa_cancelada_em
+            test_reconciliacao_conta_uma_so_tentativa_por_reprocessamento
+            test_reconciliacao_descarta_pagamento_sem_referencia_abandonado
+            test_comando_de_preco_rejeita_valores_que_o_gateway_nao_aceita
+          )
+          for teste in "${testes[@]}"; do
+            php artisan test Modules/Subscricoes/tests/Feature/AuditoriaSubscricoesTest.php --filter="$teste"
+          done
       - run: composer audit
 
   testes-mysql:
@@ -93,5 +109,21 @@ jobs:
       - run: cp .env.example .env && php artisan key:generate
       # Triggers de imutabilidade, locks e snapshots só se testam em MySQL.
       - run: php artisan test --exclude-group=auditoria
-      - run: php artisan test --group=auditoria --exclude-group=auditoria-retomar
-      - run: php artisan test --group=auditoria-retomar
+      - name: Auditoria de subscrições (MySQL)
+        shell: bash
+        run: |
+          testes=(
+            test_cancelar_renovacao_de_subscricao_pendente_e_recusado_e_preserva_o_pagamento
+            test_retomar_renovacao_de_subscricao_vencida_mostra_erro_em_vez_de_falhar
+            test_iniciar_para_outro_plano_com_pagamento_pendente_mostra_a_mensagem_de_negocio
+            test_pedido_recente_sem_referencia_continua_a_bloquear_com_excecao_especifica
+            test_pedido_abandonado_sem_referencia_e_descartado_e_a_empresa_pode_tentar_de_novo
+            test_servico_desconhecido_no_plano_nao_impede_a_confirmacao_do_pagamento
+            test_confirmacao_manual_de_subscricao_cancelada_limpa_cancelada_em
+            test_reconciliacao_conta_uma_so_tentativa_por_reprocessamento
+            test_reconciliacao_descarta_pagamento_sem_referencia_abandonado
+            test_comando_de_preco_rejeita_valores_que_o_gateway_nao_aceita
+          )
+          for teste in "${testes[@]}"; do
+            php artisan test Modules/Subscricoes/tests/Feature/AuditoriaSubscricoesTest.php --filter="$teste"
+          done
