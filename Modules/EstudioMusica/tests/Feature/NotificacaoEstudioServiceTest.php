@@ -59,6 +59,7 @@ class NotificacaoEstudioServiceTest extends TestCase
         $this->assertTrue($resultado);
         Queue::assertPushed(EnviarMensagemClienteJob::class, fn (EnviarMensagemClienteJob $job): bool => $job->email === 'cliente@example.com');
     }
+
     public function test_bloqueia_telefone_sem_autorizacao_de_transferencia_internacional(): void
     {
         Queue::fake();
@@ -100,5 +101,4 @@ class NotificacaoEstudioServiceTest extends TestCase
         $this->assertTrue($resultado);
         Queue::assertPushed(EnviarMensagemClienteJob::class);
     }
-
 }
