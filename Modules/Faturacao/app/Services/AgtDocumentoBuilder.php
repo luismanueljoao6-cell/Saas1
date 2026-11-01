@@ -102,6 +102,13 @@ class AgtDocumentoBuilder
             $produto = ($linha->produto_id ?? null) ? Produto::withoutGlobalScopes()->where('empresa_id', $documento->empresa_id)->find($linha->produto_id) : null;
             $valor = NumeroJson::deCentimos(Dinheiro::centimos($linha->valor_sem_iva));
 
+            $precoBase = $linha->preco_unitario_base ?? $linha->preco_unitario;
+            $descontoUnitario = max(0, Dinheiro::centimos($precoBase) - Dinheiro::centimos($linha->preco_unitario));
+            $descontoTotal = intdiv(
+                $descontoUnitario * Dinheiro::milesimos((string) $linha->quantidade) + 500,
+                1000,
+            );
+
             $item = [
                 'lineNumber' => $indice + 1,
                 'operationType' => $this->tipoOperacao($linha->operation_type ?? null),
@@ -109,7 +116,7 @@ class AgtDocumentoBuilder
                 'productDescription' => mb_substr((string) $linha->descricao, 0, 200),
                 'quantity' => NumeroJson::deDecimal((string) $linha->quantidade),
                 'unitOfMeasure' => mb_substr(strtoupper((string) ($produto?->unidade ?: config('faturacao.agt.unidade_padrao', 'UN'))), 0, 20),
-                'unitPriceBase' => NumeroJson::deDecimal((string) $linha->preco_unitario),
+                'unitPriceBase' => NumeroJson::deDecimal((string) $precoBase),
                 'unitPrice' => NumeroJson::deDecimal((string) $linha->preco_unitario),
             ];
 
@@ -126,7 +133,7 @@ class AgtDocumentoBuilder
                 $item['taxes'] = $impostos;
             }
 
-            $item['settlementAmount'] = NumeroJson::deCentimos(0);
+            $item['settlementAmount'] = NumeroJson::deCentimos($descontoTotal);
 
             $linhas[] = $item;
         }
