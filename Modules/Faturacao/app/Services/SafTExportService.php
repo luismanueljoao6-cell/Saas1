@@ -282,7 +282,7 @@ class SafTExportService
             $codigo = $codigos[$chave] ?? null;
 
             if (! is_string($codigo) || trim($codigo) === '') {
-                throw new \\RuntimeException("A taxa de IVA {$chave}% não tem código SAF-T (AO) configurado; a exportação foi interrompida.");
+                throw new \RuntimeException("A taxa de IVA {$chave}% não tem código SAF-T (AO) configurado; a exportação foi interrompida.");
             }
 
             return ['IVA', $codigo, null];
