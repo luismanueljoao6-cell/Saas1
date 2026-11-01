@@ -19,9 +19,7 @@ class AssinaturaJwsTest extends TestCase
     use RefreshDatabase;
 
     protected string $privada;
-
     protected string $publica;
-
     protected string $dirChaves;
 
     protected function setUp(): void
