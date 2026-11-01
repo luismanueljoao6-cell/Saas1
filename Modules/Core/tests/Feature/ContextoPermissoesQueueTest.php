@@ -25,7 +25,7 @@ class ContextoPermissoesQueueTest extends TestCase
 
         $tenant->set(42);
         $permissoes->setPermissionsTeamId(42);
-        Event::dispatch(new JobProcessing('redis', Mockery::mock(Job::class)->shouldReceive('payload')->andReturn([])->getMock()));
+        Event::dispatch(new JobProcessing('redis', $this->job()));
         $this->assertFalse($tenant->has());
         $this->assertNull($permissoes->getPermissionsTeamId());
 
@@ -51,5 +51,12 @@ class ContextoPermissoesQueueTest extends TestCase
         Event::dispatch(new JobProcessing('sync', Mockery::mock(Job::class)));
         $this->assertSame(42, $tenant->id());
         $this->assertSame(42, $permissoes->getPermissionsTeamId());
+    }
+    private function job(): Job
+    {
+        $job = Mockery::mock(Job::class);
+        $job->shouldReceive('payload')->andReturn([]);
+
+        return $job;
     }
 }
