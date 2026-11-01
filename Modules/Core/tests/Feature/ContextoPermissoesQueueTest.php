@@ -55,7 +55,7 @@ class ContextoPermissoesQueueTest extends TestCase
 
     private function job(): Job
     {
-        $job = $this->job();
+        $job = Mockery::mock(Job::class);
         $job->shouldReceive('payload')->andReturn([]);
 
         return $job;
