@@ -15,7 +15,6 @@ use Tests\TestCase;
 
 class AssinaturaJwsTest extends TestCase
 {
-
     use RefreshDatabase;
 
     protected string $privada;
@@ -157,5 +156,4 @@ class AssinaturaJwsTest extends TestCase
 
         app(ReciboService::class)->emitir(1, 1, '100.00', 'dinheiro');
     }
-
 }
