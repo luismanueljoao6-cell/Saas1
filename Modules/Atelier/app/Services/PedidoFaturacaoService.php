@@ -104,6 +104,7 @@ class PedidoFaturacaoService
                     'quantidade' => 1,
                     'preco_unitario' => (float) $pedido->valor_orcamento,
                     'taxa_iva' => (float) $pedido->taxa_iva_aplicada,
+                    'operation_type' => 'SG',
                 ],
             ];
 
@@ -113,6 +114,7 @@ class PedidoFaturacaoService
                     'quantidade' => (float) $material->quantidade,
                     'preco_unitario' => (float) $material->valor_unitario,
                     'taxa_iva' => (float) $pedido->taxa_iva_aplicada,
+                    'operation_type' => 'TB',
                 ];
             }
 
