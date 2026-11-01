@@ -5,13 +5,9 @@ namespace Modules\Atelier\Services;
 use Illuminate\Support\Facades\DB;
 use Modules\Atelier\Exceptions\PedidoException;
 use Modules\Atelier\Models\Pedido;
-use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Fatura;
+use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\Recibo;
-use Modules\Faturacao\Services\AssinaturaFiscalService;
-use Modules\Faturacao\Services\FaturaService;
-use Modules\Faturacao\Services\NumeracaoService;
-use Modules\Faturacao\Services\ReciboService;
 use Modules\Faturacao\Support\Dinheiro;
 use Throwable;
 
@@ -30,13 +26,7 @@ use Throwable;
  */
 class PedidoFaturacaoService
 {
-    public function __construct(
-        protected NumeracaoService $numeracaoService,
-        protected AssinaturaFiscalService $assinaturaFiscalService,
-        protected FaturaService $faturaService,
-        protected TenantManager $tenantManager,
-        protected ?ReciboService $reciboService = null,
-    ) {}
+    public function __construct(protected FaturacaoGateway $faturacao) {}
 
     /**
      * @throws PedidoException|Throwable
@@ -63,7 +53,7 @@ class PedidoFaturacaoService
                 throw new PedidoException('O sinal não pode exceder o valor total do pedido.');
             }
 
-            $recibo = $this->recibos()->emitir(
+            $recibo = $this->faturacao->emitirRecibo(
                 (int) $pedido->empresa_id,
                 (int) $pedido->cliente_id,
                 $valor,
@@ -126,7 +116,7 @@ class PedidoFaturacaoService
                 ];
             }
 
-            $fatura = $this->faturaService->criarRascunho($pedido->empresa, $cliente, $linhas, $observacoes);
+            $fatura = $this->faturacao->criarRascunho($pedido->empresa, $cliente, $linhas, $observacoes);
 
             $pedido->update(['fatura_id' => $fatura->id]);
 
@@ -174,7 +164,7 @@ class PedidoFaturacaoService
                 throw PedidoException::valorInvalido();
             }
 
-            $recibo = $this->recibos()->emitir(
+            $recibo = $this->faturacao->emitirRecibo(
                 (int) $pedido->empresa_id,
                 (int) $pedido->cliente_id,
                 Dinheiro::formatar($saldo),
@@ -198,8 +188,4 @@ class PedidoFaturacaoService
             ->findOrFail($pedido->id);
     }
 
-    protected function recibos(): ReciboService
-    {
-        return $this->reciboService ?? app(ReciboService::class);
-    }
 }
