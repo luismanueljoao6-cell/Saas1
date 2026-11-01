@@ -63,6 +63,7 @@ class NotaCreditoDebitoService
             'quantidade' => $linha->quantidade,
             'preco_unitario' => $linha->preco_unitario,
             'taxa_iva' => $linha->taxa_iva,
+            'operation_type' => $linha->operation_type,
             'motivo_isencao' => $linha->motivo_isencao,
         ])->all();
 
@@ -178,6 +179,7 @@ class NotaCreditoDebitoService
                     'quantidade' => $dadosLinha['quantidade'],
                     'preco_unitario' => $dadosLinha['preco_unitario'],
                     'taxa_iva' => $dadosLinha['taxa_iva'],
+                    'operation_type' => isset($dadosLinha['operation_type']) ? strtoupper(trim((string) $dadosLinha['operation_type'])) : null,
                     'motivo_isencao' => $debitoSemIva ? null : ValidacaoLinhas::normalizarMotivo($dadosLinha['motivo_isencao'] ?? null),
                     'ordem' => $indice,
                 ]))->calcularValores()->save();
