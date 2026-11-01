@@ -135,7 +135,7 @@ class AgtSubmissaoService
         // corrigida deve usar um UUID novo.
         if ($codigoErro !== 'REDE') {
             $dados['submission_uuid'] = null;
-            $dados['enviado_em'] = null;
+            $dados['submission_timestamp'] = null;
         }
 
         $submissao->update($dados);
@@ -196,7 +196,7 @@ class AgtSubmissaoService
         }
 
         $uuid = (string) ($enviar[0]->submission_uuid ?: Str::uuid());
-        $instanteSubmissao = $enviar[0]->enviado_em ?? now();
+        $instanteSubmissao = $enviar[0]->submission_timestamp ?? now();
 
         foreach ($enviar as $submissao) {
             if ($submissao->submission_uuid !== null && $submissao->submission_uuid !== $uuid) {
@@ -205,7 +205,7 @@ class AgtSubmissaoService
 
             $submissao->update([
                 'submission_uuid' => $uuid,
-                'enviado_em' => $instanteSubmissao,
+                'submission_timestamp' => $instanteSubmissao,
             ]);
         }
 
@@ -245,6 +245,7 @@ class AgtSubmissaoService
                     'submission_uuid' => $uuid,
                     'request_id' => $requestId,
                     'tentativas' => $submissao->tentativas + 1,
+                    'enviado_em' => now(),
                     'erros' => null,
                 ]);
                 $res['enviados']++;
@@ -290,7 +291,7 @@ class AgtSubmissaoService
             } else {
                 // A AGT recusou o pedido/lote e identificou outros documentos;
                 // os restantes seguem num pedido novo, com UUID novo.
-                $submissao->update(['submission_uuid' => null, 'enviado_em' => null]);
+                $submissao->update(['submission_uuid' => null, 'submission_timestamp' => null]);
             }
         }
 
