@@ -3,6 +3,7 @@
 @section('titulo', 'Projetos Musicais')
 
 @section('conteudo')
+@include('estudiomusica::partials.erros')
 <div class="space-y-6">
     <div class="flex items-center justify-between">
         <h1 class="text-lg font-semibold text-slate-900">Projetos Musicais</h1>

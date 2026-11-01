@@ -3,6 +3,7 @@
 @section('titulo', 'Pedidos de Orçamento')
 
 @section('conteudo')
+@include('estudiomusica::partials.erros')
 <div class="space-y-6">
     <h1 class="text-lg font-semibold text-slate-900">Pedidos de Orçamento (landing page)</h1>
 

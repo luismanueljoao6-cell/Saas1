@@ -3,6 +3,7 @@
 @section('titulo', $projeto->nome)
 
 @section('conteudo')
+@include('estudiomusica::partials.erros')
 <div class="space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -39,9 +40,12 @@
             <dl class="mt-2 space-y-1 text-sm text-slate-600">
                 @if ($projeto->tipo_cobranca === 'pacote')
                     <div class="flex justify-between"><dt>Valor do pacote (sem IVA)</dt><dd>{{ number_format((float) $projeto->valor_pacote, 2) }} Kz</dd></div>
-                    <div class="flex justify-between"><dt>Pacote com IVA</dt><dd>{{ number_format((float) $projeto->valor_pacote * (1 + (float) config('faturacao.taxa_iva_geral') / 100), 2) }} Kz</dd></div>
+                    <div class="flex justify-between"><dt>Pacote com IVA</dt><dd>{{ number_format($projeto->pacoteComIvaCentimos() / 100, 2) }} Kz</dd></div>
                 @endif
-                <div class="flex justify-between"><dt>Faturado</dt><dd>{{ number_format($projeto->valorTotalFaturado(), 2) }} Kz</dd></div>
+                <div class="flex justify-between"><dt>Faturado (líquido de notas de crédito)</dt><dd>{{ number_format($projeto->valorTotalFaturado(), 2) }} Kz</dd></div>
+                @if ($projeto->valorCreditado() > 0)
+                    <div class="flex justify-between text-slate-500"><dt>Creditado por notas de crédito</dt><dd>{{ number_format($projeto->valorCreditado(), 2) }} Kz</dd></div>
+                @endif
                 <div class="flex justify-between"><dt>Recebido</dt><dd>{{ number_format($projeto->valorTotalRecebido(), 2) }} Kz</dd></div>
                 <div class="flex justify-between font-medium text-slate-900"><dt>Saldo devedor</dt><dd>{{ number_format($projeto->saldoDevedor(), 2) }} Kz</dd></div>
             </dl>
@@ -67,15 +71,19 @@
     <div class="rounded-lg border border-slate-200 bg-white p-4">
         <h2 class="text-sm font-semibold text-slate-900">Faturas e pagamentos</h2>
         <div class="mt-2 divide-y divide-slate-100 text-sm">
-            @forelse ($projeto->faturas->where('estado', 'emitida') as $fatura)
+            @forelse ($projeto->situacaoDasFaturas() as $situacao)
                 @php
-                    $recebido = (float) $projeto->recibos->where('estado', 'emitido')->where('fatura_id', $fatura->id)->sum('valor');
-                    $emFalta = round((float) $fatura->valor_total - $recebido, 2);
+                    $fatura = $situacao->fatura;
+                    $emFalta = $situacao->em_falta;
                 @endphp
                 <div class="flex flex-wrap items-center justify-between gap-2 py-2">
                     <div>
                         <p class="font-medium text-slate-900">{{ $fatura->numero_documento }}</p>
-                        <p class="text-xs text-slate-500">{{ number_format((float) $fatura->valor_total, 2) }} Kz &middot; recebido {{ number_format($recebido, 2) }} Kz</p>
+                        <p class="text-xs text-slate-500">
+                            {{ number_format($situacao->total, 2) }} Kz
+                            @if ($situacao->creditado > 0) &middot; creditado {{ number_format($situacao->creditado, 2) }} Kz @endif
+                            &middot; recebido {{ number_format($situacao->recebido, 2) }} Kz
+                        </p>
                     </div>
                     @if ($emFalta > 0)
                         <form method="POST" action="{{ route('estudiomusica.projetos.recibos', $projeto) }}" class="flex flex-wrap items-center gap-2">
@@ -90,6 +98,8 @@
                             <input type="number" step="0.01" min="0.01" max="{{ $emFalta }}" name="valor" placeholder="{{ number_format($emFalta, 2, '.', '') }}" class="w-28 rounded-md border-slate-300 text-xs" title="Deixa vazio para receber o que falta">
                             <button type="submit" class="rounded-md bg-slate-900 px-2.5 py-1 text-xs text-white hover:bg-slate-700">Registar pagamento</button>
                         </form>
+                    @elseif ($situacao->creditado >= $situacao->total)
+                        <span class="text-xs text-slate-500">Anulada por nota de crédito</span>
                     @else
                         <span class="text-xs text-emerald-700">Paga</span>
                     @endif
@@ -99,6 +109,33 @@
             @endforelse
         </div>
     </div>
+
+    {{-- Portfólio na página pública: só quem tem a permissão de marketing (Administrador) --}}
+    @can('estudiomusica.gerir-marketing')
+        <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <h2 class="text-sm font-semibold text-slate-900">Portfólio na página pública</h2>
+            <p class="mt-1 text-xs text-slate-500">
+                A landing só mostra projetos marcados aqui e com link público (Spotify, YouTube ou outro, em https).
+                Divulgar o trabalho de um artista exige a autorização dele.
+            </p>
+            <form method="POST" action="{{ route('estudiomusica.projetos.portfolio', $projeto) }}" class="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                @csrf
+                @method('PUT')
+                <label class="flex items-center gap-2 text-slate-700 sm:col-span-2">
+                    <input type="hidden" name="destaque_portfolio" value="0">
+                    <input type="checkbox" name="destaque_portfolio" value="1" @checked(old('destaque_portfolio', $projeto->destaque_portfolio)) class="rounded border-slate-300">
+                    Mostrar este projeto na página pública
+                </label>
+                <input type="url" name="link_publico" value="{{ old('link_publico', $projeto->link_publico) }}" placeholder="https://open.spotify.com/..."
+                       class="rounded-md border-slate-300 text-sm sm:col-span-2">
+                <label class="flex items-center gap-2 text-xs text-slate-600 sm:col-span-2">
+                    <input type="checkbox" name="autorizacao_artista" value="1" class="rounded border-slate-300">
+                    O artista autorizou a divulgação deste projeto
+                </label>
+                <button type="submit" class="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 sm:col-span-2 sm:w-40">Guardar</button>
+            </form>
+        </div>
+    @endcan
 
     {{-- Ficha do artista (e consentimento de marketing) --}}
     <div class="rounded-lg border border-slate-200 bg-white p-4">
@@ -154,7 +191,15 @@
                         @forelse ($faixa->versoes as $versao)
                             <li class="flex items-center justify-between">
                                 <span>{{ $versao->rotulo }} — {{ $versao->estado }} ({{ $versao->marcadores->count() }} comentário(s))</span>
-                                <a href="{{ route('estudiomusica.versoes.reproduzir', $versao) }}" class="underline">ouvir</a>
+                                <span class="flex items-center gap-3">
+                                    @if ($loop->first && $versao->estado === 'pendente_aprovacao')
+                                        <form method="POST" action="{{ route('estudiomusica.versoes.lembrete-aprovacao', $versao) }}" class="inline">
+                                            @csrf
+                                            <button type="submit" class="underline">lembrar aprovação</button>
+                                        </form>
+                                    @endif
+                                    <a href="{{ route('estudiomusica.versoes.reproduzir', $versao) }}" class="underline">ouvir</a>
+                                </span>
                             </li>
                         @empty
                             <li class="text-slate-400">Sem versões enviadas.</li>
@@ -186,7 +231,7 @@
                 <li class="py-2 text-slate-500">Ainda sem sessões agendadas para este projeto.</li>
             @endforelse
         </ul>
-        <a href="{{ route('estudiomusica.sessoes.index') }}" class="mt-2 inline-block text-xs text-indigo-600 underline">Agendar nova sessão &rarr;</a>
+        <a href="{{ route('estudiomusica.sessoes.index', ['projeto' => $projeto->id]) }}" class="mt-2 inline-block text-xs text-indigo-600 underline">Agendar nova sessão &rarr;</a>
     </div>
 </div>
 @endsection

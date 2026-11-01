@@ -3,7 +3,8 @@
 @section('titulo', 'Salas do Estúdio')
 
 @section('conteudo')
-<div x-data="{ aFormar: false }" class="space-y-6">
+@include('estudiomusica::partials.erros')
+<div x-data="{ aFormar: {{ $errors->any() ? 'true' : 'false' }} }" class="space-y-6">
     <div class="flex items-center justify-between">
         <h1 class="text-lg font-semibold text-slate-900">Salas do Estúdio</h1>
         <button type="button" @click="aFormar = !aFormar" class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500">
@@ -14,15 +15,15 @@
     <form x-show="aFormar" x-cloak method="POST" action="{{ route('estudiomusica.salas.store') }}"
           class="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-4">
         @csrf
-        <input type="text" name="nome" placeholder="Nome (ex.: Sala A - Captação)" required
+        <input type="text" name="nome" value="{{ old('nome') }}" placeholder="Nome (ex.: Sala A - Captação)" required
                class="rounded-md border-slate-300 text-sm sm:col-span-2">
-        <input type="number" step="0.01" min="0" name="preco_hora" placeholder="Preço/hora (Kz)" required
+        <input type="number" step="0.01" min="0" max="99999999.99" name="preco_hora" value="{{ old('preco_hora') }}" placeholder="Preço/hora (Kz)" required
                class="rounded-md border-slate-300 text-sm">
         <button type="submit" class="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700">
             Guardar
         </button>
         <textarea name="descricao" placeholder="Descrição (opcional)" rows="2"
-                  class="rounded-md border-slate-300 text-sm sm:col-span-4"></textarea>
+                  class="rounded-md border-slate-300 text-sm sm:col-span-4">{{ old('descricao') }}</textarea>
     </form>
 
     <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -32,21 +33,47 @@
                     <th class="px-4 py-2">Nome</th>
                     <th class="px-4 py-2">Preço/hora</th>
                     <th class="px-4 py-2">Estado</th>
+                    <th class="px-4 py-2"></th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
                 @forelse ($salas as $sala)
-                    <tr>
-                        <td class="px-4 py-2 font-medium text-slate-900">{{ $sala->nome }}</td>
+                    <tr class="align-top">
+                        <td class="px-4 py-2 font-medium text-slate-900">
+                            {{ $sala->nome }}
+                            @if ($sala->descricao)
+                                <span class="block text-xs font-normal text-slate-400">{{ $sala->descricao }}</span>
+                            @endif
+                        </td>
                         <td class="px-4 py-2 text-slate-600">{{ number_format($sala->preco_hora, 2) }} Kz</td>
                         <td class="px-4 py-2">
                             <span class="rounded-full px-2 py-0.5 text-xs {{ $sala->ativa ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500' }}">
                                 {{ $sala->ativa ? 'Ativa' : 'Inativa' }}
                             </span>
                         </td>
+                        <td class="px-4 py-2 text-right">
+                            @can('estudiomusica.gerir-salas')
+                                <details class="text-left">
+                                    <summary class="cursor-pointer text-right text-xs text-indigo-600 underline">Editar</summary>
+                                    <form method="POST" action="{{ route('estudiomusica.salas.update', $sala) }}" class="mt-2 grid gap-2 sm:grid-cols-2">
+                                        @csrf
+                                        @method('PUT')
+                                        <input type="text" name="nome" value="{{ $sala->nome }}" required class="rounded-md border-slate-300 text-xs">
+                                        <input type="number" step="0.01" min="0" max="99999999.99" name="preco_hora" value="{{ $sala->preco_hora }}" required class="rounded-md border-slate-300 text-xs">
+                                        <textarea name="descricao" rows="2" placeholder="Descrição" class="rounded-md border-slate-300 text-xs sm:col-span-2">{{ $sala->descricao }}</textarea>
+                                        <label class="flex items-center gap-2 text-xs text-slate-600">
+                                            <input type="hidden" name="ativa" value="0">
+                                            <input type="checkbox" name="ativa" value="1" @checked($sala->ativa) class="rounded border-slate-300">
+                                            Sala ativa (aceita novas sessões)
+                                        </label>
+                                        <button type="submit" class="rounded-md bg-slate-900 px-2.5 py-1 text-xs text-white hover:bg-slate-700">Guardar</button>
+                                    </form>
+                                </details>
+                            @endcan
+                        </td>
                     </tr>
                 @empty
-                    <tr><td colspan="3" class="px-4 py-6 text-center text-slate-500">Ainda sem salas registadas.</td></tr>
+                    <tr><td colspan="4" class="px-4 py-6 text-center text-slate-500">Ainda sem salas registadas.</td></tr>
                 @endforelse
             </tbody>
         </table>

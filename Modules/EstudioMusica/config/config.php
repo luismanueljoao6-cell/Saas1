@@ -99,6 +99,10 @@ return [
     // Quantas horas antes do início marcado já se pode fazer check-in.
     'checkin_antecedencia_max_horas' => 12,
 
+    // Duração máxima de uma sessão agendada. Um erro de digitação no fim (ex.: o ano) bloqueava a
+    // sala durante meses; sessões mais longas dividem-se em várias.
+    'sessao_duracao_max_horas' => 24,
+
     // Binário do ffmpeg, usado para gerar as pré-visualizações do portal.
     'ffmpeg_bin' => env('ESTUDIOMUSICA_FFMPEG_BIN', 'ffmpeg'),
 

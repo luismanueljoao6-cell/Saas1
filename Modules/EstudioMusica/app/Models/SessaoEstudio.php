@@ -53,9 +53,13 @@ class SessaoEstudio extends Model
         return $this->belongsTo(Cliente::class)->withTrashed();
     }
 
+    /**
+     * withTrashed: um projeto apagado não pode "desaparecer" daqui — a cobrança decide por ele
+     * (um projeto por PACOTE apagado não pode passar a faturar as sessões à hora).
+     */
     public function projetoMusical(): BelongsTo
     {
-        return $this->belongsTo(ProjetoMusical::class);
+        return $this->belongsTo(ProjetoMusical::class)->withTrashed();
     }
 
     public function engenheiro(): BelongsTo
@@ -85,11 +89,27 @@ class SessaoEstudio extends Model
      * sessão concluída sem horas para cobrar só porque ninguém carregou
      * no botão de check-out.
      */
-    public function duracaoHoras(): float
+    public function rotuloEstado(): string
+    {
+        return [
+            'agendada' => 'Agendada',
+            'confirmada' => 'Confirmada',
+            'em_curso' => 'Em curso',
+            'concluida' => 'Concluída',
+            'cancelada' => 'Cancelada',
+        ][$this->estado] ?? (string) $this->estado;
+    }
+
+    public function duracaoMinutos(): int
     {
         $inicio = $this->inicio_real ?? $this->inicio_previsto;
         $fim = $this->fim_real ?? $this->fim_previsto;
 
-        return round(abs($inicio->diffInMinutes($fim)) / 60, 3);
+        return (int) round(abs($inicio->diffInMinutes($fim)));
+    }
+
+    public function duracaoHoras(): float
+    {
+        return round($this->duracaoMinutos() / 60, 3);
     }
 }

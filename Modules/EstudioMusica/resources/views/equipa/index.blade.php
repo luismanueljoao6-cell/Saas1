@@ -3,6 +3,7 @@
 @section('titulo', 'Equipa do Estúdio')
 
 @section('conteudo')
+@include('estudiomusica::partials.erros')
     <h1 class="mb-1 text-lg font-semibold text-slate-900">Equipa do Estúdio</h1>
     <p class="mb-6 text-sm text-slate-500">
         Atribui os papéis de Receção e Engenheiro a utilizadores ativos da tua empresa.

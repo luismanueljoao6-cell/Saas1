@@ -120,6 +120,11 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:estudio'])
             Route::post('/projetos/{projeto}/faixas', [FaixaMusicalController::class, 'store'])->name('projetos.faixas.store');
         });
 
+        // Portfólio da landing pública: só quem tem a permissão de marketing (Administrador).
+        Route::middleware('permission:estudiomusica.gerir-marketing')->group(function () {
+            Route::put('/projetos/{projeto}/portfolio', [ProjetoMusicalController::class, 'atualizarPortfolio'])->whereNumber('projeto')->name('projetos.portfolio');
+        });
+
         // Estado do projeto/faixa: Administrador + Engenheiro (quem
         // acompanha a produção tecnicamente).
         Route::middleware('permission:estudiomusica.atualizar-estado-projeto')->group(function () {
@@ -138,6 +143,7 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:estudio'])
         // Sessões e pedidos de orçamento recebidos: Administrador + Receção.
         Route::middleware('permission:estudiomusica.gerir-sessoes')->group(function () {
             Route::post('/sessoes', [SessaoEstudioController::class, 'store'])->name('sessoes.store');
+            Route::put('/sessoes/{sessao}/reagendar', [SessaoEstudioController::class, 'reagendar'])->name('sessoes.reagendar');
             Route::delete('/sessoes/{sessao}', [SessaoEstudioController::class, 'cancelar'])->name('sessoes.cancelar');
             Route::get('/solicitacoes', [SolicitacaoOrcamentoController::class, 'index'])->name('solicitacoes.index');
             Route::put('/solicitacoes/{solicitacao}/estado', [SolicitacaoOrcamentoController::class, 'atualizarEstado'])->name('solicitacoes.estado');
@@ -149,6 +155,8 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:estudio'])
         Route::middleware('permission:estudiomusica.checkin-checkout')->group(function () {
             Route::post('/sessoes/{sessao}/check-in', [SessaoEstudioController::class, 'checkIn'])->name('sessoes.check-in');
             Route::post('/sessoes/{sessao}/check-out', [SessaoEstudioController::class, 'checkOut'])->name('sessoes.check-out');
+            // Repete a fatura por hora de uma sessão já concluída (quando o check-out não a pôde emitir).
+            Route::post('/sessoes/{sessao}/faturar', [SessaoEstudioController::class, 'faturar'])->name('sessoes.faturar');
         });
 
         // Upload de áudio: Administrador + Engenheiro.

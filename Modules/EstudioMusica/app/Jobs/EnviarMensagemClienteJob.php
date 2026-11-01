@@ -11,6 +11,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use RuntimeException;
+use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalMensagemInterface;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
 use Modules\EstudioMusica\Support\TransferenciaInternacional;
@@ -65,8 +66,8 @@ class EnviarMensagemClienteJob implements ShouldBeEncrypted, ShouldQueue
 
             if ($whatsappPermitido || $smsPermitido) {
                 $tentou = true;
-                $entregue = ($whatsappPermitido && $canalWhatsapp->enviar($this->telefone, $this->mensagem))
-                    || ($smsPermitido && $canalSms->enviar($this->telefone, $this->mensagem));
+                $entregue = ($whatsappPermitido && $this->tentar($canalWhatsapp))
+                    || ($smsPermitido && $this->tentar($canalSms));
             } else {
                 Log::notice('EstudioMusica: envio por telefone bloqueado — falta a autorização da APD para a transferência internacional (ESTUDIOMUSICA_APD_AUTORIZACAO).');
             }
@@ -89,6 +90,25 @@ class EnviarMensagemClienteJob implements ShouldBeEncrypted, ShouldQueue
 
         if ($tentou && ! $entregue) {
             throw new RuntimeException('Nenhum canal conseguiu entregar a mensagem ao cliente.');
+        }
+    }
+
+    /**
+     * Uma exceção do canal (fornecedor em baixo, timeout) conta como "não entregou" — antes
+     * rebentava o job ANTES de tentar o e-mail, e as repetições falhavam sempre no mesmo ponto,
+     * por isso o cliente que também tinha e-mail nunca chegava a receber a mensagem.
+     */
+    protected function tentar(CanalMensagemInterface $canal): bool
+    {
+        try {
+            return $canal->enviar((string) $this->telefone, $this->mensagem);
+        } catch (Throwable $e) {
+            Log::error('EstudioMusica: falha no canal de mensagens', [
+                'canal' => $canal->identificador(),
+                'erro' => $e->getMessage(),
+            ]);
+
+            return false;
         }
     }
 }

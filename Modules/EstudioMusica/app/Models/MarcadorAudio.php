@@ -39,8 +39,10 @@ class MarcadorAudio extends Model
      */
     public function tempoFormatado(): string
     {
-        $segundos = (float) $this->tempo_segundos;
+        // Segundos inteiros primeiro: `float % int` gera um aviso de depreciação no PHP 8.1+
+        // (conversão implícita com perda de precisão) sempre que há décimas, como 83.45.
+        $total = max(0, (int) floor((float) $this->tempo_segundos));
 
-        return sprintf('%02d:%02d', floor($segundos / 60), floor($segundos % 60));
+        return sprintf('%02d:%02d', intdiv($total, 60), $total % 60);
     }
 }

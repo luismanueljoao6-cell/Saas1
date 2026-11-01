@@ -20,6 +20,11 @@ class FaixaMusicalController extends Controller
 
         $projeto = ProjetoMusical::findOrFail($projeto);
 
+        // Uma faixa nova faria um projeto concluído deixar de estar "todo aprovado" sem ninguém dar por isso.
+        if (in_array($projeto->estado, ['concluido', 'cancelado'], true)) {
+            return back()->with('erro', 'Não se acrescentam faixas a um projeto concluído ou cancelado — muda primeiro o estado do projeto.');
+        }
+
         $projeto->faixas()->create([
             'empresa_id' => $projeto->empresa_id,
             'nome' => $dados['nome'],

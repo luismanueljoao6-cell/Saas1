@@ -40,9 +40,7 @@ class AgendamentoService
             $inicio = Carbon::parse($dados['inicio_previsto']);
             $fim = Carbon::parse($dados['fim_previsto']);
 
-            if ($fim->lte($inicio)) {
-                throw new InvalidArgumentException('O fim da sessão tem de ser posterior ao início.');
-            }
+            $this->validarIntervalo($inicio, $fim);
 
             if ($this->verificarConflito($sala, $inicio, $fim)) {
                 throw ConflitoAgendamentoException::paraSala($sala, $inicio->format('d/m H:i'), $fim->format('d/m H:i'));
@@ -60,9 +58,7 @@ class AgendamentoService
      */
     public function reagendar(SessaoEstudio $sessao, Carbon $novoInicio, Carbon $novoFim): SessaoEstudio
     {
-        if ($novoFim->lte($novoInicio)) {
-            throw new InvalidArgumentException('O fim da sessão tem de ser posterior ao início.');
-        }
+        $this->validarIntervalo($novoInicio, $novoFim);
 
         return DB::transaction(function () use ($sessao, $novoInicio, $novoFim) {
             // Estado lido com lock: não se reagenda uma sessão cancelada, em curso ou concluída.
@@ -90,6 +86,24 @@ class AgendamentoService
 
             return $sessao;
         });
+    }
+
+    /**
+     * O fim tem de ser depois do início e a duração não pode passar do máximo configurado.
+     *
+     * @throws InvalidArgumentException
+     */
+    protected function validarIntervalo(Carbon $inicio, Carbon $fim): void
+    {
+        if ($fim->lte($inicio)) {
+            throw new InvalidArgumentException('O fim da sessão tem de ser posterior ao início.');
+        }
+
+        $maxHoras = (int) config('estudiomusica.sessao_duracao_max_horas', 24);
+
+        if ($maxHoras > 0 && abs($inicio->diffInMinutes($fim)) > $maxHoras * 60) {
+            throw new InvalidArgumentException("Uma sessão não pode durar mais de {$maxHoras} horas — confirma as datas.");
+        }
     }
 
     /**

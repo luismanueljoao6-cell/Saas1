@@ -2,6 +2,9 @@
 
 namespace Modules\EstudioMusica\Services;
 
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Modules\EstudioMusica\Models\VersaoAudio;
@@ -9,12 +12,15 @@ use Symfony\Component\Process\Process;
 use Throwable;
 
 /**
- * Gera (uma vez, de forma preguiçosa) a pré-visualização de uma versão de
- * áudio: mono, baixa taxa de bits. É o que o portal serve ENQUANTO o
- * projeto não está quitado — antes, o player recebia o ficheiro original
- * completo, e o "download só após quitação" era contornável (bastava
- * guardar o áudio a partir do player). Requer `ffmpeg` no servidor
- * (binário configurável em ESTUDIOMUSICA_FFMPEG_BIN).
+ * Gera (uma vez) a pré-visualização de uma versão de áudio: mono, baixa taxa
+ * de bits. É o que o portal serve ENQUANTO o projeto não está quitado — antes,
+ * o player recebia o ficheiro original completo, e o "download só após
+ * quitação" era contornável (bastava guardar o áudio a partir do player).
+ * Requer `ffmpeg` no servidor (binário configurável em ESTUDIOMUSICA_FFMPEG_BIN).
+ *
+ * Normalmente gerada logo após o upload (Jobs\GerarPreviewAudioJob); o portal
+ * continua a chamar garantir() como rede de segurança. Um lock por versão
+ * garante UM só ffmpeg de cada vez (o <audio> faz vários pedidos Range).
  */
 class PreviewAudioService
 {
@@ -25,7 +31,7 @@ class PreviewAudioService
     {
         $disco = Storage::disk('local');
 
-        if ($versao->caminho_preview && $disco->exists($versao->caminho_preview)) {
+        if ($this->previewPronto($versao, $disco)) {
             return $versao->caminho_preview;
         }
 
@@ -33,14 +39,36 @@ class PreviewAudioService
             return null;
         }
 
+        try {
+            return Cache::lock("estudiomusica:preview:{$versao->id}", 200)->block(25, function () use ($versao, $disco): ?string {
+                // Outro processo pode ter acabado a pré-visualização enquanto esperávamos pelo lock.
+                $versao->refresh();
+
+                if ($this->previewPronto($versao, $disco)) {
+                    return $versao->caminho_preview;
+                }
+
+                return $this->gerar($versao, $disco);
+            });
+        } catch (LockTimeoutException) {
+            return null;
+        }
+    }
+
+    protected function previewPronto(VersaoAudio $versao, FilesystemAdapter $disco): bool
+    {
+        return $versao->caminho_preview && $disco->exists($versao->caminho_preview);
+    }
+
+    protected function gerar(VersaoAudio $versao, FilesystemAdapter $disco): ?string
+    {
         $destino = "estudiomusica/previews/{$versao->empresa_id}/{$versao->id}.mp3";
         $temporario = "estudiomusica/previews/{$versao->empresa_id}/{$versao->id}-".bin2hex(random_bytes(4)).'.tmp.mp3';
 
         $disco->makeDirectory(dirname($destino));
 
         try {
-            // Ficheiro temporário + move: dois pedidos simultâneos (o <audio>
-            // faz vários pedidos Range) nunca escrevem no mesmo ficheiro.
+            // Ficheiro temporário + move: nunca se escreve a meio no destino final.
             $processo = new Process([
                 config('estudiomusica.ffmpeg_bin', 'ffmpeg'),
                 '-y', '-v', 'error',

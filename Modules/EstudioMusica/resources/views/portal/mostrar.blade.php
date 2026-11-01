@@ -9,6 +9,8 @@
         <p class="text-sm text-slate-500">Os teus projetos, versões para audição e aprovação.</p>
     </header>
 
+    @include('estudiomusica::partials.erros')
+
     @unless ($termosAceites)
         <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm space-y-2">
             <p class="font-medium text-amber-900">{{ $termos->titulo }} (versão {{ $termos->versao }})</p>

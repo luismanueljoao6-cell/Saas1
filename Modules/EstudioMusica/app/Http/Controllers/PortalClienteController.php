@@ -5,7 +5,9 @@ namespace Modules\EstudioMusica\Http\Controllers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 use Modules\EstudioMusica\Models\ProjetoMusical;
 use Modules\EstudioMusica\Models\VersaoAudio;
@@ -26,6 +28,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * pipeline) não está garantida — ver o mesmo cuidado, pela mesma razão,
  * em SalaEstudioController::update(). Resolver o model aqui dentro,
  * depois do middleware já ter corrido, elimina a ambiguidade.
+ *
+ * ATENÇÃO — os métodos das rotas com {token} E {versao} declaram `string $token`
+ * mesmo sem o usarem: o Laravel entrega os parâmetros de rota por POSIÇÃO, não por
+ * nome, e o token vem antes da versão. Sem ele, $versao recebia o token e o pedido
+ * rebentava com TypeError (erro 500). Não o removas (PortalRotasHttpTest cobre isto).
  */
 class PortalClienteController extends Controller
 {
@@ -63,7 +70,7 @@ class PortalClienteController extends Controller
 
         $this->termos->registarAceite($cliente, $this->termos->atual($cliente->empresa_id), $request);
 
-        return back()->with('sucesso', 'Termos de Serviço aceites. Obrigado!');
+        return $this->paraOPortal($request)->with('sucesso', 'Termos de Serviço aceites. Obrigado!');
     }
 
     /** Mensagem de bloqueio se o cliente ainda não aceitou a versão em vigor dos termos. */
@@ -86,18 +93,20 @@ class PortalClienteController extends Controller
      * usa para saltar para um ponto da faixa (ex.: o marcador 01:23) sem
      * ter de descarregar o ficheiro inteiro antes.
      */
-    public function reproduzir(Request $request, int $versao): BinaryFileResponse
+    public function reproduzir(Request $request, string $token, int $versao): BinaryFileResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
         $projeto = $versao->faixaMusical->projetoMusical;
 
-        // Projeto quitado: o cliente já tem direito ao original.
-        if ($projeto->financeiramenteQuitado()) {
-            return response()->file(Storage::disk('local')->path($versao->caminho_ficheiro));
+        // Projeto quitado E termos aceites: o cliente já tem direito ao original. A regra é a
+        // mesma do download — servir o original no player sem o aceite dos termos deixava esse
+        // aceite contornável (bastava "guardar áudio como...").
+        if ($projeto->financeiramenteQuitado() && $this->termosPendentes($request) === null) {
+            return $this->ficheiroOuNaoEncontrado($versao->caminho_ficheiro);
         }
 
-        // Ainda por pagar: só a pré-visualização (baixa qualidade). Servir o
-        // original aqui deixava o "download só após quitação" contornável —
+        // Ainda por pagar (ou termos por aceitar): só a pré-visualização (baixa qualidade).
+        // Servir o original aqui deixava o "download só após quitação" contornável —
         // bastava guardar o áudio a partir do player.
         $preview = $this->previews->garantir($versao);
 
@@ -113,34 +122,48 @@ class PortalClienteController extends Controller
      * saldo do projeto" (secção C) — o único ponto de todo o módulo onde
      * isto é verificado, de propósito (ver ProjetoMusical::financeiramenteQuitado()).
      */
-    public function descarregar(Request $request, int $versao): StreamedResponse|RedirectResponse
+    public function descarregar(Request $request, string $token, int $versao): StreamedResponse|RedirectResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
         $projeto = $versao->faixaMusical->projetoMusical;
 
         if (! $projeto->financeiramenteQuitado()) {
-            return back()->with('erro', 'O download fica disponível assim que o saldo do projeto estiver quitado.');
+            return $this->paraOPortal($request)->with('erro', 'O download fica disponível assim que o saldo do projeto estiver quitado.');
         }
 
         // O original só sai depois de o cliente aceitar os Termos de Serviço
         // (propriedade dos masters, direitos de autor).
         if ($erro = $this->termosPendentes($request)) {
-            return back()->with('erro', $erro);
+            return $this->paraOPortal($request)->with('erro', $erro);
         }
+
+        abort_unless(
+            Storage::disk('local')->exists($versao->caminho_ficheiro),
+            404,
+            'O ficheiro desta versão não está disponível. Contacta o estúdio.'
+        );
 
         $extensao = pathinfo($versao->caminho_ficheiro, PATHINFO_EXTENSION);
 
         return Storage::disk('local')->download($versao->caminho_ficheiro, "{$versao->rotulo}.{$extensao}");
     }
 
-    public function comentar(Request $request, int $versao): RedirectResponse
+    public function comentar(Request $request, string $token, int $versao): RedirectResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
 
-        $dados = $request->validate([
+        // Validação manual (e não $request->validate): a recusa tem de voltar ao PORTAL — o redirect
+        // automático usa o "último GET" da sessão, que depois de tocar o áudio é o stream.
+        $validador = Validator::make($request->all(), [
             'tempo_segundos' => ['required', 'numeric', 'min:0', 'max:86400'],
             'comentario' => ['required', 'string', 'max:2000'],
         ]);
+
+        if ($validador->fails()) {
+            return $this->paraOPortal($request)->withErrors($validador)->withInput();
+        }
+
+        $dados = $validador->validated();
 
         $versao->marcadores()->create([
             'tempo_segundos' => $dados['tempo_segundos'],
@@ -149,35 +172,77 @@ class PortalClienteController extends Controller
             'nome_autor' => $request->attributes->get('cliente_portal')->nome,
         ]);
 
-        return back()->with('sucesso', 'Comentário adicionado.');
+        return $this->paraOPortal($request)->with('sucesso', 'Comentário adicionado.');
     }
 
-    public function aprovar(Request $request, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
+    public function aprovar(Request $request, string $token, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
 
-        if ($erro = $this->termosPendentes($request) ?? $this->motivoParaNaoDecidir($versao)) {
-            return back()->with('erro', $erro);
+        if ($erro = $this->termosPendentes($request) ?? $this->registarDecisao($versao, 'aprovada')) {
+            return $this->paraOPortal($request)->with('erro', $erro);
         }
 
-        $versao->update(['estado' => 'aprovada']);
         $notificacao->equipaDecisaoCliente($versao, 'aprovada');
 
-        return back()->with('sucesso', 'Versão aprovada!');
+        return $this->paraOPortal($request)->with('sucesso', 'Versão aprovada!');
     }
 
-    public function solicitarAjustes(Request $request, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
+    public function solicitarAjustes(Request $request, string $token, int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
     {
         $versao = $this->autorizarVersao($request, $versao);
 
-        if ($erro = $this->motivoParaNaoDecidir($versao)) {
-            return back()->with('erro', $erro);
+        if ($erro = $this->registarDecisao($versao, 'ajustes_solicitados')) {
+            return $this->paraOPortal($request)->with('erro', $erro);
         }
 
-        $versao->update(['estado' => 'ajustes_solicitados']);
         $notificacao->equipaDecisaoCliente($versao, 'ajustes_solicitados');
 
-        return back()->with('sucesso', 'Pedido de ajustes enviado à equipa.');
+        return $this->paraOPortal($request)->with('sucesso', 'Pedido de ajustes enviado à equipa.');
+    }
+
+    /**
+     * Volta SEMPRE à página do portal, nunca com back(): o portal envia
+     * Referrer-Policy: no-referrer, por isso o POST não leva Referer e o back() cai no
+     * "último GET" guardado na sessão — que, depois de o cliente tocar o áudio, é o próprio
+     * ficheiro de áudio (o cliente era largado no stream em vez de no portal).
+     */
+    protected function paraOPortal(Request $request): RedirectResponse
+    {
+        return redirect()->route('estudiomusica.portal.mostrar', ['token' => $request->route('token')]);
+    }
+
+    /** O original no disco, ou 404 limpo (response()->file() daria 500 se o ficheiro faltasse). */
+    protected function ficheiroOuNaoEncontrado(string $caminho): BinaryFileResponse
+    {
+        $disco = Storage::disk('local');
+
+        abort_unless($disco->exists($caminho), 404, 'O ficheiro desta versão não está disponível. Contacta o estúdio.');
+
+        return response()->file($disco->path($caminho));
+    }
+
+    /**
+     * Grava a decisão do cliente com lock na versão: dois cliques (ou dois pedidos em
+     * simultâneo) já não decidem — nem notificam a equipa — duas vezes.
+     *
+     * @return string|null mensagem de recusa, ou null se a decisão foi gravada
+     */
+    protected function registarDecisao(VersaoAudio $versao, string $estado): ?string
+    {
+        return DB::transaction(function () use ($versao, $estado): ?string {
+            VersaoAudio::query()->whereKey($versao->id)->lockForUpdate()->first();
+
+            $atual = VersaoAudio::with('faixaMusical.projetoMusical')->findOrFail($versao->id);
+
+            if ($erro = $this->motivoParaNaoDecidir($atual)) {
+                return $erro;
+            }
+
+            $atual->update(['estado' => $estado]);
+
+            return null;
+        });
     }
 
     /**

@@ -10,6 +10,7 @@ use Illuminate\View\View;
 use DomainException;
 use InvalidArgumentException;
 use Modules\Core\Models\User;
+use Modules\EstudioMusica\Http\Requests\AtualizarPortfolioRequest;
 use Modules\EstudioMusica\Http\Requests\GuardarProjetoMusicalRequest;
 use Modules\EstudioMusica\Models\ProjetoMusical;
 use Modules\EstudioMusica\Services\FaturacaoEstudioService;
@@ -64,6 +65,21 @@ class ProjetoMusicalController extends Controller
             'projeto' => $projeto,
             'estadosDisponiveis' => config('estudiomusica.estados_projeto'),
         ]);
+    }
+
+    /** Destaque do projeto na landing pública (a landing só mostra projetos marcados aqui, com link). */
+    public function atualizarPortfolio(AtualizarPortfolioRequest $request, int $projeto): RedirectResponse
+    {
+        $projeto = ProjetoMusical::findOrFail($projeto);
+
+        $projeto->forceFill([
+            'destaque_portfolio' => $request->boolean('destaque_portfolio'),
+            'link_publico' => $request->validated('link_publico'),
+        ])->save();
+
+        return back()->with('sucesso', $projeto->destaque_portfolio
+            ? 'Projeto marcado como destaque na página pública.'
+            : 'Projeto retirado do portfólio público.');
     }
 
     public function atualizarEstado(Request $request, int $projeto, NotificacaoEstudioService $notificacao): RedirectResponse
@@ -132,7 +148,7 @@ class ProjetoMusicalController extends Controller
 
         try {
             $this->faturacaoEstudio->gerarFaturaSinal($projeto);
-        } catch (InvalidArgumentException $e) {
+        } catch (InvalidArgumentException|DomainException $e) {
             return back()->with('erro', $e->getMessage());
         }
 
@@ -145,7 +161,7 @@ class ProjetoMusicalController extends Controller
 
         try {
             $this->faturacaoEstudio->gerarFaturaSaldoFinal($projeto);
-        } catch (InvalidArgumentException $e) {
+        } catch (InvalidArgumentException|DomainException $e) {
             return back()->with('erro', $e->getMessage());
         }
 
@@ -160,6 +176,6 @@ class ProjetoMusicalController extends Controller
 
         $notificacao->linkPortal($projeto->cliente, $url);
 
-        return back()->with('sucesso', "Link do portal enviado ao cliente. Link: {$url}");
+        return back()->with('sucesso', "Link do portal gerado (a mensagem ao cliente segue pelos canais autorizados). Link: {$url}");
     }
 }

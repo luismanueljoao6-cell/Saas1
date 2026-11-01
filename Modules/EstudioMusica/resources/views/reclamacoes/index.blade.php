@@ -3,6 +3,7 @@
 @section('titulo', 'Reclamações')
 
 @section('conteudo')
+@include('estudiomusica::partials.erros')
     <h1 class="mb-1 text-lg font-semibold text-slate-900">Reclamações</h1>
     <p class="mb-6 text-sm text-slate-500">
         Reclamações recebidas pela página pública. Não substituem o Livro de Reclamações físico, que deve estar

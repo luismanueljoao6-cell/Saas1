@@ -5,6 +5,7 @@ namespace Modules\EstudioMusica\Services;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Modules\Core\Models\Empresa;
 use Modules\EstudioMusica\Models\AceiteTermos;
 use Modules\EstudioMusica\Models\TermosEstudio;
 use Modules\Faturacao\Models\Cliente;
@@ -40,6 +41,10 @@ class TermosEstudioService
     public function publicar(int $empresaId, string $titulo, string $conteudo): TermosEstudio
     {
         return DB::transaction(function () use ($empresaId, $titulo, $conteudo) {
+            // Lock na empresa: duas publicações em simultâneo já não calculam o mesmo número de
+            // versão (a segunda rebentava na chave única empresa+versão).
+            Empresa::query()->whereKey($empresaId)->lockForUpdate()->first();
+
             $proxima = (int) TermosEstudio::query()->where('empresa_id', $empresaId)->max('versao') + 1;
 
             return TermosEstudio::create([

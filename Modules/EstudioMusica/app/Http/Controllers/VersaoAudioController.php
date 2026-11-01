@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
+use Modules\EstudioMusica\Jobs\GerarPreviewAudioJob;
 use Modules\EstudioMusica\Models\FaixaMusical;
 use Modules\EstudioMusica\Models\VersaoAudio;
 use Modules\EstudioMusica\Services\NotificacaoEstudioService;
@@ -57,6 +58,10 @@ class VersaoAudioController extends Controller
             throw $e;
         }
 
+        // A pré-visualização (ffmpeg) gera-se já, em segundo plano — antes só nascia no primeiro
+        // "play" do cliente, dentro do pedido HTTP dele (lento, e com vários pedidos Range em paralelo).
+        GerarPreviewAudioJob::dispatch($versao->id, (int) $versao->empresa_id);
+
         $notificacao->novaDemoDisponivel($versao);
 
         return back()->with('sucesso', 'Nova versão enviada.');
@@ -69,6 +74,9 @@ class VersaoAudioController extends Controller
     public function reproduzir(int $versao): BinaryFileResponse
     {
         $versao = VersaoAudio::findOrFail($versao);
+
+        // Ficheiro em falta no disco: 404 limpo (response()->file() daria 500).
+        abort_unless(Storage::disk('local')->exists($versao->caminho_ficheiro), 404, 'O ficheiro desta versão não está no servidor.');
 
         // BinaryFileResponse (não Storage::response) por causa dos pedidos
         // HTTP Range do <audio> — ver PortalClienteController::reproduzir().
@@ -84,7 +92,15 @@ class VersaoAudioController extends Controller
      */
     public function lembrarAprovacao(int $versao, NotificacaoEstudioService $notificacao): RedirectResponse
     {
-        $notificacao->aprovacaoPendente(VersaoAudio::findOrFail($versao));
+        $versao = VersaoAudio::findOrFail($versao);
+
+        // Só faz sentido lembrar a versão mais recente que ainda aguarda decisão — não uma
+        // versão antiga, nem uma já aprovada (ou com ajustes pedidos).
+        if ($versao->estado !== 'pendente_aprovacao' || $versao->faixaMusical->ultimaVersao()?->id !== $versao->id) {
+            return back()->with('erro', 'Esta versão já não está à espera de aprovação do artista.');
+        }
+
+        $notificacao->aprovacaoPendente($versao);
 
         return back()->with('sucesso', 'Lembrete enviado ao artista.');
     }

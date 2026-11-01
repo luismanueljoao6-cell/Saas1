@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Core\Services\TenantManager;
 use Modules\EstudioMusica\Models\SessaoEstudio;
 use Modules\EstudioMusica\Services\NotificacaoEstudioService;
+use Modules\EstudioMusica\Support\EmpresasDoEstudio;
 use Throwable;
 
 /**
@@ -35,16 +36,21 @@ class EnviarLembretesSessaoJob implements ShouldQueue
     public function handle(TenantManager $tenantManager, NotificacaoEstudioService $notificacao): void
     {
         $tenantManager->semTenant(function () use ($notificacao): void {
-            $this->enviarJanela(24, 'lembrete_24h_enviado_em', $notificacao);
-            $this->enviarJanela(2, 'lembrete_2h_enviado_em', $notificacao);
+            // Só estúdios com o serviço ativo e acesso: os outros já não são clientes.
+            $empresas = EmpresasDoEstudio::ativas();
+
+            $this->enviarJanela(24, 'lembrete_24h_enviado_em', $notificacao, $empresas);
+            $this->enviarJanela(2, 'lembrete_2h_enviado_em', $notificacao, $empresas);
         });
     }
 
-    protected function enviarJanela(int $horasAntes, string $coluna, NotificacaoEstudioService $notificacao): void
+    /** @param  array<int, int>  $empresas */
+    protected function enviarJanela(int $horasAntes, string $coluna, NotificacaoEstudioService $notificacao, array $empresas): void
     {
         $alvo = now()->addHours($horasAntes);
 
         SessaoEstudio::query()
+            ->whereIn('empresa_id', $empresas)
             ->whereNotIn('estado', ['cancelada', 'concluida'])
             ->whereNull($coluna)
             ->whereBetween('inicio_previsto', [

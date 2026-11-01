@@ -10,6 +10,7 @@ use Modules\EstudioMusica\Models\CampanhaEnviada;
 use Modules\EstudioMusica\Models\CupomDesconto;
 use Modules\EstudioMusica\Models\ProjetoMusical;
 use Modules\EstudioMusica\Support\Aniversario;
+use Modules\EstudioMusica\Support\EmpresasDoEstudio;
 use Modules\Faturacao\Models\Cliente;
 
 /**
@@ -46,6 +47,7 @@ class CampanhaMarketingService
 
         $tenantManager->semTenant(function () use ($hoje, &$enviados): void {
             Cliente::query()
+                ->whereIn('empresa_id', EmpresasDoEstudio::ativas())
                 ->whereNotNull('data_nascimento')
                 ->where('aceita_marketing', true)
                 ->chunkById(100, function ($clientes) use ($hoje, &$enviados): void {
@@ -64,7 +66,7 @@ class CampanhaMarketingService
                         $this->notificacao->enviar(
                             $cliente,
                             'Parabéns!',
-                            "Parabéns pelo teu dia, {$nome}! Ganhaste {$cupom->percentual_desconto}% de desconto em horas de estúdio, válido até {$cupom->valido_ate->format('d/m/Y')} — aplicado automaticamente na tua próxima sessão (cupão {$cupom->codigo}).".$this->rodapeSaida($cliente)
+                            "Parabéns pelo teu dia, {$nome}! Ganhaste {$this->percentagemLegivel($cupom->percentual_desconto)}% de desconto em horas de estúdio, válido até {$cupom->valido_ate->format('d/m/Y')} — aplicado automaticamente na tua próxima sessão (cupão {$cupom->codigo}).".$this->rodapeSaida($cliente)
                         );
 
                         $this->registarEnvio($cliente, 'aniversario', (string) $hoje->year);
@@ -90,6 +92,7 @@ class CampanhaMarketingService
 
         $tenantManager->semTenant(function () use ($dataAlvo, $dataLimite, &$enviados): void {
             ProjetoMusical::query()
+                ->whereIn('empresa_id', EmpresasDoEstudio::ativas())
                 ->where('estado', 'concluido')
                 ->whereDate('concluido_em', '<=', $dataAlvo)
                 ->whereDate('concluido_em', '>=', $dataLimite)
@@ -159,6 +162,12 @@ class CampanhaMarketingService
      * mensagens promocionais — direito de oposição ao marketing direto.
      * Ver LandingController::cancelarMarketing().
      */
+    /** "15.00" → "15"; "12.50" → "12.5". */
+    protected function percentagemLegivel(string|float $percentual): string
+    {
+        return rtrim(rtrim(number_format((float) $percentual, 2, '.', ''), '0'), '.');
+    }
+
     protected function rodapeSaida(Cliente $cliente): string
     {
         $url = URL::signedRoute('estudiomusica.landing.marketing-sair', [

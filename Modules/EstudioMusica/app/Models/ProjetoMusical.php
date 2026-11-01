@@ -7,11 +7,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
 use Modules\Core\Models\User;
 use Modules\Core\Traits\BelongsToTenant;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
+use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\Recibo;
+use Modules\Faturacao\Support\Dinheiro;
 
 class ProjetoMusical extends Model
 {
@@ -212,58 +215,61 @@ class ProjetoMusical extends Model
         return $this->valorTotalFaturado();
     }
 
+    /**
+     * Faturado LÍQUIDO, com IVA: faturas emitidas menos as notas de crédito emitidas sobre
+     * elas. Uma fatura emitida nunca muda de estado — corrige-se/anula-se com nota de crédito
+     * (ver NotaCreditoDebitoService) — por isso ignorar os créditos deixava o projeto com uma
+     * "dívida fantasma" (e sem poder refaturar o que foi anulado).
+     */
     public function valorTotalFaturado(): float
     {
-        return (float) $this->faturas()
-            ->where('faturas.estado', 'emitida')
-            ->sum('faturas.valor_total');
+        return $this->emKwanzas($this->faturadoCentimos());
     }
 
     /**
-     * Soma do que já foi faturado SEM IVA. `valor_pacote` é sempre um valor
-     * sem IVA (é o preço unitário das faturas de sinal/saldo, onde o IVA é
-     * acrescentado), por isso o saldo a faturar tem de ser calculado nesta
-     * mesma base — nunca contra `valor_total` (que já inclui IVA).
+     * Soma do que já foi faturado SEM IVA (líquido de notas de crédito). `valor_pacote` é
+     * sempre um valor sem IVA (é o preço unitário das faturas de sinal/saldo, onde o IVA é
+     * acrescentado), por isso o saldo a faturar tem de ser calculado nesta mesma base —
+     * nunca contra `valor_total` (que já inclui IVA).
      */
     public function valorTotalFaturadoSemIva(): float
     {
-        return (float) $this->faturas()
-            ->where('faturas.estado', 'emitida')
-            ->sum('faturas.valor_sem_iva');
+        return $this->emKwanzas($this->faturadoSemIvaCentimos());
     }
 
+    /** Total (com IVA) já creditado por notas de crédito emitidas sobre as faturas do projeto. */
+    public function valorCreditado(): float
+    {
+        return $this->emKwanzas($this->resumoDasFaturas()->sum('creditado'));
+    }
+
+    /**
+     * Recebido: recibos emitidos ligados ao projeto pelo Estúdio (tabela própria) E os
+     * recibos emitidos diretamente no Faturação contra faturas do projeto — um pagamento
+     * registado no ecrã de Recibos do Faturação também quita o projeto.
+     */
     public function valorTotalRecebido(): float
     {
-        return (float) $this->recibos()
-            ->where('recibos.estado', 'emitido')
-            ->sum('recibos.valor');
+        return $this->emKwanzas($this->recebidoCentimos());
     }
 
     /**
      * O que o cliente tem de pagar no total, para efeitos de saldo e de
-     * quitação. Num projeto por PACOTE é o valor fechado do pacote, mesmo
+     * quitação. Num projeto por PACOTE é o valor fechado do pacote (com IVA), mesmo
      * que ainda só o sinal esteja faturado — senão um sinal de 40% pago
      * daria "saldo zero" e libertaria os ficheiros com 60% por pagar.
-     * (max() cobre o caso de se ter faturado mais do que o pacote, ex.:
-     * horas extra.) Num projeto por HORA não há total fixo: é o que já foi
-     * faturado, sessão a sessão.
+     * Menos o que foi creditado (um desconto dado por nota de crédito baixa o preço), mas
+     * nunca menos do que já está faturado (ex.: horas extra). Num projeto por HORA não há
+     * total fixo: é o que já foi faturado, sessão a sessão, líquido de créditos.
      */
     public function valorDevido(): float
     {
-        if ($this->tipo_cobranca === 'pacote') {
-            // O cliente paga o pacote COM IVA (valor_pacote é sem IVA).
-            $taxa = (float) config('faturacao.taxa_iva_geral');
-            $pacoteComIva = round((float) $this->valor_pacote * (1 + $taxa / 100), 2);
-
-            return max($pacoteComIva, $this->valorTotalFaturado());
-        }
-
-        return $this->valorTotalFaturado();
+        return $this->emKwanzas($this->devidoCentimos());
     }
 
     public function saldoDevedor(): float
     {
-        return max(0.0, round($this->valorDevido() - $this->valorTotalRecebido(), 2));
+        return $this->emKwanzas(max(0, $this->devidoCentimos() - $this->recebidoCentimos()));
     }
 
     /**
@@ -274,6 +280,184 @@ class ProjetoMusical extends Model
      */
     public function financeiramenteQuitado(): bool
     {
-        return $this->valorDevido() > 0.0 && $this->saldoDevedor() <= 0.0;
+        $devido = $this->devidoCentimos();
+
+        return $devido > 0 && $devido - $this->recebidoCentimos() <= 0;
+    }
+
+    /**
+     * Faturas "vivas": emitidas e NÃO totalmente creditadas. É o que conta para saber se o
+     * sinal / o saldo já foram faturados — um sinal anulado por nota de crédito pode (e tem de
+     * poder) ser emitido outra vez.
+     *
+     * @return Collection<int, object{id: int, tipo: ?string, total: int, sem_iva: int, creditado: int, creditado_sem_iva: int}>
+     */
+    public function faturasAtivas(?string $tipo = null): Collection
+    {
+        return $this->resumoDasFaturas()
+            ->filter(fn (object $f) => $f->creditado < $f->total && ($tipo === null || $f->tipo === $tipo))
+            ->values();
+    }
+
+    /** Quanto falta receber de UMA fatura (cêntimos): total − notas de crédito − recibos emitidos. */
+    public function saldoDaFaturaCentimos(Fatura $fatura): int
+    {
+        $creditado = NotaCreditoDebito::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa_id)
+            ->where('fatura_id', $fatura->id)
+            ->where('tipo', 'credito')
+            ->where('estado', 'emitida')
+            ->get(['valor_total'])
+            ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_total));
+
+        $recebido = Recibo::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa_id)
+            ->where('fatura_id', $fatura->id)
+            ->where('estado', 'emitido')
+            ->get(['valor'])
+            ->sum(fn ($recibo) => Dinheiro::centimos($recibo->valor));
+
+        return max(0, Dinheiro::centimos($fatura->valor_total) - $creditado - $recebido);
+    }
+
+    /**
+     * Situação de cada fatura emitida do projeto, para o ecrã: total, creditado, recebido e
+     * o que falta (em Kz). Uma fatura totalmente creditada fica com `em_falta` 0.
+     *
+     * @return Collection<int, object{fatura: Fatura, tipo: ?string, total: float, creditado: float, recebido: float, em_falta: float}>
+     */
+    public function situacaoDasFaturas(): Collection
+    {
+        $faturas = $this->faturas()
+            ->where('faturas.estado', 'emitida')
+            ->orderBy('faturas.id')
+            ->get();
+
+        if ($faturas->isEmpty()) {
+            return collect();
+        }
+
+        $creditos = NotaCreditoDebito::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa_id)
+            ->whereIn('fatura_id', $faturas->pluck('id'))
+            ->where('tipo', 'credito')
+            ->where('estado', 'emitida')
+            ->get(['fatura_id', 'valor_total'])
+            ->groupBy('fatura_id');
+
+        $recibos = Recibo::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa_id)
+            ->whereIn('fatura_id', $faturas->pluck('id'))
+            ->where('estado', 'emitido')
+            ->get(['fatura_id', 'valor'])
+            ->groupBy('fatura_id');
+
+        return $faturas->map(function (Fatura $fatura) use ($creditos, $recibos) {
+            $total = Dinheiro::centimos($fatura->valor_total);
+            $creditado = $creditos->get($fatura->id, collect())->sum(fn ($n) => Dinheiro::centimos($n->valor_total));
+            $recebido = $recibos->get($fatura->id, collect())->sum(fn ($r) => Dinheiro::centimos($r->valor));
+
+            return (object) [
+                'fatura' => $fatura,
+                'tipo' => $fatura->pivot->tipo,
+                'total' => $this->emKwanzas($total),
+                'creditado' => $this->emKwanzas($creditado),
+                'recebido' => $this->emKwanzas($recebido),
+                'em_falta' => $this->emKwanzas(max(0, $total - $creditado - $recebido)),
+            ];
+        })->values();
+    }
+
+    /**
+     * Faturas EMITIDAS do projeto com o que já foi creditado sobre cada uma (cêntimos).
+     *
+     * @return Collection<int, object{id: int, tipo: ?string, total: int, sem_iva: int, creditado: int, creditado_sem_iva: int}>
+     */
+    protected function resumoDasFaturas(): Collection
+    {
+        $faturas = $this->faturas()
+            ->where('faturas.estado', 'emitida')
+            ->get(['faturas.id', 'faturas.valor_total', 'faturas.valor_sem_iva']);
+
+        if ($faturas->isEmpty()) {
+            return collect();
+        }
+
+        $creditos = NotaCreditoDebito::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa_id)
+            ->whereIn('fatura_id', $faturas->pluck('id'))
+            ->where('tipo', 'credito')
+            ->where('estado', 'emitida')
+            ->get(['fatura_id', 'valor_total', 'valor_sem_iva'])
+            ->groupBy('fatura_id');
+
+        return $faturas->map(function (Fatura $fatura) use ($creditos) {
+            $notas = $creditos->get($fatura->id, collect());
+
+            return (object) [
+                'id' => (int) $fatura->id,
+                'tipo' => $fatura->pivot->tipo,
+                'total' => Dinheiro::centimos($fatura->valor_total),
+                'sem_iva' => Dinheiro::centimos($fatura->valor_sem_iva),
+                'creditado' => $notas->sum(fn ($n) => Dinheiro::centimos($n->valor_total)),
+                'creditado_sem_iva' => $notas->sum(fn ($n) => Dinheiro::centimos($n->valor_sem_iva)),
+            ];
+        })->values();
+    }
+
+    public function faturadoCentimos(): int
+    {
+        return $this->resumoDasFaturas()->sum(fn (object $f) => max(0, $f->total - $f->creditado));
+    }
+
+    public function faturadoSemIvaCentimos(): int
+    {
+        return $this->resumoDasFaturas()->sum(fn (object $f) => max(0, $f->sem_iva - $f->creditado_sem_iva));
+    }
+
+    public function recebidoCentimos(): int
+    {
+        $viaProjeto = $this->recibos()
+            ->where('recibos.estado', 'emitido')
+            ->get(['recibos.id', 'recibos.valor']);
+
+        $idsFaturas = $this->faturas()->pluck('faturas.id');
+
+        $viaFatura = $idsFaturas->isEmpty()
+            ? collect()
+            : Recibo::withoutGlobalScopes()
+                ->where('empresa_id', $this->empresa_id)
+                ->whereIn('fatura_id', $idsFaturas)
+                ->where('estado', 'emitido')
+                ->get(['id', 'valor']);
+
+        // Um recibo ligado pelas duas vias conta uma só vez.
+        return $viaProjeto->concat($viaFatura)
+            ->unique('id')
+            ->sum(fn ($recibo) => Dinheiro::centimos($recibo->valor));
+    }
+
+    public function devidoCentimos(): int
+    {
+        if ($this->tipo_cobranca === 'pacote') {
+            $creditado = $this->resumoDasFaturas()->sum('creditado');
+
+            return max(0, $this->pacoteComIvaCentimos() - $creditado, $this->faturadoCentimos());
+        }
+
+        return $this->faturadoCentimos();
+    }
+
+    /** O pacote COM IVA, calculado como uma única fatura o calcularia (mesma aritmética do Faturação). */
+    public function pacoteComIvaCentimos(): int
+    {
+        $linha = Dinheiro::calcularLinha(1, $this->valor_pacote ?? 0, config('faturacao.taxa_iva_geral'));
+
+        return Dinheiro::centimos($linha['total']);
+    }
+
+    protected function emKwanzas(int $centimos): float
+    {
+        return round($centimos / 100, 2);
     }
 }

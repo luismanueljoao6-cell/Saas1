@@ -8,18 +8,19 @@ Depende de **Core** (tenancy, menu, `RegistoEmpresaService`) e **Faturacao** (`F
 `NumeracaoService`, `AssinaturaFiscalService`, `Cliente`, `Fatura`, `Recibo`). **Não altera nenhum
 ficheiro desses módulos** — tudo o que precisa deles é feito a partir daqui.
 
-> ⚠️ **Nada disto foi executado.** O ambiente onde o módulo foi escrito não tem PHP nem acesso ao
-> Packagist. O código foi verificado estaticamente (delimitadores, namespaces, `use`, rotas ↔
-> controllers ↔ views) e relido contra o código real dos outros módulos, mas **corre primeiro
-> `php artisan test`** antes de confiares nele.
+> ✅ **Verificação.** O módulo tem testes de feature (`php artisan test --testsuite=Modules --filter=EstudioMusica`)
+> que correm contra o motor real do Faturação (emissão, notas de crédito, recibos), o portal por HTTP e os jobs.
+> O que **continua sem teste contra o serviço real**: o WhatsApp Cloud API e o Twilio (só se testa o
+> comportamento do job quando o canal falha) e o `ffmpeg` (os testes usam um executável falso). A auditoria
+> mais recente e o que ficou de fora estão em [docs/AUDITORIA.md](docs/AUDITORIA.md).
 
 ## Ativar
 
 ```bash
 composer dump-autoload                       # novos namespaces PSR-4 (já em composer.json)
-php artisan migrate                          # 12 migrations, prefixo 2026_04_01_
+php artisan migrate                          # migrations do módulo (prefixos 2026_04_01_ e 2026_10_)
 php artisan db:seed --class="Modules\EstudioMusica\Database\Seeders\EstudioMusicaPermissoesSeeder"
-php artisan test                             # inclui os 2 testes do módulo
+php artisan test                             # inclui os testes do módulo
 ```
 
 - **Papéis/permissões**: o seeder cria, **por empresa** (o spatie está com `teams`), os papéis
@@ -96,7 +97,9 @@ php artisan test                             # inclui os 2 testes do módulo
   campanha de aniversário não funciona sem ela.
 - **Landing**: identificada por `/estudio/{id da empresa}` (sem slug/subdomínio — não existe no
   projeto). Equipamentos/história do estúdio ficam como texto simples; o portfólio vem de projetos
-  marcados `destaque_portfolio` com `link_publico`. **Falta um ecrã para marcar esses dois campos.**
+  marcados `destaque_portfolio` com `link_publico`. Marca-se na página do projeto (cartão «Portfólio na
+  página pública», só Administrador — permissão `estudiomusica.gerir-marketing`), com a confirmação de
+  que o artista autorizou a divulgação.
 - **Formulário público** → `SolicitacaoOrcamento` (lead); a Receção converte à mão em Cliente/Sessão.
 - **Link do portal**: ao gerá-lo, é enviado de imediato ao cliente por `NotificacaoEstudioService`
   (WhatsApp/SMS/e-mail) — e também mostrado numa mensagem flash à equipa, para reenvio manual se precisar.
@@ -106,11 +109,14 @@ php artisan test                             # inclui os 2 testes do módulo
 - **WhatsApp Cloud API e Twilio** foram reconstruídos da documentação pública, sem teste real. Por
   omissão os dois canais são `log` (só registam). WhatsApp fora da janela de 24h exige *message
   templates* aprovados pela Meta; este canal envia texto livre.
-- Faltam ecrãs dedicados para: editar a ficha do artista (só existe a rota
-  `PUT clientes/{cliente}/perfil-artista`, sem formulário — depende de um ecrã que a chame), marcar
-  portfólio, registar recibos, e ver o calendário em grelha (a lista de sessões é uma tabela). Os
-  endpoints/serviços existem.
-- Sem paginação/filtros nas listas do portal; sem *rate limit* dedicado ao portal em si — só o
-  formulário de orçamento da landing tem `throttle` (o token do portal tem 48 caracteres aleatórios).
-- Testes: só os dois de maior risco (conflito de agenda e quitação), no espírito dos testes dos
-  outros módulos. O fluxo HTTP do portal e os jobs não têm testes.
+- Faltam ecrãs dedicados para: editar os dados de um projeto depois de criado (prazo, valor do pacote,
+  percentagem do sinal, produtor/engenheiro) e ver o calendário em grelha (a lista de sessões é uma
+  tabela). A ficha do artista, as salas (editar/desativar), o portfólio, os recibos e o agendamento
+  (projeto, engenheiro, reagendar, cancelar, faturar) têm ecrã.
+- O estado de sessão `confirmada` existe (e o check-in aceita-o) mas nada o atribui: não há ação
+  «confirmar sessão».
+- Sem paginação/filtros nas listas do portal. O portal tem *rate limit* por token; o formulário de
+  orçamento e as reclamações da landing têm o seu próprio `throttle`.
+- A landing continua a usar o id numérico da empresa (`/estudio/{id}`), o que permite enumerar
+  estúdios. Há `slug` na tabela `empresas`, mas é do módulo Atelier — usá-lo aqui criava uma
+  dependência entre verticais, por isso ficou por decidir.

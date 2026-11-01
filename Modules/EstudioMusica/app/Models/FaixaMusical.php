@@ -21,9 +21,10 @@ class FaixaMusical extends Model
         'ordem',
     ];
 
+    /** withTrashed: a faixa continua a conhecer o seu projeto mesmo que ele tenha sido apagado (notificações, portal). */
     public function projetoMusical(): BelongsTo
     {
-        return $this->belongsTo(ProjetoMusical::class);
+        return $this->belongsTo(ProjetoMusical::class)->withTrashed();
     }
 
     public function versoes(): HasMany
