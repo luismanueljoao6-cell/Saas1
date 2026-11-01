@@ -292,7 +292,8 @@ class AgtSubmissaoTest extends TestCase
         $this->assertSame('pendente', $submissao->estado);
         $this->assertSame(1, $submissao->tentativas);
         $this->assertNotEmpty($submissao->submission_uuid);
-        $this->assertNotNull($submissao->enviado_em);
+        $this->assertNotNull($submissao->submission_timestamp);
+        $this->assertNull($submissao->enviado_em);
     }
 
     public function test_retentativa_de_rede_reutiliza_uuid_e_timestamp_originais(): void
@@ -305,7 +306,7 @@ class AgtSubmissaoTest extends TestCase
 
         $submissao = AgtSubmissao::query()->firstOrFail();
         $uuidOriginal = $submissao->submission_uuid;
-        $timestampOriginal = $submissao->enviado_em->copy();
+        $timestampOriginal = $submissao->submission_timestamp->copy();
 
         $this->falharRede = false;
         $servico->enviarPendentes();
@@ -313,7 +314,8 @@ class AgtSubmissaoTest extends TestCase
         $submissao->refresh();
         $this->assertSame(AgtSubmissao::ENVIADO, $submissao->estado);
         $this->assertSame($uuidOriginal, $submissao->submission_uuid);
-        $this->assertTrue($timestampOriginal->equalTo($submissao->enviado_em));
+        $this->assertTrue($timestampOriginal->equalTo($submissao->submission_timestamp));
+        $this->assertNotNull($submissao->enviado_em);
 
         $pedidos = collect(Http::recorded())
             ->map(fn ($par) => $par[0])
