@@ -64,7 +64,7 @@ class FaturaController extends Controller
     /**
      * Para o formulário: motivos de isenção (só há seletor se a taxa 0% for permitida).
      *
-     * @return array{motivosIsencao: array<string, string>, aceitaIsencao: bool}
+     * @return array{motivosIsencao: array<string, string>, aceitaIsencao: bool, tiposOperacao: array<string, string>}
      */
     protected function dadosDeIsencao(): array
     {
