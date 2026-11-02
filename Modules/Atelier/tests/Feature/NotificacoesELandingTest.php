@@ -56,6 +56,37 @@ class NotificacoesELandingTest extends TestCase
         );
     }
 
+    public function test_atelier_regista_canais_e_persiste_notificacao_na_outbox_do_core(): void
+    {
+        $empresa = Empresa::create(['nome_comercial' => 'Atelier Outbox', 'nif' => '400000104']);
+        $tenant = app(TenantManager::class);
+        $tenant->set($empresa->id);
+
+        $cliente = Cliente::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Cliente Outbox',
+            'telefone' => '923456789',
+        ]);
+
+        $registry = app(NotificationChannelRegistry::class);
+        $this->assertTrue($registry->has('atelier.whatsapp'));
+        $this->assertTrue($registry->has('atelier.sms'));
+
+        $notificacao = app(NotificadorClienteService::class)->enfileirarViaOutbox(
+            $cliente,
+            'whatsapp',
+            'A sua encomenda está pronta.',
+            'atelier-pedido-'.$cliente->id.'-pronto',
+        );
+
+        $this->assertInstanceOf(NotificationOutbox::class, $notificacao);
+        $this->assertSame($empresa->id, (int) $notificacao->empresa_id);
+        $this->assertSame('atelier.whatsapp', $notificacao->channel);
+        $this->assertSame('244923456789', $notificacao->recipient);
+        $this->assertSame(['message' => 'A sua encomenda está pronta.'], $notificacao->payload);
+        $this->assertSame(NotificationOutbox::STATUS_PENDING, $notificacao->status);
+    }
+
     public function test_formulario_de_orcamento_de_atelier_nao_publicado_devolve_404(): void
     {
         $empresa = Empresa::create(['nome_comercial' => 'Atelier Privado', 'nif' => '400000102']);
