@@ -119,8 +119,33 @@ class DispararCampanhaJob implements ShouldQueue
                 ['canal' => $campanha->canal, 'estado' => CampanhaEnvio::ESTADO_PENDENTE],
             );
 
-            if (in_array($envio->estado, [CampanhaEnvio::ESTADO_ENVIADO, CampanhaEnvio::ESTADO_ACEITE], true) || $envio->notification_outbox_id !== null) {
+            if (in_array($envio->estado, [CampanhaEnvio::ESTADO_ENVIADO, CampanhaEnvio::ESTADO_ACEITE], true)) {
                 continue;
+            }
+
+            // Um envio telefónico só pode ganhar uma nova chave idempotente
+            // depois de a tentativa anterior terminar definitivamente.
+            if ($envio->notification_outbox_id !== null) {
+                $outboxAnterior = $envio->notificationOutbox;
+
+                if (! $outboxAnterior || ! in_array($outboxAnterior->status, [
+                    NotificationOutbox::STATUS_FAILED,
+                    NotificationOutbox::STATUS_DEAD_LETTER,
+                ], true)) {
+                    continue;
+                }
+
+                if ($envio->estado !== CampanhaEnvio::ESTADO_FALHOU) {
+                    continue;
+                }
+
+                $envio->update([
+                    'tentativa' => max(1, (int) $envio->tentativa) + 1,
+                    'notification_outbox_id' => null,
+                    'estado' => CampanhaEnvio::ESTADO_PENDENTE,
+                    'erro' => null,
+                ]);
+                $envio->refresh();
             }
 
             $mensagem = $campanha->mensagem
@@ -132,7 +157,7 @@ class DispararCampanhaJob implements ShouldQueue
                         $cliente,
                         $campanha->canal,
                         $mensagem,
-                        'atelier-campanha-'.$campanha->id.'-cliente-'.$cliente->id,
+                        'atelier-campanha-'.$campanha->id.'-cliente-'.$cliente->id.'-tentativa-'.$envio->tentativa,
                     );
 
                     $envio->update([
