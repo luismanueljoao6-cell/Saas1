@@ -8,6 +8,9 @@ use Modules\Atelier\Events\PedidoMudouEstado;
 use Modules\Atelier\Listeners\EnviarNotificacaoMudancaEstado;
 use Modules\Atelier\Models\Pedido;
 use Modules\Atelier\Models\PedidoOrcamento;
+use Modules\Atelier\Models\Campanha;
+use Modules\Atelier\Models\CampanhaEnvio;
+use Modules\Atelier\Listeners\SincronizarEstadoCampanhaOutbox;
 use Modules\Atelier\Models\Perfil;
 use Modules\Atelier\Notifications\ClienteAtelierNotification;
 use Modules\Core\Models\Empresa;
@@ -145,6 +148,84 @@ class NotificacoesELandingTest extends TestCase
             ClienteAtelierNotification::class,
             fn ($notification, $channels, $notifiable) => ($notifiable->routes['mail'] ?? null) === 'campanha@example.test'
         );
+    }
+
+    public function test_estado_aceite_da_outbox_actualiza_envio_de_campanha_sem_confundir_aceite_com_entrega(): void
+    {
+        $empresa = Empresa::create(['nome_comercial' => 'Atelier Estado Outbox', 'nif' => '400000106']);
+        $campanha = Campanha::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Campanha de estado',
+            'canal' => 'whatsapp',
+            'segmento' => 'todos',
+            'mensagem' => 'Mensagem de teste',
+            'estado' => 'enviada',
+        ]);
+
+        $outbox = NotificationOutbox::create([
+            'empresa_id' => $empresa->id,
+            'idempotency_key' => 'campanha-'.$campanha->id.'-cliente-1',
+            'channel' => 'atelier.whatsapp',
+            'recipient' => '244923456789',
+            'payload' => ['message' => 'Mensagem de teste'],
+        ]);
+
+        $envio = CampanhaEnvio::create([
+            'campanha_id' => $campanha->id,
+            'cliente_id' => 1,
+            'canal' => 'whatsapp',
+            'estado' => CampanhaEnvio::ESTADO_PENDENTE,
+            'notification_outbox_id' => $outbox->id,
+        ]);
+
+        app(SincronizarEstadoCampanhaOutbox::class)->handle(
+            new \Modules\Core\Events\NotificationStateChanged(
+                (int) $outbox->id,
+                (int) $empresa->id,
+                NotificationOutbox::STATUS_ACCEPTED,
+            )
+        );
+
+        $this->assertSame(CampanhaEnvio::ESTADO_ACEITE, $envio->fresh()->estado);
+        $this->assertNull($envio->fresh()->enviado_em);
+    }
+
+    public function test_estado_da_outbox_de_outra_empresa_nao_actualiza_envio_de_campanha(): void
+    {
+        $empresa = Empresa::create(['nome_comercial' => 'Atelier Estado Isolamento', 'nif' => '400000107']);
+        $outraEmpresa = Empresa::create(['nome_comercial' => 'Outra Empresa', 'nif' => '400000108']);
+        $campanha = Campanha::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Campanha isolada',
+            'canal' => 'whatsapp',
+            'segmento' => 'todos',
+            'mensagem' => 'Mensagem de teste',
+            'estado' => 'enviada',
+        ]);
+        $outbox = NotificationOutbox::create([
+            'empresa_id' => $empresa->id,
+            'idempotency_key' => 'campanha-isolada-'.$campanha->id,
+            'channel' => 'atelier.whatsapp',
+            'recipient' => '244923456789',
+            'payload' => ['message' => 'Mensagem de teste'],
+        ]);
+        $envio = CampanhaEnvio::create([
+            'campanha_id' => $campanha->id,
+            'cliente_id' => 1,
+            'canal' => 'whatsapp',
+            'estado' => CampanhaEnvio::ESTADO_PENDENTE,
+            'notification_outbox_id' => $outbox->id,
+        ]);
+
+        app(SincronizarEstadoCampanhaOutbox::class)->handle(
+            new \Modules\Core\Events\NotificationStateChanged(
+                (int) $outbox->id,
+                (int) $outraEmpresa->id,
+                NotificationOutbox::STATUS_ACCEPTED,
+            )
+        );
+
+        $this->assertSame(CampanhaEnvio::ESTADO_PENDENTE, $envio->fresh()->estado);
     }
 
     public function test_formulario_de_orcamento_de_atelier_nao_publicado_devolve_404(): void
