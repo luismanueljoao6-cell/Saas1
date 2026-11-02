@@ -302,7 +302,7 @@ class NotificacoesELandingTest extends TestCase
         ]);
 
         app(SincronizarEstadoCampanhaOutbox::class)->handle(
-            new \\Modules\\Core\\Events\\NotificationStateChanged(
+            new \Modules\Core\Events\NotificationStateChanged(
                 (int) $outbox->id,
                 (int) $empresa->id,
                 NotificationOutbox::STATUS_ACCEPTED,
@@ -346,7 +346,7 @@ class NotificacoesELandingTest extends TestCase
         ]);
 
         app(SincronizarEstadoCampanhaOutbox::class)->handle(
-            new \\Modules\\Core\\Events\\NotificationStateChanged(
+            new \Modules\Core\Events\NotificationStateChanged(
                 (int) $outbox->id,
                 (int) $empresa->id,
                 NotificationOutbox::STATUS_DEAD_LETTER,
