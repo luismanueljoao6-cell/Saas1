@@ -116,7 +116,7 @@ class NotificacoesELandingTest extends TestCase
                 'atelier-pedido-'.$cliente->id.'-pronto',
             );
             $this->fail('Era esperado rejeitar a reutilização da chave com conteúdo diferente.');
-        } catch (\\RuntimeException $exception) {
+        } catch (\RuntimeException $exception) {
             $this->assertStringContainsString('dados diferentes', $exception->getMessage());
         }
     }
