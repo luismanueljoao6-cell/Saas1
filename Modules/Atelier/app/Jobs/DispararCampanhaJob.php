@@ -10,13 +10,13 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Atelier\Exceptions\NotificacaoException;
-use Modules\Core\Models\NotificationOutbox;
 use Modules\Atelier\Models\Campanha;
 use Modules\Atelier\Models\CampanhaEnvio;
 use Modules\Atelier\Services\CrmService;
 use Modules\Atelier\Services\Notificacoes\NotificadorClienteService;
 use Modules\Atelier\Services\PortalLinkService;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Services\TenantManager;
 use Throwable;
 
@@ -53,7 +53,9 @@ class DispararCampanhaJob implements ShouldQueue
 
     public int $timeout = 900;
 
-    public function __construct(protected int $campanhaId) {}
+    public function __construct(protected int $campanhaId)
+    {
+    }
 
     public function handle(
         TenantManager $tenantManager,
@@ -63,7 +65,7 @@ class DispararCampanhaJob implements ShouldQueue
     ): void {
         $lock = Cache::lock('atelier:campanha:'.$this->campanhaId, $this->timeout + 60);
 
-        if (! $lock->get()) {
+        if (!$lock->get()) {
             // Já há um job a processar esta campanha.
             return;
         }
