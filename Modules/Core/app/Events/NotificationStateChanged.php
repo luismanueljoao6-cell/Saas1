@@ -13,6 +13,5 @@ class NotificationStateChanged implements ShouldDispatchAfterCommit
         public readonly int $notificationId,
         public readonly int $empresaId,
         public readonly string $status,
-    ) {
-    }
+    ) {}
 }
