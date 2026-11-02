@@ -16,8 +16,7 @@ class NotificationProcessor
     public function __construct(
         private readonly TenantManager $tenants,
         private readonly NotificationChannelRegistry $channels,
-    )
-    {
+    ) {
     }
 
     public function process(int $notificationId, int $empresaId): void
@@ -50,7 +49,7 @@ class NotificationProcessor
                 ->lockForUpdate()
                 ->first();
 
-            if (!$notification || $notification->isTerminal()) {
+            if (! $notification || $notification->isTerminal()) {
                 return null;
             }
 
