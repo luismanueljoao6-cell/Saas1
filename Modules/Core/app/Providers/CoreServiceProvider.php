@@ -20,6 +20,7 @@ use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Services\SemLimites;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantProvisionerRegistry;
+use Modules\Core\Notifications\NotificationChannelRegistry;
 use Spatie\Permission\PermissionRegistrar;
 
 class CoreServiceProvider extends ServiceProvider
@@ -42,7 +43,7 @@ class CoreServiceProvider extends ServiceProvider
         // ser a MESMA instância em toda a aplicação, daí o singleton.
         $this->app->singleton(MenuRegistry::class);
         $this->app->singleton(TenantProvisionerRegistry::class);
-        $this->app->singleton(\Modules\Core\Notifications\NotificationChannelRegistry::class);
+        $this->app->singleton(NotificationChannelRegistry::class);
 
         // Por omissão, sem limites. bindIf: se o módulo Subscrições já
         // registou a sua implementação (por ordem de carregamento), esta
