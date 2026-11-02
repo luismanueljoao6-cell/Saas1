@@ -81,7 +81,10 @@ class CampanhaController extends Controller
 
         // Um clique duplo despacha dois jobs, mas o job tem um lock por
         // campanha e é idempotente: o segundo não reenvia nada.
-        DispararCampanhaJob::dispatch($campanha->id);
+        DispararCampanhaJob::dispatch(
+            $campanha->id,
+            in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true),
+        );
 
         return back()->with('sucesso', 'Envio iniciado — os estados de entrega vão aparecer aqui à medida que forem processados.');
     }
