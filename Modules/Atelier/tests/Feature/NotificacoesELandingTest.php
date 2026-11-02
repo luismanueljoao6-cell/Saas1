@@ -23,7 +23,6 @@ use Modules\Faturacao\Models\Cliente;
 use RuntimeException;
 use Tests\TestCase;
 
-
 class NotificacoesELandingTest extends TestCase
 {
     use RefreshDatabase;
@@ -168,6 +167,7 @@ class NotificacoesELandingTest extends TestCase
         $outbox = NotificationOutbox::create([
             'empresa_id' => $empresa->id,
             'idempotency_key' => 'campanha-'.$campanha->id.'-cliente-1',
+            'status' => NotificationOutbox::STATUS_ACCEPTED,
             'channel' => 'atelier.whatsapp',
             'recipient' => '244923456789',
             'payload' => ['message' => 'Mensagem de teste'],
@@ -292,6 +292,7 @@ class NotificacoesELandingTest extends TestCase
         $outbox = NotificationOutbox::create([
             'empresa_id' => $empresa->id,
             'idempotency_key' => 'campanha-final-'.$campanha->id,
+            'status' => NotificationOutbox::STATUS_ACCEPTED,
             'channel' => 'atelier.whatsapp',
             'recipient' => '244923456789',
             'payload' => ['message' => 'Mensagem de teste'],
@@ -336,6 +337,8 @@ class NotificacoesELandingTest extends TestCase
         $outbox = NotificationOutbox::create([
             'empresa_id' => $empresa->id,
             'idempotency_key' => 'campanha-falha-'.$campanha->id,
+            'status' => NotificationOutbox::STATUS_DEAD_LETTER,
+            'last_error' => 'Falha simulada no fornecedor.',
             'channel' => 'atelier.sms',
             'recipient' => '244923456780',
             'payload' => ['message' => 'Mensagem de teste'],
