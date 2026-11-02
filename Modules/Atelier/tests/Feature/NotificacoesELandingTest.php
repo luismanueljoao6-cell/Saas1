@@ -88,6 +88,37 @@ class NotificacoesELandingTest extends TestCase
         $this->assertSame('244923456789', $notificacao->recipient);
         $this->assertSame(['message' => 'A sua encomenda está pronta.'], $notificacao->payload);
         $this->assertSame(NotificationOutbox::STATUS_PENDING, $notificacao->status);
+
+        // Repetir o mesmo pedido com a mesma chave não cria um segundo envio.
+        $repetida = app(NotificadorClienteService::class)->enfileirarViaOutbox(
+            $cliente,
+            'whatsapp',
+            'A sua encomenda está pronta.',
+            'atelier-pedido-'.$cliente->id.'-pronto',
+        );
+
+        $this->assertSame($notificacao->id, $repetida->id);
+        $this->assertSame(
+            1,
+            NotificationOutbox::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->where('idempotency_key', 'atelier-pedido-'.$cliente->id.'-pronto')
+                ->where('channel', 'atelier.whatsapp')
+                ->count()
+        );
+
+        // Uma chave existente não pode ser reutilizada para outro conteúdo.
+        try {
+            app(NotificadorClienteService::class)->enfileirarViaOutbox(
+                $cliente,
+                'whatsapp',
+                'Conteúdo diferente.',
+                'atelier-pedido-'.$cliente->id.'-pronto',
+            );
+            $this->fail('Era esperado rejeitar a reutilização da chave com conteúdo diferente.');
+        } catch (\\RuntimeException $exception) {
+            $this->assertStringContainsString('dados diferentes', $exception->getMessage());
+        }
     }
 
     public function test_formulario_de_orcamento_de_atelier_nao_publicado_devolve_404(): void
