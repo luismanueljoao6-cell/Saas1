@@ -24,6 +24,18 @@ class SincronizarEstadoCampanhaOutbox
         }
 
         DB::transaction(function () use ($event, $estado): void {
+            // Nunca confiar apenas no ID recebido pelo evento: confirmar
+            // que a Outbox pertence à mesma empresa e ao canal do Atelier.
+            $outbox = NotificationOutbox::withoutGlobalScopes()
+                ->where('empresa_id', $event->empresaId)
+                ->whereKey($event->notificationId)
+                ->whereIn('channel', ['atelier.whatsapp', 'atelier.sms'])
+                ->first();
+
+            if (! $outbox || $outbox->status !== $event->status) {
+                return;
+            }
+
             // CampanhaEnvio não tem tenant scope próprio; a posse é
             // validada explicitamente através da campanha bloqueada abaixo.
             $envio = CampanhaEnvio::query()
@@ -52,7 +64,7 @@ class SincronizarEstadoCampanhaOutbox
                 $envio->update([
                     'estado' => $estado,
                     'erro' => $estado === CampanhaEnvio::ESTADO_FALHOU
-                        ? 'O transporte não aceitou a notificação após as tentativas disponíveis.'
+                        ? ($outbox->last_error ?: 'O transporte não aceitou a notificação após as tentativas disponíveis.')
                         : null,
                 ]);
             }
