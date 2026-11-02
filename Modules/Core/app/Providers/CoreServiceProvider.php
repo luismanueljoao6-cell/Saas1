@@ -17,10 +17,10 @@ use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Core\Http\Middleware\VerificarSubscricaoAtiva;
 use Modules\Core\Repositories\Contracts\EmpresaRepositoryInterface;
 use Modules\Core\Repositories\EmpresaRepository;
+use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Services\SemLimites;
 use Modules\Core\Services\TenantManager;
-use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Core\Services\TenantProvisionerRegistry;
 use Spatie\Permission\PermissionRegistrar;
 
