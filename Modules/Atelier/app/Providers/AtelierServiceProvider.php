@@ -13,6 +13,9 @@ use Modules\Atelier\Jobs\LembretesProvaJob;
 use Modules\Atelier\Jobs\VerificarAniversariosJob;
 use Modules\Atelier\Listeners\EnviarNotificacaoMudancaEstado;
 use Modules\Core\Services\MenuRegistry;
+use Modules\Core\Notifications\NotificationChannelRegistry;
+use Modules\Atelier\Notifications\Outbox\AtelierSmsOutboxChannel;
+use Modules\Atelier\Notifications\Outbox\AtelierWhatsAppOutboxChannel;
 
 class AtelierServiceProvider extends ServiceProvider
 {
@@ -33,9 +36,22 @@ class AtelierServiceProvider extends ServiceProvider
         ], 'atelier-config');
 
         $this->registarMenu();
+        $this->registarCanaisOutbox();
         $this->registarListeners();
         $this->registarComandos();
         $this->agendarTarefas();
+    }
+
+    /**
+     * Regista os canais de telefone do Atelier no pipeline persistente do Core.
+     * O envio legado continua disponível até cada fluxo adotar explicitamente
+     * uma chave de idempotência e os estados assíncronos da Outbox.
+     */
+    protected function registarCanaisOutbox(): void
+    {
+        $registry = $this->app->make(NotificationChannelRegistry::class);
+        $registry->register($this->app->make(AtelierWhatsAppOutboxChannel::class));
+        $registry->register($this->app->make(AtelierSmsOutboxChannel::class));
     }
 
     protected function registarMenu(): void
