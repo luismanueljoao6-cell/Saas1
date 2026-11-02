@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Core\Models\NotificationAttempt;
 use Modules\Core\Models\NotificationOutbox;
+use Modules\Core\Events\NotificationStateChanged;
 use Modules\Core\Services\TenantManager;
 use Throwable;
 
@@ -66,6 +67,12 @@ class NotificationProcessor
                     'locked_at' => null,
                     'lock_token' => null,
                 ])->save();
+
+                NotificationStateChanged::dispatch(
+                    (int) $notification->id,
+                    $empresaId,
+                    NotificationOutbox::STATUS_DEAD_LETTER,
+                );
 
                 return null;
             }
@@ -147,10 +154,21 @@ class NotificationProcessor
                     'finished_at' => now(),
                 ])->save();
 
+                NotificationStateChanged::dispatch(
+                    (int) $notification->id,
+                    $empresaId,
+                    NotificationOutbox::STATUS_ACCEPTED,
+                );
+
                 return;
             }
 
             $this->scheduleRetry($notification, $attempt, $result->errorMessage ?? 'Fornecedor recusou a notificação.', $result->errorCode, $result->responseCode, $result->metadata);
+
+            $notification->refresh();
+            if (in_array($notification->status, [NotificationOutbox::STATUS_FAILED, NotificationOutbox::STATUS_DEAD_LETTER], true)) {
+                NotificationStateChanged::dispatch((int) $notification->id, $empresaId, $notification->status);
+            }
         });
     }
 
@@ -174,6 +192,11 @@ class NotificationProcessor
                 ->first();
 
             $this->scheduleRetry($notification, $attempt, $message);
+
+            $notification->refresh();
+            if (in_array($notification->status, [NotificationOutbox::STATUS_FAILED, NotificationOutbox::STATUS_DEAD_LETTER], true)) {
+                NotificationStateChanged::dispatch((int) $notification->id, $empresaId, $notification->status);
+            }
         });
     }
 
