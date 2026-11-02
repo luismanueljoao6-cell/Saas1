@@ -138,6 +138,13 @@ class DispararCampanhaJob implements ShouldQueue
             $campanha->refresh();
         }
 
+        // Um job repetido pela fila/agendador nunca pode transformar uma
+        // reconciliação terminal num novo envio. Só o botão de reenvio manual
+        // autoriza uma nova tentativa para campanhas já concluídas.
+        if (! $this->reenvioExplicito && in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true)) {
+            return;
+        }
+
         $reenvio = $this->reenvioExplicito
             && in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true);
         $idsPorReenviar = collect();
