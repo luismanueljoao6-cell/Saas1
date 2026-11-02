@@ -55,45 +55,36 @@ class NotificationDispatcher
             throw new InvalidArgumentException('O limite de tentativas deve estar entre 1 e 20.');
         }
 
-        $notification = DB::transaction(function () use (
-            $tenantId, $channel, $recipient, $payload, $idempotencyKey, $provider, $maxAttempts
-        ): NotificationOutbox {
-            $existing = NotificationOutbox::withoutGlobalScopes()
-                ->where('empresa_id', $tenantId)
-                ->where('idempotency_key', $idempotencyKey)
-                ->where('channel', $channel)
-                ->first();
-
-            if ($existing) {
-                // Uma chave idempotente identifica uma operação, não apenas
-                // uma linha. Reutilizá-la com outro conteúdo poderia fazer o
-                // chamador acreditar que uma mensagem diferente foi enviada.
-                if (
-                    $existing->recipient !== $recipient
-                    || $existing->payload !== $payload
-                    || $existing->provider !== $provider
-                ) {
-                    throw new RuntimeException(
-                        'A chave de idempotência já foi utilizada com dados diferentes para este canal.'
-                    );
-                }
-
-                return $existing;
-            }
-
-            return NotificationOutbox::create([
+        // firstOrCreate usa a chave única da base de dados como árbitro
+        // em concorrência e recupera a linha criada por outro pedido.
+        $query = NotificationOutbox::withoutGlobalScopes();
+        $notification = $query->firstOrCreate(
+            [
                 'empresa_id' => $tenantId,
-                'uuid' => (string) Str::uuid(),
                 'idempotency_key' => $idempotencyKey,
                 'channel' => $channel,
+            ],
+            [
+                'uuid' => (string) Str::uuid(),
                 'provider' => $provider,
                 'recipient' => $recipient,
                 'payload' => $payload,
                 'status' => NotificationOutbox::STATUS_PENDING,
                 'max_attempts' => $maxAttempts,
                 'available_at' => now(),
-            ]);
-        });
+            ],
+        );
+
+        // A mesma chave nunca pode representar conteúdo ou destino diferentes.
+        if (
+            $notification->recipient !== $recipient
+            || $notification->payload !== $payload
+            || $notification->provider !== $provider
+        ) {
+            throw new RuntimeException(
+                'A chave de idempotência já foi utilizada com dados diferentes para este canal.'
+            );
+        }
 
         if (in_array($notification->status, [
             NotificationOutbox::STATUS_PENDING,
