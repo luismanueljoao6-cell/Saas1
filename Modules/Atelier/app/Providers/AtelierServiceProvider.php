@@ -13,11 +13,11 @@ use Modules\Atelier\Jobs\LembretesProvaJob;
 use Modules\Atelier\Jobs\VerificarAniversariosJob;
 use Modules\Atelier\Listeners\EnviarNotificacaoMudancaEstado;
 use Modules\Atelier\Listeners\SincronizarEstadoCampanhaOutbox;
-use Modules\Core\Events\NotificationStateChanged;
-use Modules\Core\Services\MenuRegistry;
-use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Atelier\Notifications\Outbox\AtelierSmsOutboxChannel;
 use Modules\Atelier\Notifications\Outbox\AtelierWhatsAppOutboxChannel;
+use Modules\Core\Events\NotificationStateChanged;
+use Modules\Core\Notifications\NotificationChannelRegistry;
+use Modules\Core\Services\MenuRegistry;
 
 class AtelierServiceProvider extends ServiceProvider
 {
