@@ -76,7 +76,7 @@ class NotificadorClienteService
         }
 
         if (! $cliente->empresa_id) {
-            throw new \\RuntimeException('O cliente não está associado a uma empresa.');
+            throw new \RuntimeException('O cliente não está associado a uma empresa.');
         }
 
         return app(NotificationDispatcher::class)->dispatch(
