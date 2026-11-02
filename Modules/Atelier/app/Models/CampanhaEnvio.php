@@ -15,6 +15,14 @@ use Modules\Faturacao\Models\Cliente;
  */
 class CampanhaEnvio extends Model
 {
+    public const ESTADO_PENDENTE = 'pendente';
+
+    public const ESTADO_ACEITE = 'aceite';
+
+    public const ESTADO_ENVIADO = 'enviado';
+
+    public const ESTADO_FALHOU = 'falhou';
+
     protected $table = 'atelier_campanha_envios';
 
     protected $fillable = ['campanha_id', 'cliente_id', 'canal', 'estado', 'erro', 'enviado_em', 'notification_outbox_id'];
