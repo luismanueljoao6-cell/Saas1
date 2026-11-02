@@ -25,7 +25,7 @@ class NotificationChannelRegistryTest extends TestCase
             }
         };
 
-        $registry = new NotificationChannelRegistry
+        $registry = new NotificationChannelRegistry();
         $registry->register($channel);
 
         $this->assertTrue($registry->has('fake'));
