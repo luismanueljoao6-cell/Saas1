@@ -9,7 +9,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Modules\Atelier\Exceptions\NotificacaoException;
 use Modules\Atelier\Models\Campanha;
 use Modules\Atelier\Models\CampanhaEnvio;
 use Modules\Atelier\Services\CrmService;
@@ -65,7 +64,7 @@ class DispararCampanhaJob implements ShouldQueue
     ): void {
         $lock = Cache::lock('atelier:campanha:'.$this->campanhaId, $this->timeout + 60);
 
-        if (!$lock->get()) {
+        if (! $lock->get()) {
             // Já há um job a processar esta campanha.
             return;
         }
@@ -174,7 +173,7 @@ class DispararCampanhaJob implements ShouldQueue
                     $notificador->notificarViaCanalUnico($cliente, $campanha->canal, $assunto, $mensagem);
                     $envio->update(['estado' => CampanhaEnvio::ESTADO_ENVIADO, 'enviado_em' => now(), 'erro' => null]);
                 }
-            } catch (NotificacaoException|Throwable $e) {
+            } catch (Throwable $e) {
                 $envio->update(['estado' => CampanhaEnvio::ESTADO_FALHOU, 'erro' => $e->getMessage()]);
 
                 Log::warning('Atelier: falha ao enviar campanha para um cliente', [
