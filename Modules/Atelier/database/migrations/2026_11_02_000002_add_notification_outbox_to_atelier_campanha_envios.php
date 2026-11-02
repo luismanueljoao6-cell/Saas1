@@ -15,11 +15,11 @@ return new class extends Migration
         }
 
         Schema::table('atelier_campanha_envios', function (Blueprint $table): void {
-            $table->foreignId('notification_outbox_id')
-                ->nullable()
-                ->after('cliente_id')
-                ->unique('atelier_campanha_envio_outbox_unique')
-                ->constrained('notification_outbox')
+            $table->foreignId('notification_outbox_id')->nullable();
+            $table->unique('notification_outbox_id', 'atelier_campanha_envio_outbox_unique');
+            $table->foreign('notification_outbox_id', 'atelier_campanha_envio_outbox_fk')
+                ->references('id')
+                ->on('notification_outbox')
                 ->nullOnDelete();
         });
     }
@@ -27,7 +27,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('atelier_campanha_envios', function (Blueprint $table): void {
-            $table->dropForeign(['notification_outbox_id']);
+            $table->dropForeign('atelier_campanha_envio_outbox_fk');
             $table->dropUnique('atelier_campanha_envio_outbox_unique');
             $table->dropColumn('notification_outbox_id');
         });
