@@ -8,6 +8,8 @@ use Modules\Atelier\Exceptions\NotificacaoException;
 use Modules\Atelier\Notifications\ClienteAtelierNotification;
 use Modules\Atelier\Services\Notificacoes\Contracts\CanalNotificacaoInterface;
 use Modules\Atelier\Support\NumeroTelefone;
+use Modules\Core\Models\NotificationOutbox;
+use Modules\Core\Notifications\NotificationDispatcher;
 use Modules\Faturacao\Models\Cliente;
 use Throwable;
 
@@ -50,6 +52,40 @@ class NotificadorClienteService
                 ]);
             }
         }
+    }
+
+    /**
+     * Coloca uma mensagem de telefone na Outbox partilhada do Core.
+     *
+     * Este método é opt-in: os fluxos legados e as campanhas não mudam de
+     * semântica até passarem a acompanhar o estado assíncrono da notificação.
+     */
+    public function enfileirarViaOutbox(
+        Cliente $cliente,
+        string $canal,
+        string $mensagem,
+        string $chaveIdempotencia,
+    ): NotificationOutbox {
+        if (! in_array($canal, ['whatsapp', 'sms'], true)) {
+            throw NotificacaoException::naoConfigurado($canal);
+        }
+
+        $destino = NumeroTelefone::internacional($cliente->telefone);
+        if ($destino === null) {
+            throw NotificacaoException::contactoEmFalta($canal);
+        }
+
+        if (! $cliente->empresa_id) {
+            throw new \\RuntimeException('O cliente não está associado a uma empresa.');
+        }
+
+        return app(NotificationDispatcher::class)->dispatch(
+            channel: 'atelier.'.$canal,
+            recipient: $destino,
+            payload: ['message' => $mensagem],
+            idempotencyKey: $chaveIdempotencia,
+            empresaId: (int) $cliente->empresa_id,
+        );
     }
 
     /**
