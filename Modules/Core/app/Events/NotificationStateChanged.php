@@ -2,8 +2,8 @@
 
 namespace Modules\Core\Events;
 
-use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
+use Illuminate\Foundation\Events\Dispatchable;
 
 class NotificationStateChanged implements ShouldDispatchAfterCommit
 {
@@ -13,5 +13,7 @@ class NotificationStateChanged implements ShouldDispatchAfterCommit
         public readonly int $notificationId,
         public readonly int $empresaId,
         public readonly string $status,
-    ) {}
+    )
+    {
+    }
 }
