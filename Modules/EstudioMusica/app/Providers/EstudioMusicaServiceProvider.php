@@ -9,6 +9,9 @@ use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Services\MenuRegistry;
+use Modules\Core\Notifications\NotificationChannelRegistry;
+use Modules\EstudioMusica\Notifications\Outbox\EstudioSmsOutboxChannel;
+use Modules\EstudioMusica\Notifications\Outbox\EstudioWhatsAppOutboxChannel;
 use Modules\Core\Services\TenantProvisionerRegistry;
 use Modules\EstudioMusica\Console\Commands\EnviarCampanhaGenericaCommand;
 use Modules\EstudioMusica\Console\Commands\ExportarDadosArtistaCommand;
@@ -75,6 +78,7 @@ class EstudioMusicaServiceProvider extends ServiceProvider
         $this->registerMenuItems();
         $this->registarLimitadores();
         $this->registarProvisionador();
+        $this->registarCanaisOutbox();
 
         $this->publishes([
             __DIR__.'/../../config/config.php' => config_path('estudiomusica.php'),
@@ -101,6 +105,18 @@ class EstudioMusicaServiceProvider extends ServiceProvider
             'estudio',
             fn (int $empresaId) => PapeisEstudio::provisionar($empresaId),
         );
+    }
+
+    /**
+     * Regista adaptadores do Estúdio no pipeline persistente do Core.
+     * Mantém os bindings existentes (incluindo a seleção de fornecedor por
+     * configuração) e a política de transferência internacional.
+     */
+    protected function registarCanaisOutbox(): void
+    {
+        $registry = $this->app->make(NotificationChannelRegistry::class);
+        $registry->register($this->app->make(EstudioWhatsAppOutboxChannel::class));
+        $registry->register($this->app->make(EstudioSmsOutboxChannel::class));
     }
 
     protected function registerMenuItems(): void
