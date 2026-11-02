@@ -97,7 +97,7 @@ class DispararCampanhaJob implements ShouldQueue
         $idsPorReenviar = collect();
 
         if ($reenvio) {
-            $idsPorReenviar = $campanha->envios()->whereIn('estado', ['falhou', 'pendente'])->pluck('cliente_id');
+            $idsPorReenviar = $campanha->envios()->whereIn('estado', [CampanhaEnvio::ESTADO_FALHOU, CampanhaEnvio::ESTADO_PENDENTE])->pluck('cliente_id');
 
             if ($idsPorReenviar->isEmpty()) {
                 return;
@@ -115,10 +115,10 @@ class DispararCampanhaJob implements ShouldQueue
         foreach ($clientes as $cliente) {
             $envio = CampanhaEnvio::firstOrCreate(
                 ['campanha_id' => $campanha->id, 'cliente_id' => $cliente->id],
-                ['canal' => $campanha->canal, 'estado' => 'pendente'],
+                ['canal' => $campanha->canal, 'estado' => CampanhaEnvio::ESTADO_PENDENTE],
             );
 
-            if ($envio->estado === 'enviado') {
+            if (in_array($envio->estado, [CampanhaEnvio::ESTADO_ENVIADO, CampanhaEnvio::ESTADO_ACEITE], true)) {
                 continue;
             }
 
@@ -127,9 +127,9 @@ class DispararCampanhaJob implements ShouldQueue
 
             try {
                 $notificador->notificarViaCanalUnico($cliente, $campanha->canal, $assunto, $mensagem);
-                $envio->update(['estado' => 'enviado', 'enviado_em' => now(), 'erro' => null]);
+                $envio->update(['estado' => CampanhaEnvio::ESTADO_ENVIADO, 'enviado_em' => now(), 'erro' => null]);
             } catch (NotificacaoException|Throwable $e) {
-                $envio->update(['estado' => 'falhou', 'erro' => $e->getMessage()]);
+                $envio->update(['estado' => CampanhaEnvio::ESTADO_FALHOU, 'erro' => $e->getMessage()]);
 
                 Log::warning('Atelier: falha ao enviar campanha para um cliente', [
                     'campanha_id' => $campanha->id,
