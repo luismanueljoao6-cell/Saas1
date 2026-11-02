@@ -1,12 +1,12 @@
 <?php
 
-namespace Modules\\Atelier\\Listeners;
+namespace Modules\Atelier\Listeners;
 
-use Illuminate\\Support\\Facades\\DB;
-use Modules\\Atelier\\Models\\Campanha;
-use Modules\\Atelier\\Models\\CampanhaEnvio;
-use Modules\\Core\\Events\\NotificationStateChanged;
-use Modules\\Core\\Models\\NotificationOutbox;
+use Illuminate\Support\Facades\DB;
+use Modules\Atelier\Models\Campanha;
+use Modules\Atelier\Models\CampanhaEnvio;
+use Modules\Core\Events\NotificationStateChanged;
+use Modules\Core\Models\NotificationOutbox;
 
 class SincronizarEstadoCampanhaOutbox
 {
