@@ -58,7 +58,7 @@ class CoreServiceProvider extends ServiceProvider
     {
         $this->registerViews();
         $this->registerMigrations();
-        $this->commands([\Modules\Core\Console\Commands\RecoverNotificationOutbox::class]);
+        $this->commands([RecoverNotificationOutbox::class]);
         $this->registerMiddlewareAliases();
         $this->registerMenuItems();
         $this->limparTenantEntreJobs();
