@@ -4,10 +4,10 @@ namespace Modules\Core\Notifications;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Modules\Core\Models\NotificationAttempt;
-use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Events\NotificationStateChanged;
 use Modules\Core\Jobs\ProcessNotificationJob;
+use Modules\Core\Models\NotificationAttempt;
+use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Services\TenantManager;
 use Throwable;
 
@@ -16,7 +16,9 @@ class NotificationProcessor
     public function __construct(
         private readonly TenantManager $tenants,
         private readonly NotificationChannelRegistry $channels,
-    ) {}
+    )
+    {
+    }
 
     public function process(int $notificationId, int $empresaId): void
     {
@@ -48,7 +50,7 @@ class NotificationProcessor
                 ->lockForUpdate()
                 ->first();
 
-            if (! $notification || $notification->isTerminal()) {
+            if (!$notification || $notification->isTerminal()) {
                 return null;
             }
 
