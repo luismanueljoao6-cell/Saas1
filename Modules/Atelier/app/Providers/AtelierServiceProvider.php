@@ -12,6 +12,8 @@ use Modules\Atelier\Jobs\EnviarCampanhasAgendadasJob;
 use Modules\Atelier\Jobs\LembretesProvaJob;
 use Modules\Atelier\Jobs\VerificarAniversariosJob;
 use Modules\Atelier\Listeners\EnviarNotificacaoMudancaEstado;
+use Modules\Atelier\Listeners\SincronizarEstadoCampanhaOutbox;
+use Modules\Core\Events\NotificationStateChanged;
 use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Atelier\Notifications\Outbox\AtelierSmsOutboxChannel;
@@ -68,6 +70,7 @@ class AtelierServiceProvider extends ServiceProvider
     protected function registarListeners(): void
     {
         Event::listen(PedidoMudouEstado::class, EnviarNotificacaoMudancaEstado::class);
+        Event::listen(NotificationStateChanged::class, SincronizarEstadoCampanhaOutbox::class);
     }
 
     /** Direitos do titular dos dados (acesso e eliminação) — ver os comandos. */
