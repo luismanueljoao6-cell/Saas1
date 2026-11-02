@@ -13,7 +13,10 @@ use RuntimeException;
 
 class NotificationDispatcher
 {
-    public function __construct(private readonly TenantManager $tenants) {}
+    public function __construct(
+        private readonly TenantManager $tenants,
+        private readonly NotificationChannelRegistry $channels,
+    ) {}
 
     public function dispatch(
         string $channel,
@@ -42,6 +45,13 @@ class NotificationDispatcher
             throw new InvalidArgumentException('O canal e o destinatário são obrigatórios.');
         }
 
+        if (! $this->channels->has($channel)) {
+            throw new RuntimeException(
+                "O canal de notificação '{$channel}' ainda não tem um adaptador registado. "
+                .'O envio foi bloqueado para evitar criar notificações que seriam tentadas sem fornecedor.'
+            );
+        }
+
         if ($maxAttempts < 1 || $maxAttempts > 20) {
             throw new InvalidArgumentException('O limite de tentativas deve estar entre 1 e 20.');
         }
@@ -59,34 +69,18 @@ class NotificationDispatcher
                 return $existing;
             }
 
-            try {
-                $notification = NotificationOutbox::create([
-                    'empresa_id' => $tenantId,
-                    'uuid' => (string) Str::uuid(),
-                    'idempotency_key' => $idempotencyKey,
-                    'channel' => $channel,
-                    'provider' => $provider,
-                    'recipient' => $recipient,
-                    'payload' => $payload,
-                    'status' => NotificationOutbox::STATUS_PENDING,
-                    'max_attempts' => $maxAttempts,
-                    'available_at' => now(),
-                ]);
-            } catch (QueryException $exception) {
-                $existing = NotificationOutbox::withoutGlobalScopes()
-                    ->where('empresa_id', $tenantId)
-                    ->where('idempotency_key', $idempotencyKey)
-                    ->where('channel', $channel)
-                    ->first();
-
-                if ($existing) {
-                    return $existing;
-                }
-
-                throw $exception;
-            }
-
-            return $notification;
+            return NotificationOutbox::create([
+                'empresa_id' => $tenantId,
+                'uuid' => (string) Str::uuid(),
+                'idempotency_key' => $idempotencyKey,
+                'channel' => $channel,
+                'provider' => $provider,
+                'recipient' => $recipient,
+                'payload' => $payload,
+                'status' => NotificationOutbox::STATUS_PENDING,
+                'max_attempts' => $maxAttempts,
+                'available_at' => now(),
+            ]);
         });
 
         if (in_array($notification->status, [
