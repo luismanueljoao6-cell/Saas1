@@ -162,8 +162,14 @@ class DispararCampanhaJob implements ShouldQueue
             ->where('estado', CampanhaEnvio::ESTADO_PENDENTE)
             ->exists();
 
+        $temFalha = $campanha->envios()
+            ->where('estado', CampanhaEnvio::ESTADO_FALHOU)
+            ->exists();
+
         $campanha->update([
-            'estado' => $temPendente ? 'em_processamento' : 'enviada',
+            'estado' => $temPendente
+                ? 'em_processamento'
+                : ($temFalha ? 'concluida_com_falhas' : 'enviada'),
             'enviada_em' => $temPendente ? null : ($campanha->enviada_em ?? now()),
         ]);
     }
