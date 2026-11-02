@@ -70,10 +70,11 @@ class CampanhaController extends Controller
 
         // Campanha já enviada só pode ser relançada para reenviar os envios
         // que falharam (o job ignora os já enviados e respeita o consentimento atual).
+        $temFalhas = $campanha->envios()->where('estado', 'falhou')->exists();
+
         abort_if(
             ! in_array($campanha->estado, ['rascunho', 'agendada', 'enviada', 'concluida_com_falhas'], true)
-                || ($campanha->estado === 'enviada'
-                    && ! $campanha->envios()->where('estado', 'falhou')->exists()),
+                || (in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true) && ! $temFalhas),
             422,
             'Esta campanha não pode ser enviada ou não tem envios falhados para repetir.'
         );
