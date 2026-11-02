@@ -52,7 +52,7 @@ class DispararCampanhaJob implements ShouldQueue
 
     public int $timeout = 900;
 
-    public function __construct(protected int $campanhaId)
+    public function __construct(protected int $campanhaId, protected bool $reenvioExplicito = false)
     {
     }
 
@@ -64,7 +64,7 @@ class DispararCampanhaJob implements ShouldQueue
     ): void {
         $lock = Cache::lock('atelier:campanha:'.$this->campanhaId, $this->timeout + 60);
 
-        if (! $lock->get()) {
+        if (!$lock->get()) {
             // Já há um job a processar esta campanha.
             return;
         }
@@ -80,13 +80,13 @@ class DispararCampanhaJob implements ShouldQueue
     {
         $campanha = Campanha::find($this->campanhaId);
 
-        if (! $campanha || $campanha->estado === 'cancelada') {
+        if (!$campanha || $campanha->estado === 'cancelada') {
             return;
         }
 
         $empresa = Empresa::find($campanha->empresa_id);
 
-        if (! $empresa || ! $empresa->temAcesso() || ! $empresa->temServico('atelier')) {
+        if (!$empresa || !$empresa->temAcesso() || !$empresa->temServico('atelier')) {
             Log::info('Atelier: campanha não enviada — empresa sem acesso ou sem o serviço atelier', [
                 'campanha_id' => $campanha->id,
                 'empresa_id' => $campanha->empresa_id,
@@ -109,7 +109,7 @@ class DispararCampanhaJob implements ShouldQueue
                 ->whereKey($envioOutbox->notification_outbox_id)
                 ->first();
 
-            if (! $outbox || ! in_array($outbox->status, [
+            if (!$outbox || !in_array($outbox->status, [
                 NotificationOutbox::STATUS_FAILED,
                 NotificationOutbox::STATUS_DEAD_LETTER,
             ], true)) {
@@ -126,7 +126,7 @@ class DispararCampanhaJob implements ShouldQueue
             ->where('estado', CampanhaEnvio::ESTADO_PENDENTE)
             ->exists();
 
-        if ($campanha->estado === 'em_processamento' && ! $temPendenteReconhecido) {
+        if ($campanha->estado === 'em_processamento' && !$temPendenteReconhecido) {
             $temFalhaReconhecida = $campanha->envios()
                 ->where('estado', CampanhaEnvio::ESTADO_FALHOU)
                 ->exists();
@@ -138,7 +138,8 @@ class DispararCampanhaJob implements ShouldQueue
             $campanha->refresh();
         }
 
-        $reenvio = in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true);
+        $reenvio = $this->reenvioExplicito
+            && in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true);
         $idsPorReenviar = collect();
 
         if ($reenvio) {
@@ -172,7 +173,7 @@ class DispararCampanhaJob implements ShouldQueue
             if ($envio->notification_outbox_id !== null) {
                 $outboxAnterior = $envio->notificationOutbox;
 
-                if (! $outboxAnterior || ! in_array($outboxAnterior->status, [
+                if (!$outboxAnterior || !in_array($outboxAnterior->status, [
                     NotificationOutbox::STATUS_FAILED,
                     NotificationOutbox::STATUS_DEAD_LETTER,
                 ], true)) {
