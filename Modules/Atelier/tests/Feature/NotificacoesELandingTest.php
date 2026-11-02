@@ -121,6 +121,32 @@ class NotificacoesELandingTest extends TestCase
         }
     }
 
+    public function test_envio_de_campanha_por_email_e_executado_no_proprio_job(): void
+    {
+        Notification::fake();
+
+        $empresa = Empresa::create(['nome_comercial' => 'Atelier Campanha Mail', 'nif' => '400000105']);
+        app(TenantManager::class)->set($empresa->id);
+
+        $cliente = Cliente::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Cliente Campanha',
+            'email' => 'campanha@example.test',
+        ]);
+
+        app(NotificadorClienteService::class)->notificarViaCanalUnico(
+            $cliente,
+            'mail',
+            'Campanha de teste',
+            'Mensagem de teste',
+        );
+
+        Notification::assertSentOnDemand(
+            ClienteAtelierNotification::class,
+            fn ($notification, $channels, $notifiable) => ($notifiable->routes['mail'] ?? null) === 'campanha@example.test'
+        );
+    }
+
     public function test_formulario_de_orcamento_de_atelier_nao_publicado_devolve_404(): void
     {
         $empresa = Empresa::create(['nome_comercial' => 'Atelier Privado', 'nif' => '400000102']);
