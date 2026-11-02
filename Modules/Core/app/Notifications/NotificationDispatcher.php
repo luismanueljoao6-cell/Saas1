@@ -2,7 +2,6 @@
 
 namespace Modules\Core\Notifications;
 
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
