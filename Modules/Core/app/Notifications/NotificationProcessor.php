@@ -185,11 +185,15 @@ class NotificationProcessor
         ?int $responseCode = null,
         array $metadata = [],
     ): void {
-        $terminal = $notification->attempts >= $notification->max_attempts;
+        // Bloqueios legais ou de configuração não são resolvidos por retry.
+        $permanent = $errorCode === 'apd_transfer_not_authorized';
+        $terminal = $permanent || $notification->attempts >= $notification->max_attempts;
         $delay = min(3600, 30 * (2 ** max(0, $notification->attempts - 1)));
 
         $notification->forceFill([
-            'status' => $terminal ? NotificationOutbox::STATUS_DEAD_LETTER : NotificationOutbox::STATUS_RETRY_SCHEDULED,
+            'status' => $permanent
+                ? NotificationOutbox::STATUS_FAILED
+                : ($terminal ? NotificationOutbox::STATUS_DEAD_LETTER : NotificationOutbox::STATUS_RETRY_SCHEDULED),
             'available_at' => $terminal ? $notification->available_at : now()->addSeconds($delay),
             'failed_at' => $terminal ? now() : null,
             'locked_at' => null,
