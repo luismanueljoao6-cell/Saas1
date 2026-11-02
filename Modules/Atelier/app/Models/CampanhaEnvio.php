@@ -25,7 +25,7 @@ class CampanhaEnvio extends Model
 
     protected $table = 'atelier_campanha_envios';
 
-    protected $fillable = ['campanha_id', 'cliente_id', 'canal', 'estado', 'erro', 'enviado_em', 'notification_outbox_id'];
+    protected $fillable = ['campanha_id', 'cliente_id', 'canal', 'estado', 'tentativa', 'erro', 'enviado_em', 'notification_outbox_id'];
 
     protected function casts(): array
     {
