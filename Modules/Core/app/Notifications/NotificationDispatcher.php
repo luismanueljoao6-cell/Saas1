@@ -65,6 +65,19 @@ class NotificationDispatcher
                 ->first();
 
             if ($existing) {
+                // Uma chave idempotente identifica uma operação, não apenas
+                // uma linha. Reutilizá-la com outro conteúdo poderia fazer o
+                // chamador acreditar que uma mensagem diferente foi enviada.
+                if (
+                    $existing->recipient !== $recipient
+                    || $existing->payload !== $payload
+                    || $existing->provider !== $provider
+                ) {
+                    throw new RuntimeException(
+                        'A chave de idempotência já foi utilizada com dados diferentes para este canal.'
+                    );
+                }
+
                 return $existing;
             }
 
