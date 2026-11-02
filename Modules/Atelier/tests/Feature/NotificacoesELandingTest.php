@@ -269,4 +269,91 @@ class NotificacoesELandingTest extends TestCase
 
         $this->assertSame(1, PedidoOrcamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->count());
     }
+
+    public function test_ultima_notificacao_aceite_conclui_a_campanha_sem_assumir_entrega(): void
+    {
+        $empresa = Empresa::create(['nome_comercial' => 'Atelier Conclusão', 'nif' => '400000109']);
+        $campanha = Campanha::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Campanha em processamento',
+            'canal' => 'whatsapp',
+            'segmento' => 'todos',
+            'mensagem' => 'Mensagem de teste',
+            'estado' => 'em_processamento',
+        ]);
+        $cliente = Cliente::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Cliente final',
+            'telefone' => '923456789',
+        ]);
+        $outbox = NotificationOutbox::create([
+            'empresa_id' => $empresa->id,
+            'idempotency_key' => 'campanha-final-'.$campanha->id,
+            'channel' => 'atelier.whatsapp',
+            'recipient' => '244923456789',
+            'payload' => ['message' => 'Mensagem de teste'],
+        ]);
+        $envio = CampanhaEnvio::create([
+            'campanha_id' => $campanha->id,
+            'cliente_id' => $cliente->id,
+            'canal' => 'whatsapp',
+            'estado' => CampanhaEnvio::ESTADO_PENDENTE,
+            'notification_outbox_id' => $outbox->id,
+        ]);
+
+        app(SincronizarEstadoCampanhaOutbox::class)->handle(
+            new \\Modules\\Core\\Events\\NotificationStateChanged(
+                (int) $outbox->id,
+                (int) $empresa->id,
+                NotificationOutbox::STATUS_ACCEPTED,
+            )
+        );
+
+        $this->assertSame(CampanhaEnvio::ESTADO_ACEITE, $envio->fresh()->estado);
+        $this->assertSame('enviada', $campanha->fresh()->estado);
+        $this->assertNull($envio->fresh()->enviado_em);
+    }
+
+    public function test_ultima_notificacao_falhada_conclui_campanha_com_falhas(): void
+    {
+        $empresa = Empresa::create(['nome_comercial' => 'Atelier Falhas', 'nif' => '400000110']);
+        $campanha = Campanha::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Campanha com falhas',
+            'canal' => 'sms',
+            'segmento' => 'todos',
+            'mensagem' => 'Mensagem de teste',
+            'estado' => 'em_processamento',
+        ]);
+        $cliente = Cliente::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Cliente com falha',
+            'telefone' => '923456780',
+        ]);
+        $outbox = NotificationOutbox::create([
+            'empresa_id' => $empresa->id,
+            'idempotency_key' => 'campanha-falha-'.$campanha->id,
+            'channel' => 'atelier.sms',
+            'recipient' => '244923456780',
+            'payload' => ['message' => 'Mensagem de teste'],
+        ]);
+        $envio = CampanhaEnvio::create([
+            'campanha_id' => $campanha->id,
+            'cliente_id' => $cliente->id,
+            'canal' => 'sms',
+            'estado' => CampanhaEnvio::ESTADO_PENDENTE,
+            'notification_outbox_id' => $outbox->id,
+        ]);
+
+        app(SincronizarEstadoCampanhaOutbox::class)->handle(
+            new \\Modules\\Core\\Events\\NotificationStateChanged(
+                (int) $outbox->id,
+                (int) $empresa->id,
+                NotificationOutbox::STATUS_DEAD_LETTER,
+            )
+        );
+
+        $this->assertSame(CampanhaEnvio::ESTADO_FALHOU, $envio->fresh()->estado);
+        $this->assertSame('concluida_com_falhas', $campanha->fresh()->estado);
+    }
 }
