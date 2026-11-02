@@ -95,6 +95,49 @@ class DispararCampanhaJob implements ShouldQueue
             return;
         }
 
+        // Reconcilia estados terminais da Outbox mesmo quando o evento
+        // de sincronização se perdeu. A consulta é sempre limitada à empresa
+        // da campanha; não provoca reenvios automáticos.
+        $enviosComOutbox = $campanha->envios()
+            ->whereNotNull('notification_outbox_id')
+            ->whereIn('estado', [CampanhaEnvio::ESTADO_PENDENTE, CampanhaEnvio::ESTADO_ACEITE])
+            ->get();
+
+        foreach ($enviosComOutbox as $envioOutbox) {
+            $outbox = NotificationOutbox::withoutGlobalScopes()
+                ->where('empresa_id', $campanha->empresa_id)
+                ->whereKey($envioOutbox->notification_outbox_id)
+                ->first();
+
+            if (! $outbox || ! in_array($outbox->status, [
+                NotificationOutbox::STATUS_FAILED,
+                NotificationOutbox::STATUS_DEAD_LETTER,
+            ], true)) {
+                continue;
+            }
+
+            $envioOutbox->update([
+                'estado' => CampanhaEnvio::ESTADO_FALHOU,
+                'erro' => $outbox->last_error ?: 'A notificação terminou sem sucesso na Outbox.',
+            ]);
+        }
+
+        $temPendenteReconhecido = $campanha->envios()
+            ->where('estado', CampanhaEnvio::ESTADO_PENDENTE)
+            ->exists();
+
+        if ($campanha->estado === 'em_processamento' && ! $temPendenteReconhecido) {
+            $temFalhaReconhecida = $campanha->envios()
+                ->where('estado', CampanhaEnvio::ESTADO_FALHOU)
+                ->exists();
+
+            $campanha->update([
+                'estado' => $temFalhaReconhecida ? 'concluida_com_falhas' : 'enviada',
+                'enviada_em' => $campanha->enviada_em ?? now(),
+            ]);
+            $campanha->refresh();
+        }
+
         $reenvio = in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true);
         $idsPorReenviar = collect();
 
