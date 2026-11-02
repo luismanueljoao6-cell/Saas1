@@ -18,7 +18,25 @@ class NotificationProcessor
 
     public function process(int $notificationId, int $empresaId): void
     {
+        // O processador também pode ser executado pelo driver "sync", no
+        // próprio pedido HTTP. Nesse caso, não podemos deixar o tenant do
+        // job substituir o tenant original do pedido.
+        $tenantAnterior = $this->tenants->id();
         $this->tenants->set($empresaId);
+
+        try {
+            $this->processWithinTenant($notificationId, $empresaId);
+        } finally {
+            if ($tenantAnterior === null) {
+                $this->tenants->clear();
+            } else {
+                $this->tenants->set($tenantAnterior);
+            }
+        }
+    }
+
+    private function processWithinTenant(int $notificationId, int $empresaId): void
+    {
         $token = (string) Str::uuid();
 
         $claim = DB::transaction(function () use ($notificationId, $empresaId, $token): ?array {
