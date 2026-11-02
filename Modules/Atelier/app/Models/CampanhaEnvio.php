@@ -4,6 +4,7 @@ namespace Modules\Atelier\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Core\Models\NotificationOutbox;
 use Modules\Faturacao\Models\Cliente;
 
 /**
@@ -16,7 +17,7 @@ class CampanhaEnvio extends Model
 {
     protected $table = 'atelier_campanha_envios';
 
-    protected $fillable = ['campanha_id', 'cliente_id', 'canal', 'estado', 'erro', 'enviado_em'];
+    protected $fillable = ['campanha_id', 'cliente_id', 'canal', 'estado', 'erro', 'enviado_em', 'notification_outbox_id'];
 
     protected function casts(): array
     {
@@ -28,6 +29,11 @@ class CampanhaEnvio extends Model
     public function campanha(): BelongsTo
     {
         return $this->belongsTo(Campanha::class);
+    }
+
+    public function notificationOutbox(): BelongsTo
+    {
+        return $this->belongsTo(NotificationOutbox::class, 'notification_outbox_id');
     }
 
     public function cliente(): BelongsTo
