@@ -13,14 +13,16 @@ use Modules\Atelier\Models\Pedido;
 use Modules\Atelier\Models\PedidoOrcamento;
 use Modules\Atelier\Models\Perfil;
 use Modules\Atelier\Notifications\ClienteAtelierNotification;
+use Modules\Atelier\Services\Notificacoes\NotificadorClienteService;
+use Modules\Core\Events\NotificationStateChanged;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Notifications\NotificationChannelRegistry;
-use Modules\Atelier\Services\Notificacoes\NotificadorClienteService;
 use Modules\Core\Services\TenantManager;
-use RuntimeException;
 use Modules\Faturacao\Models\Cliente;
+use RuntimeException;
 use Tests\TestCase;
+
 
 class NotificacoesELandingTest extends TestCase
 {
