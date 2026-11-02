@@ -109,7 +109,7 @@ class DispararCampanhaJob implements ShouldQueue
                 ->whereKey($envioOutbox->notification_outbox_id)
                 ->first();
 
-            if (! $outbox || !in_array($outbox->status, [
+            if (! $outbox || ! in_array($outbox->status, [
                 NotificationOutbox::STATUS_FAILED,
                 NotificationOutbox::STATUS_DEAD_LETTER,
             ], true)) {
@@ -180,7 +180,7 @@ class DispararCampanhaJob implements ShouldQueue
             if ($envio->notification_outbox_id !== null) {
                 $outboxAnterior = $envio->notificationOutbox;
 
-                if (! $outboxAnterior || !in_array($outboxAnterior->status, [
+                if (! $outboxAnterior || ! in_array($outboxAnterior->status, [
                     NotificationOutbox::STATUS_FAILED,
                     NotificationOutbox::STATUS_DEAD_LETTER,
                 ], true)) {
