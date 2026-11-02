@@ -85,10 +85,10 @@ class NotificationDispatcher
             );
         }
 
-        if (in_array($notification->status, [
-            NotificationOutbox::STATUS_PENDING,
-            NotificationOutbox::STATUS_RETRY_SCHEDULED,
-        ], true)) {
+        // Só o pedido que criou a linha agenda o primeiro job. Chamadas
+        // repetidas com a mesma chave não acumulam jobs concorrentes; a
+        // recuperação periódica trata linhas pendentes cujo dispatch se perdeu.
+        if ($notification->wasRecentlyCreated) {
             ProcessNotificationJob::dispatch($notification->id, $tenantId)->afterCommit();
         }
 
