@@ -121,7 +121,7 @@ class NotificacoesELandingTest extends TestCase
                 'atelier-pedido-'.$cliente->id.'-pronto',
             );
             $this->fail('Era esperado rejeitar a reutilização da chave com conteúdo diferente.');
-        } catch (\RuntimeException $exception) {
+        } catch (RuntimeException $exception) {
             $this->assertStringContainsString('dados diferentes', $exception->getMessage());
         }
     }
@@ -187,7 +187,7 @@ class NotificacoesELandingTest extends TestCase
         ]);
 
         app(SincronizarEstadoCampanhaOutbox::class)->handle(
-            new \Modules\Core\Events\NotificationStateChanged(
+            new NotificationStateChanged(
                 (int) $outbox->id,
                 (int) $empresa->id,
                 NotificationOutbox::STATUS_ACCEPTED,
@@ -231,7 +231,7 @@ class NotificacoesELandingTest extends TestCase
         ]);
 
         app(SincronizarEstadoCampanhaOutbox::class)->handle(
-            new \Modules\Core\Events\NotificationStateChanged(
+            new NotificationStateChanged(
                 (int) $outbox->id,
                 (int) $outraEmpresa->id,
                 NotificationOutbox::STATUS_ACCEPTED,
@@ -306,7 +306,7 @@ class NotificacoesELandingTest extends TestCase
         ]);
 
         app(SincronizarEstadoCampanhaOutbox::class)->handle(
-            new \Modules\Core\Events\NotificationStateChanged(
+            new NotificationStateChanged(
                 (int) $outbox->id,
                 (int) $empresa->id,
                 NotificationOutbox::STATUS_ACCEPTED,
@@ -352,7 +352,7 @@ class NotificacoesELandingTest extends TestCase
         ]);
 
         app(SincronizarEstadoCampanhaOutbox::class)->handle(
-            new \Modules\Core\Events\NotificationStateChanged(
+            new NotificationStateChanged(
                 (int) $outbox->id,
                 (int) $empresa->id,
                 NotificationOutbox::STATUS_DEAD_LETTER,
