@@ -15,8 +15,6 @@ use Modules\EstudioMusica\Console\Commands\EnviarCampanhaGenericaCommand;
 use Modules\EstudioMusica\Console\Commands\ExportarDadosArtistaCommand;
 use Modules\EstudioMusica\Console\Commands\LimparDadosArtistaCommand;
 use Modules\EstudioMusica\Http\Middleware\VerificarTokenPortalCliente;
-use Modules\EstudioMusica\Notifications\Outbox\EstudioSmsOutboxChannel;
-use Modules\EstudioMusica\Notifications\Outbox\EstudioWhatsAppOutboxChannel;
 use Modules\EstudioMusica\Jobs\EnviarCampanhaAniversarioJob;
 use Modules\EstudioMusica\Jobs\EnviarFollowUpPosLancamentoJob;
 use Modules\EstudioMusica\Jobs\EnviarLembretesSessaoJob;
@@ -26,6 +24,8 @@ use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterfac
 use Modules\EstudioMusica\Notifications\Channels\LogChannel;
 use Modules\EstudioMusica\Notifications\Channels\TwilioSmsChannel;
 use Modules\EstudioMusica\Notifications\Channels\WhatsAppCloudApiChannel;
+use Modules\EstudioMusica\Notifications\Outbox\EstudioSmsOutboxChannel;
+use Modules\EstudioMusica\Notifications\Outbox\EstudioWhatsAppOutboxChannel;
 use Modules\EstudioMusica\Support\PapeisEstudio;
 use RuntimeException;
 
