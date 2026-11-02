@@ -2,20 +2,20 @@
 
 namespace Modules\EstudioMusica\Providers;
 
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
-use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Notifications\NotificationChannelRegistry;
-use Modules\EstudioMusica\Notifications\Outbox\EstudioSmsOutboxChannel;
-use Modules\EstudioMusica\Notifications\Outbox\EstudioWhatsAppOutboxChannel;
+use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Services\TenantProvisionerRegistry;
 use Modules\EstudioMusica\Console\Commands\EnviarCampanhaGenericaCommand;
 use Modules\EstudioMusica\Console\Commands\ExportarDadosArtistaCommand;
 use Modules\EstudioMusica\Console\Commands\LimparDadosArtistaCommand;
+use Modules\EstudioMusica\Notifications\Outbox\EstudioSmsOutboxChannel;
+use Modules\EstudioMusica\Notifications\Outbox\EstudioWhatsAppOutboxChannel;
 use Modules\EstudioMusica\Http\Middleware\VerificarTokenPortalCliente;
 use Modules\EstudioMusica\Jobs\EnviarCampanhaAniversarioJob;
 use Modules\EstudioMusica\Jobs\EnviarFollowUpPosLancamentoJob;
@@ -205,7 +205,7 @@ class EstudioMusicaServiceProvider extends ServiceProvider
     {
         $classe = $mapa[$identificador] ?? null;
 
-        if (! $classe) {
+        if (!$classe) {
             throw new RuntimeException("Canal de {$tipo} \"{$identificador}\" não está registado em EstudioMusicaServiceProvider.");
         }
 
