@@ -10,6 +10,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Atelier\Exceptions\NotificacaoException;
+use Modules\Core\Models\NotificationOutbox;
 use Modules\Atelier\Models\Campanha;
 use Modules\Atelier\Models\CampanhaEnvio;
 use Modules\Atelier\Services\CrmService;
@@ -93,7 +94,7 @@ class DispararCampanhaJob implements ShouldQueue
             return;
         }
 
-        $reenvio = $campanha->estado === 'enviada';
+        $reenvio = in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true);
         $idsPorReenviar = collect();
 
         if ($reenvio) {
@@ -118,7 +119,7 @@ class DispararCampanhaJob implements ShouldQueue
                 ['canal' => $campanha->canal, 'estado' => CampanhaEnvio::ESTADO_PENDENTE],
             );
 
-            if (in_array($envio->estado, [CampanhaEnvio::ESTADO_ENVIADO, CampanhaEnvio::ESTADO_ACEITE], true)) {
+            if (in_array($envio->estado, [CampanhaEnvio::ESTADO_ENVIADO, CampanhaEnvio::ESTADO_ACEITE], true) || $envio->notification_outbox_id !== null) {
                 continue;
             }
 
@@ -126,8 +127,26 @@ class DispararCampanhaJob implements ShouldQueue
                 ."\n\nPara deixares de receber estas mensagens: ".$linkService->gerarLinkCancelarMarketing($cliente);
 
             try {
-                $notificador->notificarViaCanalUnico($cliente, $campanha->canal, $assunto, $mensagem);
-                $envio->update(['estado' => CampanhaEnvio::ESTADO_ENVIADO, 'enviado_em' => now(), 'erro' => null]);
+                if (in_array($campanha->canal, ['whatsapp', 'sms'], true)) {
+                    $outbox = $notificador->enfileirarViaOutbox(
+                        $cliente,
+                        $campanha->canal,
+                        $mensagem,
+                        'atelier-campanha-'.$campanha->id.'-cliente-'.$cliente->id,
+                    );
+
+                    $envio->update([
+                        'notification_outbox_id' => $outbox->id,
+                        'estado' => $outbox->status === NotificationOutbox::STATUS_ACCEPTED
+                            ? CampanhaEnvio::ESTADO_ACEITE
+                            : CampanhaEnvio::ESTADO_PENDENTE,
+                        'erro' => null,
+                    ]);
+                } else {
+                    // O e-mail permanece síncrono até existir adaptador próprio na Outbox.
+                    $notificador->notificarViaCanalUnico($cliente, $campanha->canal, $assunto, $mensagem);
+                    $envio->update(['estado' => CampanhaEnvio::ESTADO_ENVIADO, 'enviado_em' => now(), 'erro' => null]);
+                }
             } catch (NotificacaoException|Throwable $e) {
                 $envio->update(['estado' => CampanhaEnvio::ESTADO_FALHOU, 'erro' => $e->getMessage()]);
 
@@ -139,9 +158,13 @@ class DispararCampanhaJob implements ShouldQueue
             }
         }
 
+        $temPendente = $campanha->envios()
+            ->where('estado', CampanhaEnvio::ESTADO_PENDENTE)
+            ->exists();
+
         $campanha->update([
-            'estado' => 'enviada',
-            'enviada_em' => $campanha->enviada_em ?? now(),
+            'estado' => $temPendente ? 'em_processamento' : 'enviada',
+            'enviada_em' => $temPendente ? null : ($campanha->enviada_em ?? now()),
         ]);
     }
 }
