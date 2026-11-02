@@ -14,9 +14,9 @@ use Modules\Core\Services\TenantProvisionerRegistry;
 use Modules\EstudioMusica\Console\Commands\EnviarCampanhaGenericaCommand;
 use Modules\EstudioMusica\Console\Commands\ExportarDadosArtistaCommand;
 use Modules\EstudioMusica\Console\Commands\LimparDadosArtistaCommand;
+use Modules\EstudioMusica\Http\Middleware\VerificarTokenPortalCliente;
 use Modules\EstudioMusica\Notifications\Outbox\EstudioSmsOutboxChannel;
 use Modules\EstudioMusica\Notifications\Outbox\EstudioWhatsAppOutboxChannel;
-use Modules\EstudioMusica\Http\Middleware\VerificarTokenPortalCliente;
 use Modules\EstudioMusica\Jobs\EnviarCampanhaAniversarioJob;
 use Modules\EstudioMusica\Jobs\EnviarFollowUpPosLancamentoJob;
 use Modules\EstudioMusica\Jobs\EnviarLembretesSessaoJob;
@@ -205,7 +205,7 @@ class EstudioMusicaServiceProvider extends ServiceProvider
     {
         $classe = $mapa[$identificador] ?? null;
 
-        if (!$classe) {
+        if (! $classe) {
             throw new RuntimeException("Canal de {$tipo} \"{$identificador}\" não está registado em EstudioMusicaServiceProvider.");
         }
 
