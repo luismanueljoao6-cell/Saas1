@@ -8,6 +8,7 @@ use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Modules\Core\Console\Commands\RecoverNotificationOutbox;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Http\Middleware\ExigirPapel;
 use Modules\Core\Http\Middleware\ExigirServico;
@@ -19,8 +20,8 @@ use Modules\Core\Repositories\EmpresaRepository;
 use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Services\SemLimites;
 use Modules\Core\Services\TenantManager;
-use Modules\Core\Services\TenantProvisionerRegistry;
 use Modules\Core\Notifications\NotificationChannelRegistry;
+use Modules\Core\Services\TenantProvisionerRegistry;
 use Spatie\Permission\PermissionRegistrar;
 
 class CoreServiceProvider extends ServiceProvider
