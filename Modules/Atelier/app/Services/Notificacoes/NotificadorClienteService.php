@@ -113,8 +113,14 @@ class NotificadorClienteService
             throw NotificacaoException::contactoEmFalta('mail');
         }
 
-        Notification::route('mail', $cliente->email)
-            ->notify(new ClienteAtelierNotification($assunto, $mensagem));
+        // Campanhas precisam de saber se o transporte de e-mail aceitou
+        // o envio antes de actualizar atelier_campanha_envios. A Notification
+        // implementa ShouldQueue para os restantes fluxos; sendNow evita que
+        // este caminho marque "enviado" apenas por ter colocado outro job na fila.
+        Notification::sendNow(
+            Notification::route('mail', $cliente->email),
+            new ClienteAtelierNotification($assunto, $mensagem),
+        );
     }
 
     protected function enviarOuFalhar(CanalNotificacaoInterface $canal, Cliente $cliente, string $mensagem): void
