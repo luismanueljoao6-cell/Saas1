@@ -24,9 +24,10 @@ class SincronizarEstadoCampanhaOutbox
         }
 
         DB::transaction(function () use ($event, $estado): void {
+            // CampanhaEnvio não tem tenant scope próprio; a posse é
+            // validada explicitamente através da campanha bloqueada abaixo.
             $envio = CampanhaEnvio::query()
                 ->where('notification_outbox_id', $event->notificationId)
-                ->whereHas('campanha', fn ($query) => $query->where('empresa_id', $event->empresaId))
                 ->lockForUpdate()
                 ->first();
 
@@ -34,7 +35,10 @@ class SincronizarEstadoCampanhaOutbox
                 return;
             }
 
-            $campanha = Campanha::query()
+            // O listener também corre em workers sem tenant activo. Retirar
+            // a scope só é seguro aqui porque filtramos simultaneamente pelo
+            // ID da campanha e pelo empresa_id vindo do evento da Outbox.
+            $campanha = Campanha::withoutGlobalScopes()
                 ->whereKey($envio->campanha_id)
                 ->where('empresa_id', $event->empresaId)
                 ->lockForUpdate()
