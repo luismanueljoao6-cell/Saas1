@@ -170,9 +170,14 @@ class NotificacoesELandingTest extends TestCase
             'payload' => ['message' => 'Mensagem de teste'],
         ]);
 
+        $cliente = Cliente::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Cliente da campanha',
+            'telefone' => '923456789',
+        ]);
         $envio = CampanhaEnvio::create([
             'campanha_id' => $campanha->id,
-            'cliente_id' => 1,
+            'cliente_id' => $cliente->id,
             'canal' => 'whatsapp',
             'estado' => CampanhaEnvio::ESTADO_PENDENTE,
             'notification_outbox_id' => $outbox->id,
@@ -209,9 +214,14 @@ class NotificacoesELandingTest extends TestCase
             'recipient' => '244923456789',
             'payload' => ['message' => 'Mensagem de teste'],
         ]);
+        $cliente = Cliente::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Cliente da campanha isolada',
+            'telefone' => '923456788',
+        ]);
         $envio = CampanhaEnvio::create([
             'campanha_id' => $campanha->id,
-            'cliente_id' => 1,
+            'cliente_id' => $cliente->id,
             'canal' => 'whatsapp',
             'estado' => CampanhaEnvio::ESTADO_PENDENTE,
             'notification_outbox_id' => $outbox->id,
