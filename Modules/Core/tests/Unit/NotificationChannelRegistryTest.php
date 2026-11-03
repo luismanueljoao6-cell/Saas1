@@ -13,7 +13,7 @@ class NotificationChannelRegistryTest extends TestCase
 {
     public function test_registered_channel_can_be_resolved_by_identifier(): void
     {
-        $channel = new class() implements NotificationChannel {
+        $channel = new class implements NotificationChannel {
             public function identifier(): string
             {
                 return 'fake';
