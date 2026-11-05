@@ -16,8 +16,7 @@ class NotificationProcessor
     public function __construct(
         private readonly TenantManager $tenants,
         private readonly NotificationChannelRegistry $channels,
-    ) {
-    }
+    ) {}
 
     public function process(int $notificationId, int $empresaId): void
     {
@@ -49,7 +48,7 @@ class NotificationProcessor
                 ->lockForUpdate()
                 ->first();
 
-            if (!$notification || $notification->isTerminal()) {
+            if (! $notification || $notification->isTerminal()) {
                 return null;
             }
 
@@ -103,7 +102,7 @@ class NotificationProcessor
             ];
         });
 
-        if (!$claim) {
+        if (! $claim) {
             return;
         }
 
@@ -126,7 +125,7 @@ class NotificationProcessor
                 ->lockForUpdate()
                 ->first();
 
-            if (!$notification) {
+            if (! $notification) {
                 return;
             }
 
@@ -184,7 +183,7 @@ class NotificationProcessor
                 ->lockForUpdate()
                 ->first();
 
-            if (!$notification) {
+            if (! $notification) {
                 return;
             }
 
@@ -235,7 +234,7 @@ class NotificationProcessor
             'finished_at' => now(),
         ])->save();
 
-        if (!$terminal) {
+        if (! $terminal) {
             ProcessNotificationJob::dispatch($notification->id, (int) $notification->empresa_id)
                 ->delay(now()->addSeconds($delay))
                 ->afterCommit();

@@ -13,7 +13,8 @@ class NotificationChannelRegistryTest extends TestCase
 {
     public function test_registered_channel_can_be_resolved_by_identifier(): void
     {
-        $channel = new class implements NotificationChannel {
+        $channel = new class implements NotificationChannel
+        {
             public function identifier(): string
             {
                 return 'fake';
@@ -25,7 +26,7 @@ class NotificationChannelRegistryTest extends TestCase
             }
         };
 
-        $registry = new NotificationChannelRegistry();
+        $registry = new NotificationChannelRegistry;
         $registry->register($channel);
 
         $this->assertTrue($registry->has('fake'));
@@ -34,7 +35,7 @@ class NotificationChannelRegistryTest extends TestCase
 
     public function test_unknown_channel_is_not_silently_resolved(): void
     {
-        $registry = new NotificationChannelRegistry();
+        $registry = new NotificationChannelRegistry;
 
         $this->assertFalse($registry->has('missing'));
         $this->expectException(InvalidArgumentException::class);
