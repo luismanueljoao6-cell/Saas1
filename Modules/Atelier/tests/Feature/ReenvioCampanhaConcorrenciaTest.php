@@ -4,6 +4,7 @@ namespace Modules\Atelier\Tests\Feature;
 
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
@@ -25,7 +26,6 @@ use ReflectionProperty;
 use RuntimeException;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 /**
@@ -92,12 +92,12 @@ class ReenvioCampanhaConcorrenciaTest extends TestCase
         ]);
     }
 
-    protected function pedirReenvio(): void
+    protected function pedirReenvio(): RedirectResponse
     {
         $request = Request::create('/', 'POST');
         $request->setUserResolver(fn () => $this->admin);
 
-        app(CampanhaController::class)->enviarAgora($request, $this->campanha->id);
+        return app(CampanhaController::class)->enviarAgora($request, $this->campanha->id);
     }
 
     protected function executar(?string $token): void
@@ -143,14 +143,14 @@ class ReenvioCampanhaConcorrenciaTest extends TestCase
     {
         Queue::fake();
 
-        $this->pedirReenvio();
+        $primeiro = $this->pedirReenvio();
+        $this->assertStringContainsString('Envio iniciado', (string) $primeiro->getSession()->get('sucesso'));
 
-        try {
-            $this->pedirReenvio();
-            $this->fail('O segundo pedido tinha de ser recusado enquanto o primeiro está aberto.');
-        } catch (HttpException $e) {
-            $this->assertSame(409, $e->getStatusCode());
-        }
+        // O segundo pedido não cria outro reenvio e volta com uma mensagem
+        // (nunca um erro: num clique duplo é a resposta que o utilizador vê).
+        $segundo = $this->pedirReenvio();
+        $this->assertStringContainsString('Já existe um reenvio em curso', (string) $segundo->getSession()->get('sucesso'));
+        $this->assertNull($segundo->getSession()->get('erro'));
 
         Queue::assertPushed(DispararCampanhaJob::class, 1);
         $this->assertSame(1, CampanhaReenvio::query()->where('campanha_id', $this->campanha->id)->count());
@@ -332,13 +332,9 @@ class ReenvioCampanhaConcorrenciaTest extends TestCase
         Queue::fake();
         $this->envio->update(['estado' => CampanhaEnvio::ESTADO_ENVIADO]);
 
-        try {
-            $this->pedirReenvio();
-            $this->fail('Sem envios falhados não há nada para repetir.');
-        } catch (HttpException $e) {
-            $this->assertSame(422, $e->getStatusCode());
-        }
+        $resposta = $this->pedirReenvio();
 
+        $this->assertStringContainsString('não tem envios falhados', (string) $resposta->getSession()->get('erro'));
         Queue::assertNothingPushed();
         $this->assertSame(0, CampanhaReenvio::query()->count());
     }

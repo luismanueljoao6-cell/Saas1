@@ -72,39 +72,46 @@ class CampanhaController extends Controller
 
         // O pedido é validado E registado na mesma transação, com lock de linha
         // na campanha: dois pedidos simultâneos são serializados aqui e só o
-        // primeiro fica com o reenvio (o segundo recebe 409). O job nunca decide
-        // sozinho se há reenvio — só corre se levar o token deste pedido.
-        [$campanha, $pedido] = DB::transaction(function () use ($request, $campanha): array {
+        // primeiro fica com o reenvio. O job nunca decide sozinho se há reenvio
+        // — só corre se levar o token deste pedido.
+        //
+        // Os pedidos recusados voltam à página com uma mensagem (nunca uma
+        // página de erro): num clique duplo o navegador mostra a resposta do
+        // SEGUNDO pedido, e o utilizador não pode ver um erro quando o primeiro
+        // foi aceite.
+        [$campanha, $pedido, $recusa] = DB::transaction(function () use ($request, $campanha): array {
             $campanha = Campanha::query()->lockForUpdate()->findOrFail($campanha);
 
-            abort_if($campanha->estado === 'cancelada', 422, 'Esta campanha foi cancelada.');
+            if ($campanha->estado === 'cancelada') {
+                return [$campanha, null, ['erro', 'Esta campanha foi cancelada.']];
+            }
 
             $reenvio = in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true);
             $temFalhas = $campanha->envios()->where('estado', CampanhaEnvio::ESTADO_FALHOU)->exists();
 
-            abort_if(
-                ! ($reenvio || in_array($campanha->estado, ['rascunho', 'agendada'], true))
-                    || ($reenvio && ! $temFalhas),
-                422,
-                'Esta campanha não pode ser enviada ou não tem envios falhados para repetir.'
-            );
+            if (! ($reenvio || in_array($campanha->estado, ['rascunho', 'agendada'], true))
+                || ($reenvio && ! $temFalhas)) {
+                return [$campanha, null, ['erro', 'Esta campanha não pode ser enviada ou não tem envios falhados para repetir.']];
+            }
 
             // Primeiro envio: o lock por campanha e a idempotência dos envios
             // já tornam um clique duplo inofensivo.
             if (! $reenvio) {
-                return [$campanha, null];
+                return [$campanha, null, null];
             }
 
             CampanhaReenvio::expirarAbandonados($campanha->id);
 
-            abort_if(
-                CampanhaReenvio::query()->where('campanha_id', $campanha->id)->where('aberto', true)->exists(),
-                409,
-                'Já existe um reenvio em curso para esta campanha.'
-            );
+            $emCurso = ['sucesso', 'Já existe um reenvio em curso para esta campanha — os estados vão aparecer aqui à medida que forem processados.'];
+
+            if (CampanhaReenvio::query()->where('campanha_id', $campanha->id)->where('aberto', true)->exists()) {
+                return [$campanha, null, $emCurso];
+            }
 
             try {
-                $pedido = CampanhaReenvio::create([
+                // Savepoint próprio: se a unique (campanha_id, aberto) disparar,
+                // só esta inserção é desfeita e a transação externa continua válida.
+                $pedido = DB::transaction(fn () => CampanhaReenvio::create([
                     'empresa_id' => $campanha->empresa_id,
                     'campanha_id' => $campanha->id,
                     'token' => (string) Str::uuid(),
@@ -112,15 +119,18 @@ class CampanhaController extends Controller
                     'aberto' => true,
                     'solicitado_por_id' => $request->user()->id,
                     'solicitado_em' => now(),
-                ]);
+                ]));
             } catch (UniqueConstraintViolationException) {
-                // Rede de segurança da unique (campanha_id, aberto) caso o lock
-                // de linha não esteja disponível no driver.
-                abort(409, 'Já existe um reenvio em curso para esta campanha.');
+                // Rede de segurança caso o lock de linha não esteja disponível no driver.
+                return [$campanha, null, $emCurso];
             }
 
-            return [$campanha, $pedido];
+            return [$campanha, $pedido, null];
         });
+
+        if ($recusa !== null) {
+            return back()->with($recusa[0], $recusa[1]);
+        }
 
         try {
             DispararCampanhaJob::dispatch($campanha->id, $pedido?->token);

@@ -18,7 +18,7 @@ class ReenvioCampanhaHttpTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_clique_duplo_na_rota_real_aceita_um_pedido_e_recusa_o_segundo(): void
+    public function test_clique_duplo_na_rota_real_aceita_um_pedido_e_o_segundo_volta_com_aviso(): void
     {
         $this->withoutVite();
         Queue::fake();
@@ -50,7 +50,11 @@ class ReenvioCampanhaHttpTest extends TestCase
         $rota = route('atelier.campanhas.enviar-agora', $campanha->id);
 
         $this->actingAs($admin)->post($rota)->assertRedirect()->assertSessionHas('sucesso');
-        $this->actingAs($admin)->post($rota)->assertStatus(409);
+        // O segundo clique volta à página com uma mensagem, não com uma página de erro.
+        $this->actingAs($admin)->post($rota)
+            ->assertRedirect()
+            ->assertSessionHas('sucesso', fn (string $m) => str_contains($m, 'Já existe um reenvio em curso'))
+            ->assertSessionMissing('erro');
 
         app(TenantManager::class)->set((int) $admin->empresa_id);
         Queue::assertPushed(DispararCampanhaJob::class, 1);
