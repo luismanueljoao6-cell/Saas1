@@ -38,7 +38,8 @@ class RegisteredTenantController extends Controller
                 ->with('erro', 'Não foi possível concluir o registo. Tenta novamente em instantes.');
         }
 
-        Auth::login($utilizador);
+        Auth::guard('web')->login($utilizador);
+        $request->session()->regenerate();
 
         return redirect()->route('core.empresa.editar', $utilizador->empresa_id)
             ->with('sucesso', 'Empresa registada com sucesso! Confirma os teus dados abaixo.');
