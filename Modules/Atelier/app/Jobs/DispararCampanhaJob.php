@@ -239,15 +239,22 @@ class DispararCampanhaJob implements ShouldQueue
             $campanha->refresh();
         }
 
+        $concluida = in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true);
+
         // Um job repetido pela fila/agendador nunca pode transformar uma
         // reconciliação terminal num novo envio. Só o botão de reenvio manual
         // autoriza uma nova tentativa para campanhas já concluídas.
-        if (! $reenvioAutorizado && in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true)) {
+        if (! $reenvioAutorizado && $concluida) {
             return null;
         }
 
-        $reenvio = $reenvioAutorizado
-            && in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true);
+        // Um reenvio autorizado só actua sobre uma campanha concluída. Se entretanto
+        // deixou de o estar, não há nada a reenviar — e nunca se alarga o público.
+        if ($reenvioAutorizado && ! $concluida) {
+            return 'A campanha deixou de estar concluída: nada a reenviar.';
+        }
+
+        $reenvio = $reenvioAutorizado;
         $idsPorReenviar = collect();
 
         if ($reenvio) {
@@ -267,12 +274,21 @@ class DispararCampanhaJob implements ShouldQueue
         $assunto = $campanha->assunto ?: $campanha->nome;
 
         foreach ($clientes as $cliente) {
+            // A tentativa é indicada de forma explícita: o valor por omissão da
+            // coluna não é carregado para o modelo acabado de criar, e a chave
+            // idempotente da Outbox tem de ser igual em qualquer execução do job.
             $envio = CampanhaEnvio::firstOrCreate(
                 ['campanha_id' => $campanha->id, 'cliente_id' => $cliente->id],
-                ['canal' => $campanha->canal, 'estado' => CampanhaEnvio::ESTADO_PENDENTE],
+                ['canal' => $campanha->canal, 'estado' => CampanhaEnvio::ESTADO_PENDENTE, 'tentativa' => 1],
             );
 
             if (in_array($envio->estado, [CampanhaEnvio::ESTADO_ENVIADO, CampanhaEnvio::ESTADO_ACEITE], true)) {
+                continue;
+            }
+
+            // Uma tentativa falhada só volta a ser tentada num reenvio autorizado:
+            // nunca por um job repetido enquanto a campanha ainda processa.
+            if ($envio->estado === CampanhaEnvio::ESTADO_FALHOU && ! $reenvio) {
                 continue;
             }
 
