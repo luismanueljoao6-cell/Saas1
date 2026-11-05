@@ -8,18 +8,21 @@ use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Modules\Core\Console\Commands\RecoverNotificationOutbox;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Http\Middleware\ExigirPapel;
 use Modules\Core\Http\Middleware\ExigirServico;
 use Modules\Core\Http\Middleware\ExigirServicoDaEmpresa;
 use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Core\Http\Middleware\VerificarSubscricaoAtiva;
+use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Core\Repositories\Contracts\EmpresaRepositoryInterface;
 use Modules\Core\Repositories\EmpresaRepository;
 use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Services\SemLimites;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantProvisionerRegistry;
+use Spatie\Permission\PermissionRegistrar;
 
 class CoreServiceProvider extends ServiceProvider
 {
@@ -41,6 +44,7 @@ class CoreServiceProvider extends ServiceProvider
         // ser a MESMA instância em toda a aplicação, daí o singleton.
         $this->app->singleton(MenuRegistry::class);
         $this->app->singleton(TenantProvisionerRegistry::class);
+        $this->app->singleton(NotificationChannelRegistry::class);
 
         // Por omissão, sem limites. bindIf: se o módulo Subscrições já
         // registou a sua implementação (por ordem de carregamento), esta
@@ -54,6 +58,7 @@ class CoreServiceProvider extends ServiceProvider
     {
         $this->registerViews();
         $this->registerMigrations();
+        $this->commands([RecoverNotificationOutbox::class]);
         $this->registerMiddlewareAliases();
         $this->registerMenuItems();
         $this->limparTenantEntreJobs();
@@ -131,6 +136,13 @@ class CoreServiceProvider extends ServiceProvider
             }
 
             $this->app->make(TenantManager::class)->clear();
+
+            // O team resolver do Spatie é estado separado do TenantManager.
+            // Um worker persistente não pode herdar a empresa definida por
+            // um job anterior, mesmo que esse job tenha terminado com erro.
+            if (class_exists(PermissionRegistrar::class)) {
+                $this->app->make(PermissionRegistrar::class)->setPermissionsTeamId(null);
+            }
         });
     }
 }

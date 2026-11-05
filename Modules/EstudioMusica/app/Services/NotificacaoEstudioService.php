@@ -2,42 +2,84 @@
 
 namespace Modules\EstudioMusica\Services;
 
+use Illuminate\Support\Facades\Log;
+use Modules\Core\Models\Empresa;
 use Modules\EstudioMusica\Jobs\EnviarMensagemClienteJob;
 use Modules\EstudioMusica\Models\FaixaMusical;
 use Modules\EstudioMusica\Models\ProjetoMusical;
-use Modules\EstudioMusica\Models\SessaoEstudio;
-use Modules\Core\Models\Empresa;
 use Modules\EstudioMusica\Models\Reclamacao;
+use Modules\EstudioMusica\Models\SessaoEstudio;
 use Modules\EstudioMusica\Models\VersaoAudio;
+use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
+use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
+use Modules\EstudioMusica\Support\TransferenciaInternacional;
 use Modules\Faturacao\Models\Cliente;
 
 /**
- * "Automação de Notificações" (secção D): compõe o texto dos 5 avisos
- * pedidos — lembrete de sessão, atualização de estado, nova demo
- * disponível, aprovação pendente, projeto finalizado — e entrega-os a
- * Jobs\EnviarMensagemClienteJob, que os envia por WhatsApp, SMS e e-mail
- * fora do pedido HTTP. Nenhum canal tem de estar configurado para os
- * outros funcionarem (ver o job).
+ * Compõe notificações do Estúdio e enfileira o envio fora do pedido HTTP.
+ * O dispatch confirma apenas que o trabalho foi enfileirado; não prova
+ * que o fornecedor entregou a mensagem ao destinatário.
  */
 class NotificacaoEstudioService
 {
-    public function enviar(Cliente $cliente, string $assunto, string $mensagem): void
+    /**
+     * Verifica se existe pelo menos um canal que o sistema pode usar.
+     * E-mail não depende da autorização de transferência internacional;
+     * telefone só é elegível quando WhatsApp ou SMS estão autorizados.
+     */
+    public function podeEnviar(Cliente $cliente): bool
     {
-        // Um cliente apagado (soft delete) em Faturação mantém-se nos
-        // projetos/sessões antigos, por histórico, mas deixa de receber
-        // mensagens.
         if ($cliente->trashed()) {
-            return;
+            return false;
         }
 
-        EnviarMensagemClienteJob::dispatch($cliente->telefone, $cliente->email, $assunto, $mensagem);
+        if (trim((string) $cliente->email) !== '') {
+            return true;
+        }
+
+        if (trim((string) $cliente->telefone) === '') {
+            return false;
+        }
+
+        return TransferenciaInternacional::permitida(app(CanalWhatsAppInterface::class))
+            || TransferenciaInternacional::permitida(app(CanalSmsInterface::class));
     }
 
-    public function lembreteSessao(SessaoEstudio $sessao, int $horasAntes): void
+    /**
+     * @return bool true quando o dispatch foi aceite; false quando não há
+     *              destinatário ou canal legal/técnico elegível.
+     */
+    public function enviar(Cliente $cliente, string $assunto, string $mensagem): bool
+    {
+        if (! $this->podeEnviar($cliente)) {
+            Log::notice('EstudioMusica: notificação não enfileirada — cliente sem canal elegível.', [
+                'cliente_id' => $cliente->id,
+                'empresa_id' => $cliente->empresa_id,
+                'tem_telefone' => trim((string) $cliente->telefone) !== '',
+                'tem_email' => trim((string) $cliente->email) !== '',
+            ]);
+
+            return false;
+        }
+
+        $telefone = trim((string) $cliente->telefone);
+        $email = trim((string) $cliente->email);
+
+        EnviarMensagemClienteJob::dispatch(
+            $telefone !== '' ? $telefone : null,
+            $email !== '' ? $email : null,
+            $assunto,
+            $mensagem
+        );
+
+        return true;
+    }
+
+    public function lembreteSessao(SessaoEstudio $sessao, int $horasAntes): bool
     {
         $data = $sessao->inicio_previsto->format('d/m').' às '.$sessao->inicio_previsto->format('H:i');
 
-        $this->enviar(
+        return $this->enviar(
             $sessao->cliente,
             'Lembrete de sessão de estúdio',
             "Olá! A tua sessão de {$sessao->rotuloTipoServico()} está marcada para {$data}, daqui a cerca de {$horasAntes}h. Até já!"

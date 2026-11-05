@@ -4,12 +4,17 @@ namespace Modules\Faturacao\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Services\MenuRegistry;
+use Modules\Faturacao\Contracts\FaturacaoGateway;
+use Modules\Faturacao\Services\FaturacaoGatewayService;
 
 class FaturacaoServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../../config/config.php', 'faturacao');
+
+        // Ponto único e estável de integração para Atelier, Estúdio e módulos futuros.
+        $this->app->bind(FaturacaoGateway::class, FaturacaoGatewayService::class);
     }
 
     public function boot(): void

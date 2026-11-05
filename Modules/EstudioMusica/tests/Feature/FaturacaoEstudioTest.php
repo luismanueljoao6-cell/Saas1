@@ -266,4 +266,14 @@ class FaturacaoEstudioTest extends TestCase
         $this->assertSame(5700.0, $projeto->valorTotalFaturado());
         $this->assertNull($this->faturacao->cobrarSessao($sessao->fresh()), 'Segunda cobrança da mesma sessão não emite outra fatura.');
     }
+
+    public function test_sinal_nao_e_emitido_como_ft_quando_agt_esta_ativa(): void
+    {
+        config(['faturacao.agt.ativo' => true]);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('tipo FA');
+
+        $this->faturacao->gerarFaturaSinal($this->projeto());
+    }
 }

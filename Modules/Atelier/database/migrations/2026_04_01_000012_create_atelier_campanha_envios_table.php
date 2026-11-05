@@ -19,7 +19,7 @@ return new class extends Migration
             $table->foreignId('campanha_id')->constrained('atelier_campanhas')->cascadeOnDelete();
             $table->foreignId('cliente_id')->constrained('clientes');
             $table->string('canal');
-            $table->enum('estado', ['pendente', 'enviado', 'falhou'])->default('pendente');
+            $table->enum('estado', ['pendente', 'aceite', 'enviado', 'falhou'])->default('pendente');
             $table->text('erro')->nullable();
             $table->timestamp('enviado_em')->nullable();
             $table->timestamps();

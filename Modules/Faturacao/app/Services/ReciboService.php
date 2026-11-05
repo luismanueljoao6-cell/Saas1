@@ -47,9 +47,13 @@ class ReciboService
             throw new \InvalidArgumentException('O meio de pagamento é obrigatório.');
         }
 
-        // O AgtDocumentoBuilder não suporta adiantamentos: recusar já, não só no envio.
-        if ($faturaId === null && config('faturacao.agt.ativo')) {
-            throw new \DomainException('Recibos de adiantamento ainda não são suportados com a comunicação AGT ativa.');
+        // O modelo Recibo emite RC. A especificação AGT exige "lines" para RC,
+        // enquanto "paymentReceipt" só é permitido para AR/RG. Como este modelo
+        // ainda não guarda linhas fiscais próprias nem selecciona RG, bloquear a
+        // emissão com AGT activa é mais seguro do que criar um documento impossível
+        // de submeter ou enviar um payload estruturalmente inválido.
+        if (config('faturacao.agt.ativo')) {
+            throw new \DomainException('A emissão de recibos RC ainda não está habilitada com a AGT ativa: é necessário implementar a estrutura RC (linhas) ou o tipo RG (paymentReceipt) conforme a especificação AGT.');
         }
 
         try {

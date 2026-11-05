@@ -105,7 +105,7 @@ class ValidacaoLinhasTest extends TestCase
         config(['faturacao.agt.ativo' => true]);
 
         $this->expectException(\DomainException::class);
-        $this->expectExceptionMessage('adiantamento');
+        $this->expectExceptionMessage('recibos RC');
 
         app(ReciboService::class)->emitir($this->empresa->id, $this->cliente->id, '100.00', 'dinheiro');
     }

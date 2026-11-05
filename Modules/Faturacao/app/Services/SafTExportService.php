@@ -53,8 +53,10 @@ class SafTExportService
     /** Em produção, o SAF-T fica bloqueado enquanto não houver número de certificação AGT. */
     public function exportacaoBloqueada(): bool
     {
+        $numeroCertificado = trim((string) config('faturacao.saft_numero_certificado', ''));
+
         return app()->isProduction()
-            && (string) config('faturacao.saft_numero_certificado', '0') === '0';
+            && ($numeroCertificado === '' || $numeroCertificado === '0');
     }
 
     /** Devolve a mensagem de erro do período, ou null se for válido. */
@@ -276,22 +278,37 @@ class SafTExportService
         if ($taxa > 0) {
             $codigos = (array) config('faturacao.agt.codigos_taxa', []);
 
-            return ['IVA', (string) ($codigos[number_format($taxa, 2, '.', '')] ?? 'OUT'), null];
+            $chave = number_format($taxa, 2, '.', '');
+            $codigo = $codigos[$chave] ?? null;
+
+            if (! is_string($codigo) || trim($codigo) === '') {
+                throw new \RuntimeException("A taxa de IVA {$chave}% não tem código SAF-T (AO) configurado; a exportação foi interrompida.");
+            }
+
+            return ['IVA', $codigo, null];
         }
 
         if ($documento instanceof NotaCreditoDebito && $documento->tipo === 'debito') {
             $codigo = strtoupper(trim((string) config('faturacao.agt.nd_codigo_nao_sujeicao')));
 
-            return ['NS', 'NS', $codigo !== '' ? $codigo : null];
+            if ($codigo === '') {
+                throw new \RuntimeException('A nota de débito não tem código de não sujeição configurado para o SAF-T (AO).');
+            }
+
+            return ['NS', 'NS', $codigo];
         }
 
         $motivo = strtoupper(trim((string) ($linha->motivo_isencao ?? '')));
         $entrada = ((array) config('faturacao.motivos_isencao', []))[$motivo] ?? null;
 
-        if (is_array($entrada) && ($entrada['tipo'] ?? 'ISE') === 'NS') {
+        if ($motivo === '' || ! is_array($entrada)) {
+            throw new \RuntimeException('Uma linha isenta não tem um motivo de isenção SAF-T (AO) válido.');
+        }
+
+        if (($entrada['tipo'] ?? 'ISE') === 'NS') {
             return ['NS', 'NS', $motivo];
         }
 
-        return ['IVA', 'ISE', $motivo !== '' ? $motivo : null];
+        return ['IVA', 'ISE', $motivo];
     }
 }

@@ -45,6 +45,11 @@ class Campanha extends Model
         return $this->hasMany(CampanhaEnvio::class);
     }
 
+    public function reenvios(): HasMany
+    {
+        return $this->hasMany(CampanhaReenvio::class);
+    }
+
     public function segmentoRotulo(): string
     {
         return match ($this->segmento) {

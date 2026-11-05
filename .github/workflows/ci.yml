@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -32,8 +34,45 @@ jobs:
       - run: composer validate --no-check-publish
       - run: composer install --no-interaction --prefer-dist --no-progress
       - run: cp .env.example .env && php artisan key:generate
-      - run: vendor/bin/pint --test
-      - run: php artisan test
+      # Lint incremental: o histórico já contém dívida de formatação em ficheiros
+      # não alterados por esta PR. Não bloquear alterações novas por essa dívida.
+      - name: Pint nos ficheiros PHP alterados
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            git fetch origin "$BASE_REF" --depth=1
+            mapfile -t ficheiros < <(git diff --name-only "FETCH_HEAD...HEAD" -- '*.php')
+          else
+            mapfile -t ficheiros < <(git diff --name-only HEAD^ HEAD -- '*.php')
+          fi
+          if (("${#ficheiros[@]}")); then
+            vendor/bin/pint --test "${ficheiros[@]}"
+          else
+            echo "Nenhum ficheiro PHP alterado."
+          fi
+      # A suite de subscrições é executada teste a teste em processos independentes.
+      - run: php artisan test --exclude-group=auditoria
+      - name: Auditoria de subscrições (SQLite)
+        shell: bash
+        run: |
+          testes=(
+            test_cancelar_renovacao_de_subscricao_pendente_e_recusado_e_preserva_o_pagamento
+            test_servico_recusa_retoma_de_renovacao_de_subscricao_vencida
+            test_iniciar_para_outro_plano_com_pagamento_pendente_mostra_a_mensagem_de_negocio
+            test_pedido_recente_sem_referencia_continua_a_bloquear_com_excecao_especifica
+            test_pedido_abandonado_sem_referencia_e_descartado_e_a_empresa_pode_tentar_de_novo
+            test_servico_desconhecido_no_plano_nao_impede_a_confirmacao_do_pagamento
+            test_confirmacao_manual_de_subscricao_cancelada_limpa_cancelada_em
+            test_reconciliacao_conta_uma_so_tentativa_por_reprocessamento
+            test_reconciliacao_descarta_pagamento_sem_referencia_abandonado
+            test_comando_de_preco_rejeita_valores_que_o_gateway_nao_aceita
+          )
+          for teste in "${testes[@]}"; do
+            php artisan test Modules/Subscricoes/tests/Feature/AuditoriaSubscricoesTest.php --filter="$teste"
+          done
       - run: composer audit
 
   testes-mysql:
@@ -69,4 +108,21 @@ jobs:
       - run: composer install --no-interaction --prefer-dist --no-progress
       - run: cp .env.example .env && php artisan key:generate
       # Triggers de imutabilidade, locks e snapshots só se testam em MySQL.
-      - run: php artisan test
+      - run: php artisan test --exclude-group=auditoria
+      - name: Auditoria de subscrições (MySQL)
+        shell: bash
+        run: |
+          testes=(
+            test_cancelar_renovacao_de_subscricao_pendente_e_recusado_e_preserva_o_pagamento
+            test_iniciar_para_outro_plano_com_pagamento_pendente_mostra_a_mensagem_de_negocio
+            test_pedido_recente_sem_referencia_continua_a_bloquear_com_excecao_especifica
+            test_pedido_abandonado_sem_referencia_e_descartado_e_a_empresa_pode_tentar_de_novo
+            test_servico_desconhecido_no_plano_nao_impede_a_confirmacao_do_pagamento
+            test_confirmacao_manual_de_subscricao_cancelada_limpa_cancelada_em
+            test_reconciliacao_conta_uma_so_tentativa_por_reprocessamento
+            test_reconciliacao_descarta_pagamento_sem_referencia_abandonado
+            test_comando_de_preco_rejeita_valores_que_o_gateway_nao_aceita
+          )
+          for teste in "${testes[@]}"; do
+            php artisan test Modules/Subscricoes/tests/Feature/AuditoriaSubscricoesTest.php --filter="$teste"
+          done

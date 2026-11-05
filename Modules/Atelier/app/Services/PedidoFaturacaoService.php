@@ -5,13 +5,9 @@ namespace Modules\Atelier\Services;
 use Illuminate\Support\Facades\DB;
 use Modules\Atelier\Exceptions\PedidoException;
 use Modules\Atelier\Models\Pedido;
-use Modules\Core\Services\TenantManager;
+use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\Recibo;
-use Modules\Faturacao\Services\AssinaturaFiscalService;
-use Modules\Faturacao\Services\FaturaService;
-use Modules\Faturacao\Services\NumeracaoService;
-use Modules\Faturacao\Services\ReciboService;
 use Modules\Faturacao\Support\Dinheiro;
 use Throwable;
 
@@ -22,7 +18,7 @@ use Throwable;
  *   fiscal AGT, não entra na cadeia de numeração/hash).
  * - A fatura final é sempre criada como RASCUNHO; a emissão fica no ecrã
  *   normal de faturas do módulo Faturacao.
- * - Toda a emissão de Recibos passa pelo ReciboService (caminho único).
+ * - Toda a emissão de documentos passa pelo FaturacaoGateway (contrato público único).
  * - Cada operação relê o Pedido com lock: um duplo clique não emite dois
  *   recibos nem gera duas faturas finais.
  * - Um pedido CANCELADO nunca recebe sinal, fatura nem pagamento novos; o
@@ -30,13 +26,12 @@ use Throwable;
  */
 class PedidoFaturacaoService
 {
-    public function __construct(
-        protected NumeracaoService $numeracaoService,
-        protected AssinaturaFiscalService $assinaturaFiscalService,
-        protected FaturaService $faturaService,
-        protected TenantManager $tenantManager,
-        protected ?ReciboService $reciboService = null,
-    ) {}
+    protected FaturacaoGateway $faturacao;
+
+    public function __construct(FaturacaoGateway $faturacao)
+    {
+        $this->faturacao = $faturacao;
+    }
 
     /**
      * @throws PedidoException|Throwable
@@ -63,7 +58,7 @@ class PedidoFaturacaoService
                 throw new PedidoException('O sinal não pode exceder o valor total do pedido.');
             }
 
-            $recibo = $this->recibos()->emitir(
+            $recibo = $this->faturacao->emitirRecibo(
                 (int) $pedido->empresa_id,
                 (int) $pedido->cliente_id,
                 $valor,
@@ -114,6 +109,7 @@ class PedidoFaturacaoService
                     'quantidade' => 1,
                     'preco_unitario' => (float) $pedido->valor_orcamento,
                     'taxa_iva' => (float) $pedido->taxa_iva_aplicada,
+                    'operation_type' => 'SG',
                 ],
             ];
 
@@ -123,10 +119,11 @@ class PedidoFaturacaoService
                     'quantidade' => (float) $material->quantidade,
                     'preco_unitario' => (float) $material->valor_unitario,
                     'taxa_iva' => (float) $pedido->taxa_iva_aplicada,
+                    'operation_type' => 'TB',
                 ];
             }
 
-            $fatura = $this->faturaService->criarRascunho($pedido->empresa, $cliente, $linhas, $observacoes);
+            $fatura = $this->faturacao->criarRascunho($pedido->empresa, $cliente, $linhas, $observacoes);
 
             $pedido->update(['fatura_id' => $fatura->id]);
 
@@ -174,7 +171,7 @@ class PedidoFaturacaoService
                 throw PedidoException::valorInvalido();
             }
 
-            $recibo = $this->recibos()->emitir(
+            $recibo = $this->faturacao->emitirRecibo(
                 (int) $pedido->empresa_id,
                 (int) $pedido->cliente_id,
                 Dinheiro::formatar($saldo),
@@ -196,10 +193,5 @@ class PedidoFaturacaoService
             ->where('empresa_id', $pedido->empresa_id)
             ->lockForUpdate()
             ->findOrFail($pedido->id);
-    }
-
-    protected function recibos(): ReciboService
-    {
-        return $this->reciboService ?? app(ReciboService::class);
     }
 }

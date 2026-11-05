@@ -64,7 +64,7 @@ class AgtSerieService
             'submissionUUID' => (string) Str::uuid(),
             'taxRegistrationNumber' => $nif,
             'submissionTimeStamp' => now()->utc()->format('Y-m-d\TH:i:s\Z'),
-            'softwareInfo' => $this->assinaturas->softwareInfo(),
+            'softwareInfo' => $this->assinaturas->softwareInfo(incluirVersaoAssinatura: false),
             'seriesYear' => $ano,
             'documentType' => $tipoDocumento,
             'establishmentNumber' => $estabelecimento,

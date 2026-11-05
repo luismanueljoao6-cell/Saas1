@@ -62,7 +62,9 @@ class NotaCreditoDebitoService
             'descricao' => $linha->descricao,
             'quantidade' => $linha->quantidade,
             'preco_unitario' => $linha->preco_unitario,
+            'preco_unitario_base' => $linha->preco_unitario_base ?? $linha->preco_unitario,
             'taxa_iva' => $linha->taxa_iva,
+            'operation_type' => $linha->operation_type,
             'motivo_isencao' => $linha->motivo_isencao,
         ])->all();
 
@@ -70,7 +72,7 @@ class NotaCreditoDebitoService
     }
 
     /**
-     * @param  array<int, array{descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float}>  $linhas
+     * @param  array<int, array{descricao: string, quantidade: float, preco_unitario: float, preco_unitario_base?: float, taxa_iva: float, operation_type?: string|null}>  $linhas
      */
     /** Elimina uma nota ainda em rascunho; uma nota emitida é um documento fiscal e não se apaga. */
     public function eliminarRascunho(NotaCreditoDebito $nota): void
@@ -177,7 +179,9 @@ class NotaCreditoDebitoService
                     'descricao' => $dadosLinha['descricao'],
                     'quantidade' => $dadosLinha['quantidade'],
                     'preco_unitario' => $dadosLinha['preco_unitario'],
+                    'preco_unitario_base' => $dadosLinha['preco_unitario_base'] ?? $dadosLinha['preco_unitario'],
                     'taxa_iva' => $dadosLinha['taxa_iva'],
+                    'operation_type' => isset($dadosLinha['operation_type']) ? strtoupper(trim((string) $dadosLinha['operation_type'])) : null,
                     'motivo_isencao' => $debitoSemIva ? null : ValidacaoLinhas::normalizarMotivo($dadosLinha['motivo_isencao'] ?? null),
                     'ordem' => $indice,
                 ]))->calcularValores()->save();

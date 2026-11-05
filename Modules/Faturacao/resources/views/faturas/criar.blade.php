@@ -48,13 +48,21 @@
                     <template x-for="(linha, indice) in linhas" :key="indice">
                         <div class="grid grid-cols-12 gap-2 rounded-md border border-slate-200 p-2">
                             <input type="text" :name="`linhas[${indice}][descricao]`" x-model="linha.descricao" placeholder="Descrição" required
-                                   class="col-span-12 sm:col-span-5 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                                   class="col-span-12 sm:col-span-4 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
                             <input type="number" step="0.001" min="0.001" :name="`linhas[${indice}][quantidade]`" x-model.number="linha.quantidade" placeholder="Qtd"
+                                   class="col-span-4 sm:col-span-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                            <input type="number" step="0.01" min="0" :name="`linhas[${indice}][preco_unitario_base]`" x-model.number="linha.preco_unitario_base" placeholder="Preço base (opcional)"
                                    class="col-span-4 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
-                            <input type="number" step="0.01" min="0" :name="`linhas[${indice}][preco_unitario]`" x-model.number="linha.preco_unitario" placeholder="Preço"
+                            <input type="number" step="0.01" min="0" :name="`linhas[${indice}][preco_unitario]`" x-model.number="linha.preco_unitario" placeholder="Preço final"
                                    class="col-span-4 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
                             <input type="number" step="0.01" min="0" max="100" :name="`linhas[${indice}][taxa_iva]`" x-model.number="linha.taxa_iva" placeholder="IVA %"
                                    class="col-span-3 sm:col-span-2 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                            <select :name="`linhas[${indice}][operation_type]`" x-model="linha.operation_type" required
+                                    class="col-span-11 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                                @foreach ($tiposOperacao as $codigo => $rotulo)
+                                    <option value="{{ $codigo }}">{{ $codigo }} — {{ $rotulo }}</option>
+                                @endforeach
+                            </select>
                             <input type="hidden" :name="`linhas[${indice}][produto_id]`" :value="linha.produto_id ?? ''">
                             <button type="button" @click="removerLinha(indice)" class="col-span-1 text-red-500 hover:text-red-700" title="Remover">✕</button>
                             @if ($aceitaIsencao)
@@ -75,6 +83,7 @@
 
             <div class="rounded-md bg-slate-50 border border-slate-200 p-4 text-sm">
                 <div class="flex justify-between"><span>Subtotal</span><span x-text="formatar(totalSemIva())"></span></div>
+                <div class="flex justify-between"><span>Descontos</span><span x-text="formatar(totalDescontos())"></span></div>
                 <div class="flex justify-between"><span>IVA</span><span x-text="formatar(totalIva())"></span></div>
                 <div class="mt-1 flex justify-between border-t border-slate-200 pt-1 font-semibold"><span>Total</span><span x-text="formatar(totalGeral())"></span></div>
             </div>
@@ -98,13 +107,16 @@
                     ? linhasIniciais
                     : [{ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral, motivo_isencao: '' }],
                 adicionarLinha() {
-                    this.linhas.push({ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: taxaIvaGeral, motivo_isencao: '' });
+                    this.linhas.push({ descricao: '', quantidade: 1, preco_unitario_base: null, preco_unitario: 0, taxa_iva: taxaIvaGeral, operation_type: 'SG', motivo_isencao: '' });
                 },
                 removerLinha(indice) {
                     this.linhas.splice(indice, 1);
                 },
                 totalSemIva() {
                     return this.linhas.reduce((soma, l) => soma + (Number(l.quantidade) || 0) * (Number(l.preco_unitario) || 0), 0);
+                },
+                totalDescontos() {
+                    return this.linhas.reduce((soma, l) => soma + Math.max(0, (Number(l.preco_unitario_base ?? l.preco_unitario) || 0) - (Number(l.preco_unitario) || 0)) * (Number(l.quantidade) || 0), 0);
                 },
                 totalIva() {
                     return this.linhas.reduce((soma, l) => {

@@ -10,6 +10,7 @@ use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
 use Modules\Faturacao\Support\Jws;
 use Modules\Faturacao\Support\NumeroJson;
+use Modules\Faturacao\Support\ValidacaoLinhas;
 
 /**
  * Monta o objecto "document" do serviço registarFactura da AGT a partir de um
@@ -53,6 +54,12 @@ class AgtDocumentoBuilder
         ];
 
         if ($documento instanceof Recibo) {
+            // A AGT só aceita paymentReceipt em AR/RG. RC exige "lines";
+            // não se pode enviar o recibo actual (tipo RC) como paymentReceipt.
+            if (! in_array($documento->tipoDocumentoFiscal(), ['AR', 'RG'], true)) {
+                throw AgtException::configuracaoInvalida("o recibo {$documento->numero_documento} usa o tipo {$documento->tipoDocumentoFiscal()}, que exige linhas próprias; paymentReceipt só é permitido para AR/RG. O envio foi bloqueado para evitar rejeição estrutural da AGT.");
+            }
+
             $resultado['paymentReceipt'] = $this->recibo($documento, $assinado['documentTotals']);
         } else {
             $resultado['lines'] = $this->linhas($documento);
@@ -96,14 +103,21 @@ class AgtDocumentoBuilder
             $produto = ($linha->produto_id ?? null) ? Produto::withoutGlobalScopes()->where('empresa_id', $documento->empresa_id)->find($linha->produto_id) : null;
             $valor = NumeroJson::deCentimos(Dinheiro::centimos($linha->valor_sem_iva));
 
+            $precoBase = $linha->preco_unitario_base ?? $linha->preco_unitario;
+            $descontoUnitario = max(0, Dinheiro::centimos($precoBase) - Dinheiro::centimos($linha->preco_unitario));
+            $descontoTotal = intdiv(
+                $descontoUnitario * Dinheiro::milesimos((string) $linha->quantidade) + 500,
+                1000,
+            );
+
             $item = [
                 'lineNumber' => $indice + 1,
-                'operationType' => (string) config('faturacao.agt.operation_type_padrao', 'SG'),
+                'operationType' => $this->tipoOperacao($linha->operation_type ?? null),
                 'productCode' => mb_substr((string) ($produto?->codigo ?: (($linha->produto_id ?? null) ? 'P'.$linha->produto_id : 'SERVICO')), 0, 60),
                 'productDescription' => mb_substr((string) $linha->descricao, 0, 200),
                 'quantity' => NumeroJson::deDecimal((string) $linha->quantidade),
                 'unitOfMeasure' => mb_substr(strtoupper((string) ($produto?->unidade ?: config('faturacao.agt.unidade_padrao', 'UN'))), 0, 20),
-                'unitPriceBase' => NumeroJson::deDecimal((string) $linha->preco_unitario),
+                'unitPriceBase' => NumeroJson::deDecimal((string) $precoBase),
                 'unitPrice' => NumeroJson::deDecimal((string) $linha->preco_unitario),
             ];
 
@@ -120,7 +134,7 @@ class AgtDocumentoBuilder
                 $item['taxes'] = $impostos;
             }
 
-            $item['settlementAmount'] = NumeroJson::deCentimos(0);
+            $item['settlementAmount'] = NumeroJson::deCentimos($descontoTotal);
 
             $linhas[] = $item;
         }
@@ -194,6 +208,17 @@ class AgtDocumentoBuilder
             'taxPercentage' => NumeroJson::deDecimal($taxa),
             'taxContribution' => NumeroJson::deCentimos(Dinheiro::centimos($linha->valor_iva)),
         ]];
+    }
+
+    protected function tipoOperacao(mixed $valor): string
+    {
+        $tipo = strtoupper(trim((string) ($valor ?: config('faturacao.agt.operation_type_padrao', 'SG'))));
+
+        if (! in_array($tipo, ValidacaoLinhas::TIPOS_OPERACAO_AGT, true)) {
+            throw AgtException::configuracaoInvalida("tipo de operação AGT '{$tipo}' inválido na linha do documento.");
+        }
+
+        return $tipo;
     }
 
     /** @return array<string, mixed> */

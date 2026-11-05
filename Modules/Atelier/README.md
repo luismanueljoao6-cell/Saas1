@@ -1,8 +1,8 @@
 # Atelier de Costura
 
 Módulo de negócio para ateliers de costura/alfaiataria: fichas de medidas com
-histórico, pedidos de peça com fluxo de produção e provas, ligação direta ao
-motor fiscal do Faturação (sinal + fatura final), notificações automáticas
+histórico, pedidos de peça com fluxo de produção e provas, integração com o contrato público
+`FaturacaoGateway` do motor fiscal (sinal + fatura final), notificações automáticas
 ao cliente, CRM/marketing básico, portal do cliente por link assinado e
 página pública com portfólio. Depende dos módulos **Core** e **Faturacao**.
 
@@ -54,17 +54,8 @@ disparam quando preencheres as credenciais em `.env` (ver `config/config.php`).
 
 ## Decisões de arquitetura mais importantes
 
-- **O sinal é um `Recibo`, não uma "fatura proforma".** A migration de
-  `recibos` já previa `fatura_id` nulo "para recibos de adiantamento, sem
-  fatura associada ainda" — uma proforma não é documento fiscal AGT (não
-  entra na numeração/hash), por isso não fazia sentido modelá-la como
-  `Fatura`. Isto também significa que este módulo é o primeiro a dar uso
-  real a `Recibo`, que até aqui só tinha o model.
-- **Não existe `ReciboService` no Faturacao.** `PedidoFaturacaoService`
-  fala diretamente com `NumeracaoService`/`AssinaturaFiscalService`,
-  replicando o procedimento de duas fases que `FaturaService::emitir()` já
-  usa — preferi isto a alterar ficheiros do Faturacao, ao custo de ~30
-  linhas replicadas.
+- **O sinal comercial e o documento fiscal de adiantamento são conceitos diferentes.** O fluxo atual do Atelier regista o sinal num recibo interno sem fatura associada quando a comunicação AGT está desligada. Com a AGT ativa, esse caminho é recusado: o tratamento fiscal de adiantamentos exige um documento próprio (tipo `FA` na especificação AGT), não se deve substituir por um `RC` genérico. A integração de `FA` é um bloqueio conhecido a resolver no motor Faturação antes de ativar este fluxo em produção.
+- **O Atelier não implementa numeração nem assinatura fiscal.** `PedidoFaturacaoService` depende apenas de `FaturacaoGateway`; a fachada delega em `FaturaService` e `ReciboService`, preservando uma única implementação das regras fiscais.
 - **CRM não altera o model `Cliente` do Faturacao.** Aniversário e opt-in de
   marketing vivem em `atelier_clientes_crm`, uma tabela 1-para-1 só deste
   módulo — mantém o Faturacao intocado.

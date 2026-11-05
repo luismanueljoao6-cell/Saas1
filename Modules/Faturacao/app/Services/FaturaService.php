@@ -21,7 +21,7 @@ class FaturaService
     ) {}
 
     /**
-     * @param  array<int, array{produto_id?: int, descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float, motivo_isencao?: string|null}>  $linhas
+     * @param  array<int, array{produto_id?: int, descricao: string, quantidade: float, preco_unitario: float, preco_unitario_base?: float, taxa_iva: float, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
      */
     public function criarRascunho(Empresa $empresa, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
     {
@@ -139,7 +139,9 @@ class FaturaService
                 'descricao' => $dadosLinha['descricao'],
                 'quantidade' => $dadosLinha['quantidade'],
                 'preco_unitario' => $dadosLinha['preco_unitario'],
+                'preco_unitario_base' => $dadosLinha['preco_unitario_base'] ?? $dadosLinha['preco_unitario'],
                 'taxa_iva' => $dadosLinha['taxa_iva'],
+                'operation_type' => strtoupper(trim((string) ($dadosLinha['operation_type'] ?? config('faturacao.agt.operation_type_padrao', 'SG')))),
                 'motivo_isencao' => ValidacaoLinhas::normalizarMotivo($dadosLinha['motivo_isencao'] ?? null),
                 'ordem' => $indice,
             ]);
@@ -154,7 +156,7 @@ class FaturaService
      * serializadas e a segunda vê o estado final. Uma fatura emitida nunca
      * se edita — corrige-se por Nota de Crédito.
      *
-     * @param  array<int, array{produto_id?: int|null, descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float, motivo_isencao?: string|null}>  $linhas
+     * @param  array<int, array{produto_id?: int|null, descricao: string, quantidade: float, preco_unitario: float, preco_unitario_base?: float|null, taxa_iva: float, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
      */
     public function atualizarRascunho(Fatura $fatura, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
     {

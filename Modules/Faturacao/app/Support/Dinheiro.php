@@ -19,6 +19,12 @@ final class Dinheiro
         return self::escalar($valor, 2);
     }
 
+    /** Converte uma quantidade decimal em milésimos sem passar por float. */
+    public static function milesimos(string|int|float|null $valor): int
+    {
+        return self::escalar($valor, 3);
+    }
+
     public static function formatar(int $centimos): string
     {
         $sinal = $centimos < 0 ? '-' : '';

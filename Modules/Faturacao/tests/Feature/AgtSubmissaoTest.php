@@ -51,7 +51,7 @@ class AgtSubmissaoTest extends TestCase
             'faturacao.agt.utilizador' => 'produtor',
             'faturacao.agt.palavra_passe' => 's3nh@',
             'faturacao.agt.software.chave_privada_path' => $privadaSoftware,
-            'faturacao.agt.software.signature_version' => null,
+            'faturacao.agt.software.signature_version' => 1,
             'faturacao.saft_numero_certificado' => 'C_134',
         ]);
 
@@ -159,6 +159,7 @@ class AgtSubmissaoTest extends TestCase
         $this->assertSame('5001636863', $dados['taxRegistrationNumber']);
         $this->assertSame(1, $dados['numberOfEntries']);
         $this->assertSame('C_134', $dados['softwareInfo']['softwareInfoDetail']['softwareValidationNumber']);
+        $this->assertSame(1, $dados['softwareInfo']['softwareInfoDetail']['signatureVersion']);
 
         $documento = $dados['documents'][0];
         $this->assertSame('FT FT6325S2C/1', $documento['documentNo']);
@@ -188,22 +189,59 @@ class AgtSubmissaoTest extends TestCase
         $this->assertSame($assinado['documentNo'], $documento['documentNo']);
     }
 
-    public function test_recibo_vai_com_payment_receipt_e_sem_linhas(): void
+    public function test_recibo_rc_nao_e_enviado_como_payment_receipt(): void
     {
         $fatura = $this->emitirFatura();
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('tipo RG');
+
         app(ReciboService::class)->emitir($this->empresa->id, $this->cliente->id, '500.00', 'dinheiro', $fatura->id);
+    }
 
-        $this->assertSame(2, app(AgtSubmissaoService::class)->enviarPendentes()['enviados']);
+    public function test_tipo_de_operacao_da_linha_e_preservado_no_payload_agt(): void
+    {
+        app(AgtSerieService::class)->solicitar($this->empresa, 'FT', now()->year);
 
-        $documentos = $this->pedidoPara('registarFactura')->data()['documents'];
-        $recibo = $documentos[1];
+        $servico = app(FaturaService::class);
+        $fatura = $servico->criarRascunho($this->empresa, $this->cliente, [[
+            'descricao' => 'Material de produção',
+            'quantidade' => 1,
+            'preco_unitario' => 1000,
+            'taxa_iva' => 14,
+            'operation_type' => 'TB',
+        ]]);
+        $servico->emitir($fatura);
 
-        $this->assertSame('RC', $recibo['documentType']);
-        $this->assertArrayNotHasKey('lines', $recibo);
-        $origem = $recibo['paymentReceipt']['sourceDocuments'][0];
-        $this->assertSame(1, $origem['lineNo']);
-        $this->assertSame('FT FT6325S2C/1', $origem['sourceDocumentID']['OriginatingON']);
-        $this->assertEqualsWithDelta(438.59, $origem['creditAmount'], 0.0001);
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $documento = $this->pedidoPara('registarFactura')->data()['documents'][0];
+
+        $this->assertSame('TB', $documento['lines'][0]['operationType']);
+    }
+
+    public function test_desconto_da_linha_e_enviado_com_preco_base_e_settlement_amount(): void
+    {
+        app(AgtSerieService::class)->solicitar($this->empresa, 'FT', now()->year);
+
+        $servico = app(FaturaService::class);
+        $fatura = $servico->criarRascunho($this->empresa, $this->cliente, [[
+            'descricao' => 'Serviço com desconto',
+            'quantidade' => 2,
+            'preco_unitario_base' => '1000.00',
+            'preco_unitario' => '900.00',
+            'taxa_iva' => 14,
+            'operation_type' => 'SG',
+        ]]);
+        $servico->emitir($fatura);
+
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $linha = $this->pedidoPara('registarFactura')->data()['documents'][0]['lines'][0];
+
+        $this->assertEqualsWithDelta(1000.00, $linha['unitPriceBase'], 0.0001);
+        $this->assertEqualsWithDelta(900.00, $linha['unitPrice'], 0.0001);
+        $this->assertEqualsWithDelta(200.00, $linha['settlementAmount'], 0.0001);
     }
 
     public function test_estado_valido_e_invalido_sao_registados(): void
@@ -298,6 +336,58 @@ class AgtSubmissaoTest extends TestCase
         $submissao = AgtSubmissao::query()->firstOrFail();
         $this->assertSame('pendente', $submissao->estado);
         $this->assertSame(1, $submissao->tentativas);
+        $this->assertNotEmpty($submissao->submission_uuid);
+        $this->assertNotNull($submissao->submission_timestamp);
+        $this->assertNull($submissao->enviado_em);
+    }
+
+    public function test_retentativa_de_rede_reutiliza_uuid_e_timestamp_originais(): void
+    {
+        $this->emitirFatura();
+        $servico = app(AgtSubmissaoService::class);
+
+        $this->falharRede = true;
+        $servico->enviarPendentes();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $uuidOriginal = $submissao->submission_uuid;
+        $timestampOriginal = $submissao->submission_timestamp->copy();
+
+        $this->falharRede = false;
+        $servico->enviarPendentes();
+
+        $submissao->refresh();
+        $this->assertSame(AgtSubmissao::ENVIADO, $submissao->estado);
+        $this->assertSame($uuidOriginal, $submissao->submission_uuid);
+        $this->assertTrue($timestampOriginal->equalTo($submissao->submission_timestamp));
+        $this->assertNotNull($submissao->enviado_em);
+
+        $pedidos = collect(Http::recorded())
+            ->map(fn ($par) => $par[0])
+            ->filter(fn (Request $pedido) => str_contains($pedido->url(), 'registarFactura'));
+        $ultimo = $pedidos->last();
+
+        $this->assertSame($uuidOriginal, $ultimo->data()['submissionUUID']);
+        $this->assertSame($timestampOriginal->copy()->utc()->format('Y-m-d\\TH:i:s\\Z'), $ultimo->data()['submissionTimeStamp']);
+    }
+
+    public function test_payload_divergente_nao_reutiliza_o_mesmo_uuid(): void
+    {
+        $this->emitirFatura();
+        $this->falharRede = true;
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $submissao->update(['submission_payload_hash' => str_repeat('0', 64)]);
+        $pedidosAntes = count(Http::recorded());
+
+        $this->falharRede = false;
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $submissao->refresh();
+        $this->assertSame(AgtSubmissao::AGUARDA_INTERVENCAO, $submissao->estado);
+        $this->assertSame('PAYLOAD_DIVERGENTE', $submissao->erros[0]['codigo']);
+        $this->assertCount($pedidosAntes, Http::recorded(), 'Um payload diferente nunca deve ser reenviado com o UUID antigo.');
     }
 
     public function test_documento_que_nao_pode_ir_para_a_agt_fica_em_erro_sem_bloquear_o_envio(): void
@@ -329,6 +419,24 @@ class AgtSubmissaoTest extends TestCase
         $this->assertSame('SEM_RESPOSTA', $submissao->erros[0]['codigo']);
     }
 
+    public function test_submissao_a_aguardar_intervencao_com_request_id_continua_a_ser_consultada(): void
+    {
+        $this->emitirFatura();
+        $servico = app(AgtSubmissaoService::class);
+        $servico->enviarPendentes();
+        AgtSubmissao::query()->update(['enviado_em' => now()->subHours(25)]);
+
+        $this->respostaEstado = [
+            'resultCode' => '0',
+            'documentStatusList' => [['documentNo' => 'FT FT6325S2C/1', 'documentStatus' => 'V']],
+        ];
+
+        $res = $servico->consultarEstados();
+
+        $this->assertSame(1, $res['validos']);
+        $this->assertSame(AgtSubmissao::VALIDO, AgtSubmissao::query()->firstOrFail()->estado);
+    }
+
     public function test_enviado_recentemente_continua_a_aguardar_a_agt(): void
     {
         $this->emitirFatura();
@@ -355,13 +463,31 @@ class AgtSubmissaoTest extends TestCase
     {
         $this->emitirFatura();
         $submissao = AgtSubmissao::query()->firstOrFail();
-        $submissao->update(['estado' => AgtSubmissao::AGUARDA_INTERVENCAO, 'tentativas' => 3]);
+        $submissao->update(['estado' => AgtSubmissao::ERRO, 'tentativas' => 3, 'erros' => [['codigo' => 'REDE', 'descricao' => 'timeout']]]);
 
         $nova = app(AgtSubmissaoService::class)->reenviar($submissao);
 
         $this->assertSame(AgtSubmissao::PENDENTE, $nova->estado);
         $this->assertSame(0, $nova->tentativas);
         $this->assertSame(1, app(AgtSubmissaoService::class)->enviarPendentes()['enviados']);
+    }
+
+    public function test_submissao_com_request_id_nao_pode_ser_reenviada(): void
+    {
+        $this->emitirFatura();
+        $servico = app(AgtSubmissaoService::class);
+        $servico->enviarPendentes();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+
+        try {
+            $servico->reenviar($submissao);
+            $this->fail('Uma submissão com requestID não pode ser enviada de novo.');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('consulta o estado original', $e->getMessage());
+        }
+
+        $this->assertSame(AgtSubmissao::ENVIADO, $submissao->fresh()->estado);
     }
 
     public function test_documento_invalido_ou_rejeitado_nao_pode_ser_reenviado(): void
@@ -376,7 +502,7 @@ class AgtSubmissaoTest extends TestCase
                 app(AgtSubmissaoService::class)->reenviar($submissao);
                 $this->fail("Reenvio de '{$estado}' devia ser recusado.");
             } catch (\DomainException $e) {
-                $this->assertStringContainsString('documento de correção', $e->getMessage());
+                $this->assertStringContainsString('Só se pode reenviar uma submissão em erro técnico', $e->getMessage());
             }
         }
     }

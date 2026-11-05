@@ -6,23 +6,19 @@ use DomainException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Modules\Core\Models\Empresa;
-use Modules\Core\Services\TenantManager;
 use Modules\EstudioMusica\Models\CupomDesconto;
 use Modules\EstudioMusica\Models\ProjetoMusical;
 use Modules\EstudioMusica\Models\SessaoEstudio;
+use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\Recibo;
-use Modules\Faturacao\Services\AssinaturaFiscalService;
-use Modules\Faturacao\Services\FaturaService;
-use Modules\Faturacao\Services\NumeracaoService;
-use Modules\Faturacao\Services\ReciboService;
 use Modules\Faturacao\Support\Dinheiro;
 
 /**
  * Ponte entre o EstudioMusica e o motor de faturação do Faturacao (secção
- * E). Nunca duplica a lógica fiscal: Faturas passam pelo FaturaService e
- * Recibos pelo ReciboService (caminho único de emissão, com lock na fatura,
+ * E). Nunca duplica a lógica fiscal: todos os documentos passam pelo gateway
+ * público do módulo Faturação (com lock na fatura,
  * teto do saldo e numeração/hash sem lacunas).
  *
  * Todo o dinheiro é calculado em cêntimos inteiros (Dinheiro), nunca em float.
@@ -32,13 +28,12 @@ use Modules\Faturacao\Support\Dinheiro;
  */
 class FaturacaoEstudioService
 {
-    public function __construct(
-        protected FaturaService $faturaService,
-        protected NumeracaoService $numeracaoService,
-        protected AssinaturaFiscalService $assinaturaFiscalService,
-        protected TenantManager $tenantManager,
-        protected ?ReciboService $reciboService = null,
-    ) {}
+    protected FaturacaoGateway $faturacao;
+
+    public function __construct(FaturacaoGateway $faturacao)
+    {
+        $this->faturacao = $faturacao;
+    }
 
     /**
      * Fatura de sinal/adiantamento (secção E: "30% a 50% para confirmar a
@@ -52,6 +47,12 @@ class FaturacaoEstudioService
     public function gerarFaturaSinal(ProjetoMusical $projeto): Fatura
     {
         $this->exigirCobrancaPorPacote($projeto);
+
+        // Sinal/adiantamento não pode ser emitido como FT. A AGT prevê FA;
+        // aguardar o suporte fiscal explícito desse tipo no módulo Faturação.
+        if (config('faturacao.agt.ativo')) {
+            throw new DomainException('A faturação de sinais do Estúdio ainda não está habilitada com a AGT ativa: o adiantamento deve usar o tipo FA, não uma fatura FT normal.');
+        }
 
         return DB::transaction(function () use ($projeto) {
             // Lock na linha do projeto: um duplo clique (ou dois pedidos em
@@ -172,6 +173,8 @@ class FaturacaoEstudioService
             Dinheiro::formatar($precoHora),
         );
 
+        $precoUnitarioBase = $total;
+
         // Cupão de aniversário (secção F): "X% de desconto em horas de
         // estúdio" — aplicado aqui, na cobrança por hora, ao cupão válido
         // que expira primeiro. Corre dentro da transação do check-out, por
@@ -200,6 +203,7 @@ class FaturacaoEstudioService
             'descricao' => $descricao,
             'quantidade' => 1,
             'preco_unitario' => Dinheiro::formatar($total),
+            'preco_unitario_base' => Dinheiro::formatar($precoUnitarioBase),
             'taxa_iva' => (float) config('faturacao.taxa_iva_geral'),
         ]]);
 
@@ -217,7 +221,7 @@ class FaturacaoEstudioService
      * Regista o recebimento de um pagamento contra uma fatura já emitida
      * DESTE projeto. Sem valor, recebe o que ainda falta na fatura (já deduzidas as notas
      * de crédito e os recibos anteriores). A emissão (lock, teto do saldo, numeração e
-     * hash) é do ReciboService.
+     * hash) é responsabilidade do FaturacaoGateway.
      *
      * @throws InvalidArgumentException|DomainException
      */
@@ -243,7 +247,7 @@ class FaturacaoEstudioService
                 $valor = Dinheiro::formatar($emFalta);
             }
 
-            $recibo = $this->recibos()->emitir(
+            $recibo = $this->faturacao->emitirRecibo(
                 (int) $fatura->empresa_id,
                 (int) $fatura->cliente_id,
                 $valor,
@@ -257,19 +261,14 @@ class FaturacaoEstudioService
         });
     }
 
-    protected function recibos(): ReciboService
-    {
-        return $this->reciboService ?? app(ReciboService::class);
-    }
-
     /**
      * @param  array<int, array{descricao: string, quantidade: int|float, preco_unitario: string|float, taxa_iva: float}>  $linhas
      */
     protected function criarEEmitirFatura(Empresa $empresa, Cliente $cliente, array $linhas): Fatura
     {
-        $fatura = $this->faturaService->criarRascunho($empresa, $cliente, $linhas);
+        $fatura = $this->faturacao->criarRascunho($empresa, $cliente, $linhas);
 
-        return $this->faturaService->emitir($fatura);
+        return $this->faturacao->emitirFatura($fatura);
     }
 
     /** $percentual% de um valor em cêntimos, arredondado a meio para cima (40,00% de 100000,00 → 40000,00). */

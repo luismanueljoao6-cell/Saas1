@@ -217,6 +217,7 @@ return [
             'product_id' => env('FATURACAO_AGT_PRODUCT_ID', 'Saas1'),
             'product_version' => env('FATURACAO_AGT_PRODUCT_VERSION', '1.0.0'),
             // O número de certificação é o 'saft_numero_certificado' (acima).
+            // Obrigatória em registarFactura/obterEstado; corresponde à chave do software registada na AGT.
             'signature_version' => env('FATURACAO_AGT_SIGNATURE_VERSION'),
             'chave_privada_path' => env('FATURACAO_AGT_CHAVE_SOFTWARE') ?: storage_path('app/faturacao/chave-software.pem'),
         ],
