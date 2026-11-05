@@ -8,9 +8,11 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Atelier\Models\Campanha;
 use Modules\Atelier\Models\CampanhaEnvio;
+use Modules\Atelier\Models\CampanhaReenvio;
 use Modules\Atelier\Services\CrmService;
 use Modules\Atelier\Services\Notificacoes\NotificadorClienteService;
 use Modules\Atelier\Services\PortalLinkService;
@@ -36,7 +38,10 @@ use Throwable;
  * duplo, ou o agendador a re-despachar enquanto o anterior ainda corre).
  *
  * Reenvio: numa campanha já 'enviada' só se reprocessam os envios que
- * falharam/ficaram pendentes — nunca se alarga o público.
+ * falharam/ficaram pendentes — nunca se alarga o público. Só um pedido
+ * manual aceite (CampanhaReenvio, identificado por $reenvioToken) autoriza
+ * esse reenvio: um job sem token, repetido, obsoleto ou duplicado nunca
+ * reenvia nada. Cada pedido autoriza no máximo UMA execução.
  *
  * Marketing: cada mensagem leva o link para o cliente deixar de receber
  * campanhas (Lei n.º 22/11), e o público é sempre só quem tem consentimento.
@@ -52,7 +57,7 @@ class DispararCampanhaJob implements ShouldQueue
 
     public int $timeout = 900;
 
-    public function __construct(protected int $campanhaId, protected bool $reenvioExplicito = false) {}
+    public function __construct(protected int $campanhaId, protected ?string $reenvioToken = null) {}
 
     public function handle(
         TenantManager $tenantManager,
@@ -63,7 +68,11 @@ class DispararCampanhaJob implements ShouldQueue
         $lock = Cache::lock('atelier:campanha:'.$this->campanhaId, $this->timeout + 60);
 
         if (! $lock->get()) {
-            // Já há um job a processar esta campanha.
+            // Já há um job a processar esta campanha. Um pedido de reenvio
+            // não pode ficar aberto sem ninguém o tratar: volta a tentar mais
+            // tarde ou, esgotadas as tentativas, fecha-se como ignorado.
+            $this->adiarOuIgnorarPedido();
+
             return;
         }
 
@@ -76,10 +85,104 @@ class DispararCampanhaJob implements ShouldQueue
 
     protected function processar(CrmService $crmService, NotificadorClienteService $notificador, PortalLinkService $linkService): void
     {
+        $pedido = $this->reivindicarPedidoDeReenvio();
+
+        // Com token, só corre se o pedido existir e ainda estiver aberto:
+        // um job obsoleto (pedido já usado, expirado ou inexistente) sai aqui.
+        if ($this->reenvioToken !== null && $pedido === null) {
+            return;
+        }
+
+        $motivoIgnorado = $this->executar($crmService, $notificador, $linkService, $pedido !== null);
+
+        $pedido?->fechar(
+            $motivoIgnorado === null ? CampanhaReenvio::CONCLUIDO : CampanhaReenvio::IGNORADO,
+            $motivoIgnorado,
+        );
+    }
+
+    /**
+     * Marca o pedido como iniciado sob lock de linha. Devolve null quando o
+     * job não tem token (envio normal) ou quando o pedido não é utilizável.
+     * Uma repetição do MESMO job (retry da fila após falha) retoma o pedido
+     * 'iniciado'; um pedido fechado nunca volta a abrir.
+     */
+    protected function reivindicarPedidoDeReenvio(): ?CampanhaReenvio
+    {
+        if ($this->reenvioToken === null) {
+            return null;
+        }
+
+        return DB::transaction(function (): ?CampanhaReenvio {
+            $pedido = CampanhaReenvio::query()
+                ->where('campanha_id', $this->campanhaId)
+                ->where('token', $this->reenvioToken)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $pedido || ! in_array($pedido->estado, [CampanhaReenvio::ACEITE, CampanhaReenvio::INICIADO], true)) {
+                Log::info('Atelier: job de reenvio ignorado — pedido inexistente, já usado ou expirado', [
+                    'campanha_id' => $this->campanhaId,
+                    'estado_pedido' => $pedido?->estado,
+                ]);
+
+                return null;
+            }
+
+            if ($pedido->estado === CampanhaReenvio::ACEITE) {
+                $pedido->update(['estado' => CampanhaReenvio::INICIADO, 'iniciado_em' => now()]);
+            }
+
+            return $pedido;
+        });
+    }
+
+    protected function adiarOuIgnorarPedido(): void
+    {
+        if ($this->reenvioToken === null) {
+            return;
+        }
+
+        if ($this->job !== null && $this->attempts() < $this->tries) {
+            $this->release(30);
+
+            return;
+        }
+
+        $this->fecharPedido(CampanhaReenvio::IGNORADO, 'A campanha continuou ocupada por outro job.');
+    }
+
+    /** Chamado pela fila quando as tentativas se esgotam: nunca deixar o pedido aberto para sempre. */
+    public function failed(Throwable $exception): void
+    {
+        $this->fecharPedido(CampanhaReenvio::FALHADO, $exception->getMessage());
+    }
+
+    protected function fecharPedido(string $estado, ?string $motivo): void
+    {
+        if ($this->reenvioToken === null) {
+            return;
+        }
+
+        app(TenantManager::class)->semTenant(function () use ($estado, $motivo): void {
+            CampanhaReenvio::query()
+                ->where('campanha_id', $this->campanhaId)
+                ->where('token', $this->reenvioToken)
+                ->first()
+                ?->fechar($estado, $motivo);
+        });
+    }
+
+    protected function executar(
+        CrmService $crmService,
+        NotificadorClienteService $notificador,
+        PortalLinkService $linkService,
+        bool $reenvioAutorizado,
+    ): ?string {
         $campanha = Campanha::find($this->campanhaId);
 
         if (! $campanha || $campanha->estado === 'cancelada') {
-            return;
+            return 'Campanha inexistente ou cancelada.';
         }
 
         $empresa = Empresa::find($campanha->empresa_id);
@@ -90,7 +193,7 @@ class DispararCampanhaJob implements ShouldQueue
                 'empresa_id' => $campanha->empresa_id,
             ]);
 
-            return;
+            return 'Empresa sem acesso ou sem o serviço atelier.';
         }
 
         // Reconcilia estados terminais da Outbox mesmo quando o evento
@@ -139,11 +242,11 @@ class DispararCampanhaJob implements ShouldQueue
         // Um job repetido pela fila/agendador nunca pode transformar uma
         // reconciliação terminal num novo envio. Só o botão de reenvio manual
         // autoriza uma nova tentativa para campanhas já concluídas.
-        if (! $this->reenvioExplicito && in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true)) {
-            return;
+        if (! $reenvioAutorizado && in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true)) {
+            return null;
         }
 
-        $reenvio = $this->reenvioExplicito
+        $reenvio = $reenvioAutorizado
             && in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true);
         $idsPorReenviar = collect();
 
@@ -151,7 +254,7 @@ class DispararCampanhaJob implements ShouldQueue
             $idsPorReenviar = $campanha->envios()->whereIn('estado', [CampanhaEnvio::ESTADO_FALHOU, CampanhaEnvio::ESTADO_PENDENTE])->pluck('cliente_id');
 
             if ($idsPorReenviar->isEmpty()) {
-                return;
+                return 'Não havia envios falhados ou pendentes para repetir.';
             }
         }
 
@@ -247,5 +350,7 @@ class DispararCampanhaJob implements ShouldQueue
                 : ($temFalha ? 'concluida_com_falhas' : 'enviada'),
             'enviada_em' => $temPendente ? null : ($campanha->enviada_em ?? now()),
         ]);
+
+        return null;
     }
 }
