@@ -73,7 +73,9 @@ jobs:
           for teste in "${testes[@]}"; do
             php artisan test Modules/Subscricoes/tests/Feature/AuditoriaSubscricoesTest.php --filter="$teste"
           done
-      - run: composer audit
+      # A auditoria de dependências (composer audit) corre no workflow próprio
+      # "Auditoria de dependências": um aviso de segurança novo não deve fazer
+      # parecer que o estilo ou os testes falharam.
 
   testes-mysql:
     runs-on: ubuntu-latest

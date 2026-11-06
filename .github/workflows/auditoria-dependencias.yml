@@ -1,0 +1,35 @@
+name: Auditoria de dependências
+
+# Fica separada do CI de propósito: um aviso de segurança novo contra uma
+# dependência (que nada tem a ver com o código da PR) já não faz parecer que o
+# Pint ou os testes falharam, e a auditoria continua a correr todos os dias,
+# mesmo sem pushes, para apanhar avisos publicados depois do último commit.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: auditoria-dependencias-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  composer-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, openssl, intl
+          coverage: none
+
+      # Audita o composer.lock tal como está: não instala nem atualiza nada.
+      - run: composer audit --locked
