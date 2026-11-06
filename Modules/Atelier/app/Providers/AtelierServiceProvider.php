@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Modules\Atelier\Console\EliminarDadosClienteCommand;
 use Modules\Atelier\Console\ExportarDadosClienteCommand;
+use Modules\Atelier\Console\ReconciliarCampanhasCommand;
 use Modules\Atelier\Events\PedidoMudouEstado;
 use Modules\Atelier\Jobs\EnviarCampanhasAgendadasJob;
 use Modules\Atelier\Jobs\LembretesProvaJob;
@@ -80,6 +81,7 @@ class AtelierServiceProvider extends ServiceProvider
             $this->commands([
                 ExportarDadosClienteCommand::class,
                 EliminarDadosClienteCommand::class,
+                ReconciliarCampanhasCommand::class,
             ]);
         }
     }
@@ -108,6 +110,13 @@ class AtelierServiceProvider extends ServiceProvider
             $schedule->job(new EnviarCampanhasAgendadasJob)
                 ->hourly()
                 ->name('atelier:enviar-campanhas-agendadas')
+                ->withoutOverlapping();
+
+            // Rede de segurança: um evento da Outbox perdido deixaria uma
+            // campanha em 'em_processamento' para sempre (o botão recusa-a).
+            $schedule->command('atelier:campanhas-reconciliar')
+                ->everyTenMinutes()
+                ->name('atelier:campanhas-reconciliar')
                 ->withoutOverlapping();
         });
     }

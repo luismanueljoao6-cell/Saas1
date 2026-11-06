@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Atelier\Models\Campanha;
 use Modules\Atelier\Models\CampanhaEnvio;
 use Modules\Atelier\Models\CampanhaReenvio;
+use Modules\Atelier\Services\CampanhaReconciliador;
 use Modules\Atelier\Services\CrmService;
 use Modules\Atelier\Services\Notificacoes\NotificadorClienteService;
 use Modules\Atelier\Services\PortalLinkService;
@@ -196,48 +197,10 @@ class DispararCampanhaJob implements ShouldQueue
             return 'Empresa sem acesso ou sem o serviço atelier.';
         }
 
-        // Reconcilia estados terminais da Outbox mesmo quando o evento
-        // de sincronização se perdeu. A consulta é sempre limitada à empresa
-        // da campanha; não provoca reenvios automáticos.
-        $enviosComOutbox = $campanha->envios()
-            ->whereNotNull('notification_outbox_id')
-            ->whereIn('estado', [CampanhaEnvio::ESTADO_PENDENTE, CampanhaEnvio::ESTADO_ACEITE])
-            ->get();
-
-        foreach ($enviosComOutbox as $envioOutbox) {
-            $outbox = NotificationOutbox::withoutGlobalScopes()
-                ->where('empresa_id', $campanha->empresa_id)
-                ->whereKey($envioOutbox->notification_outbox_id)
-                ->first();
-
-            if (! $outbox || ! in_array($outbox->status, [
-                NotificationOutbox::STATUS_FAILED,
-                NotificationOutbox::STATUS_DEAD_LETTER,
-            ], true)) {
-                continue;
-            }
-
-            $envioOutbox->update([
-                'estado' => CampanhaEnvio::ESTADO_FALHOU,
-                'erro' => $outbox->last_error ?: 'A notificação terminou sem sucesso na Outbox.',
-            ]);
-        }
-
-        $temPendenteReconhecido = $campanha->envios()
-            ->where('estado', CampanhaEnvio::ESTADO_PENDENTE)
-            ->exists();
-
-        if ($campanha->estado === 'em_processamento' && ! $temPendenteReconhecido) {
-            $temFalhaReconhecida = $campanha->envios()
-                ->where('estado', CampanhaEnvio::ESTADO_FALHOU)
-                ->exists();
-
-            $campanha->update([
-                'estado' => $temFalhaReconhecida ? 'concluida_com_falhas' : 'enviada',
-                'enviada_em' => $campanha->enviada_em ?? now(),
-            ]);
-            $campanha->refresh();
-        }
+        // Reconcilia com o estado real da Outbox mesmo quando o evento de
+        // sincronização se perdeu. A consulta é sempre limitada à empresa da
+        // campanha; não provoca reenvios automáticos.
+        app(CampanhaReconciliador::class)->reconciliar($campanha);
 
         $concluida = in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true);
 
@@ -322,20 +285,27 @@ class DispararCampanhaJob implements ShouldQueue
 
             try {
                 if (in_array($campanha->canal, ['whatsapp', 'sms'], true)) {
-                    $outbox = $notificador->enfileirarViaOutbox(
-                        $cliente,
-                        $campanha->canal,
-                        $mensagem,
-                        'atelier-campanha-'.$campanha->id.'-cliente-'.$cliente->id.'-tentativa-'.$envio->tentativa,
-                    );
+                    // A Outbox e a ligação do envio a ela gravam-se na MESMA transação.
+                    // O job de processamento só arranca no commit (afterCommit), por isso
+                    // o evento de estado nunca chega antes de o envio apontar para a
+                    // Outbox — era assim que uma campanha podia ficar presa em
+                    // 'em_processamento'.
+                    DB::transaction(function () use ($notificador, $cliente, $campanha, $mensagem, $envio): void {
+                        $outbox = $notificador->enfileirarViaOutbox(
+                            $cliente,
+                            $campanha->canal,
+                            $mensagem,
+                            'atelier-campanha-'.$campanha->id.'-cliente-'.$cliente->id.'-tentativa-'.$envio->tentativa,
+                        );
 
-                    $envio->update([
-                        'notification_outbox_id' => $outbox->id,
-                        'estado' => $outbox->status === NotificationOutbox::STATUS_ACCEPTED
-                            ? CampanhaEnvio::ESTADO_ACEITE
-                            : CampanhaEnvio::ESTADO_PENDENTE,
-                        'erro' => null,
-                    ]);
+                        $envio->update([
+                            'notification_outbox_id' => $outbox->id,
+                            'estado' => $outbox->status === NotificationOutbox::STATUS_ACCEPTED
+                                ? CampanhaEnvio::ESTADO_ACEITE
+                                : CampanhaEnvio::ESTADO_PENDENTE,
+                            'erro' => null,
+                        ]);
+                    });
                 } else {
                     // O e-mail permanece síncrono até existir adaptador próprio na Outbox.
                     $notificador->notificarViaCanalUnico($cliente, $campanha->canal, $assunto, $mensagem);
