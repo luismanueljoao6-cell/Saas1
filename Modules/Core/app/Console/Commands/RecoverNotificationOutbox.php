@@ -4,8 +4,11 @@ namespace Modules\Core\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Core\Jobs\ProcessNotificationJob;
+use Modules\Core\Models\NotificationAttempt;
 use Modules\Core\Models\NotificationOutbox;
+use Modules\Core\Notifications\NotificationProcessor;
 
 class RecoverNotificationOutbox extends Command
 {
@@ -17,10 +20,11 @@ class RecoverNotificationOutbox extends Command
     {
         $limit = max(1, min(5000, (int) $this->option('limit')));
         $now = now();
-        $staleBefore = $now->copy()->subMinutes(2);
+        $staleBefore = $now->copy()->subSeconds(NotificationProcessor::LEASE_SEGUNDOS);
         $count = 0;
+        $abandonadas = 0;
 
-        DB::transaction(function () use ($limit, $now, $staleBefore, &$count): void {
+        DB::transaction(function () use ($limit, $now, $staleBefore, &$count, &$abandonadas): void {
             $notifications = NotificationOutbox::withoutGlobalScopes()
                 ->where(function ($query) use ($now, $staleBefore): void {
                     $query->where(function ($pending) use ($now): void {
@@ -46,6 +50,9 @@ class RecoverNotificationOutbox extends Command
                 // dispatch afterCommit, evitando que dois recuperadores limpem
                 // simultaneamente o mesmo lease abandonado.
                 if ($notification->status === NotificationOutbox::STATUS_PROCESSING) {
+                    NotificationAttempt::assinalarAbandonadas((int) $notification->empresa_id, (int) $notification->id);
+                    $abandonadas++;
+
                     $notification->forceFill([
                         'status' => NotificationOutbox::STATUS_RETRY_SCHEDULED,
                         'locked_at' => null,
@@ -61,7 +68,25 @@ class RecoverNotificationOutbox extends Command
             }
         });
 
-        $this->info("Notificações agendadas para processamento: {$count}");
+        // Monitorização mínima, para um alerta poder apoiar-se nestas linhas de log.
+        if ($abandonadas > 0) {
+            Log::warning('Outbox: leases abandonados recuperados; o resultado das tentativas perdidas é desconhecido e a mensagem pode ser reenviada.', [
+                'abandonadas' => $abandonadas,
+            ]);
+        }
+
+        $deadLetters = NotificationOutbox::withoutGlobalScopes()
+            ->where('status', NotificationOutbox::STATUS_DEAD_LETTER)
+            ->where('failed_at', '>=', $now->copy()->subDay())
+            ->count();
+
+        if ($deadLetters > 0) {
+            Log::warning('Outbox: notificações em dead letter nas últimas 24 horas precisam de atenção.', [
+                'dead_letter_24h' => $deadLetters,
+            ]);
+        }
+
+        $this->info("Notificações agendadas para processamento: {$count} (abandonadas recuperadas: {$abandonadas}; em dead letter nas últimas 24 h: {$deadLetters})");
 
         return self::SUCCESS;
     }

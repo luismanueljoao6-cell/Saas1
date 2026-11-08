@@ -42,4 +42,25 @@ class NotificationAttempt extends Model
     {
         return $this->belongsTo(NotificationOutbox::class, 'notification_outbox_id');
     }
+
+    /**
+     * Assinala como abandonadas as tentativas que ficaram «a processar» quando o
+     * lease da notificação expirou. O resultado dessas tentativas é DESCONHECIDO
+     * (o fornecedor pode ou não ter recebido a mensagem): ficam registadas como
+     * tal em vez de parecerem estar ainda a decorrer.
+     */
+    public static function assinalarAbandonadas(int $empresaId, int $notificationOutboxId): int
+    {
+        return static::withoutGlobalScopes()
+            ->where('empresa_id', $empresaId)
+            ->where('notification_outbox_id', $notificationOutboxId)
+            ->where('status', 'processing')
+            ->update([
+                'status' => 'abandoned',
+                'error_code' => 'lease_expired',
+                'error_message' => 'O processamento foi interrompido antes de terminar; o resultado no fornecedor é desconhecido.',
+                'finished_at' => now(),
+                'updated_at' => now(),
+            ]);
+    }
 }

@@ -13,6 +13,14 @@ use Throwable;
 
 class NotificationProcessor
 {
+    /**
+     * Duração do lease de uma notificação em processamento. Tem de ser MAIOR do
+     * que o timeout do ProcessNotificationJob (e, portanto, do pedido ao
+     * fornecedor): só depois de o worker ter sido interrompido é que outro pode
+     * recuperar a notificação.
+     */
+    public const LEASE_SEGUNDOS = 120;
+
     public function __construct(
         private readonly TenantManager $tenants,
         private readonly NotificationChannelRegistry $channels,
@@ -48,7 +56,10 @@ class NotificationProcessor
                 ->lockForUpdate()
                 ->first();
 
-            if (! $notification || $notification->isTerminal()) {
+            // «accepted» não é terminal (ainda pode passar a entregue ou lida), mas o
+            // fornecedor já tem a mensagem: um job repetido nunca a pode reenviar nem
+            // convertê-la em dead letter.
+            if (! $notification || $notification->isTerminal() || $notification->foiEntregueAoFornecedor()) {
                 return null;
             }
 
@@ -57,8 +68,14 @@ class NotificationProcessor
             }
 
             if ($notification->status === NotificationOutbox::STATUS_PROCESSING
-                && $notification->locked_at?->gt(now()->subMinutes(2))) {
+                && $notification->locked_at?->gt(now()->subSeconds(self::LEASE_SEGUNDOS))) {
                 return null;
+            }
+
+            if ($notification->status === NotificationOutbox::STATUS_PROCESSING) {
+                // O lease ativo já devolveu null acima: este expirou e a tentativa
+                // anterior ficou sem resultado conhecido.
+                NotificationAttempt::assinalarAbandonadas($empresaId, (int) $notification->id);
             }
 
             if ($notification->attempts >= $notification->max_attempts) {
@@ -69,11 +86,7 @@ class NotificationProcessor
                     'lock_token' => null,
                 ])->save();
 
-                NotificationStateChanged::dispatch(
-                    (int) $notification->id,
-                    $empresaId,
-                    NotificationOutbox::STATUS_DEAD_LETTER,
-                );
+                $this->emitirEstado((int) $notification->id, $empresaId, NotificationOutbox::STATUS_DEAD_LETTER);
 
                 return null;
             }
@@ -155,11 +168,7 @@ class NotificationProcessor
                     'finished_at' => now(),
                 ])->save();
 
-                NotificationStateChanged::dispatch(
-                    (int) $notification->id,
-                    $empresaId,
-                    NotificationOutbox::STATUS_ACCEPTED,
-                );
+                $this->emitirEstado((int) $notification->id, $empresaId, NotificationOutbox::STATUS_ACCEPTED);
 
                 return;
             }
@@ -168,7 +177,7 @@ class NotificationProcessor
 
             $notification->refresh();
             if (in_array($notification->status, [NotificationOutbox::STATUS_FAILED, NotificationOutbox::STATUS_DEAD_LETTER], true)) {
-                NotificationStateChanged::dispatch((int) $notification->id, $empresaId, $notification->status);
+                $this->emitirEstado((int) $notification->id, $empresaId, $notification->status);
             }
         });
     }
@@ -196,7 +205,26 @@ class NotificationProcessor
 
             $notification->refresh();
             if (in_array($notification->status, [NotificationOutbox::STATUS_FAILED, NotificationOutbox::STATUS_DEAD_LETTER], true)) {
-                NotificationStateChanged::dispatch((int) $notification->id, $empresaId, $notification->status);
+                $this->emitirEstado((int) $notification->id, $empresaId, $notification->status);
+            }
+        });
+    }
+
+    /**
+     * Avisa os outros módulos (ex.: campanhas do Atelier) de que o estado mudou.
+     *
+     * Só depois de a transação ser confirmada e sem nunca a poder desfazer: se um
+     * listener falhar, o fornecedor já aceitou ou recusou a mensagem e reverter o
+     * estado levaria o recuperador a reenviá-la. Os outros módulos reconciliam a
+     * partir da própria Outbox.
+     */
+    private function emitirEstado(int $notificationId, int $empresaId, string $status): void
+    {
+        DB::afterCommit(function () use ($notificationId, $empresaId, $status): void {
+            try {
+                NotificationStateChanged::dispatch($notificationId, $empresaId, $status);
+            } catch (Throwable $exception) {
+                report($exception);
             }
         });
     }

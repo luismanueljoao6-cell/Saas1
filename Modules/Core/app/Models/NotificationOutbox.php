@@ -93,6 +93,20 @@ class NotificationOutbox extends Model
             ->orderBy('attempt_number');
     }
 
+    /**
+     * O fornecedor já recebeu (aceitou) esta mensagem — ainda que o estado possa
+     * evoluir depois (entregue, lida). Nunca pode voltar a ser enviada, mesmo que
+     * «accepted» não seja um estado terminal.
+     */
+    public function foiEntregueAoFornecedor(): bool
+    {
+        return in_array($this->status, [
+            self::STATUS_ACCEPTED,
+            self::STATUS_DELIVERED,
+            self::STATUS_READ,
+        ], true);
+    }
+
     public function isTerminal(): bool
     {
         return in_array($this->status, [
