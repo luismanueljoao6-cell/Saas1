@@ -17,7 +17,10 @@ use Modules\Faturacao\Models\Recibo;
 interface FaturacaoGateway
 {
     /**
-     * @param  array<int, array{produto_id?: int|null, descricao: string, quantidade: int|float, preco_unitario: int|float|string, preco_unitario_base?: int|float|string|null, taxa_iva: int|float|string, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
+     * Valores monetários e taxas: texto decimal («1234.50», «14») ou inteiro — nunca float.
+     * A quantidade pode ser inteira ou texto decimal («2.50»).
+     *
+     * @param  array<int, array{produto_id?: int|null, descricao: string, quantidade: int|string, preco_unitario: int|string, preco_unitario_base?: int|string|null, taxa_iva: int|string, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
      */
     public function criarRascunho(
         Empresa $empresa,
@@ -33,7 +36,7 @@ interface FaturacaoGateway
     public function emitirRecibo(
         int $empresaId,
         int $clienteId,
-        string|int|float $valor,
+        string|int $valor,
         string $meioPagamento,
         ?int $faturaId = null,
     ): Recibo;

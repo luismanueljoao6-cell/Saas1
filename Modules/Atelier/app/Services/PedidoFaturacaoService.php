@@ -36,7 +36,7 @@ class PedidoFaturacaoService
     /**
      * @throws PedidoException|Throwable
      */
-    public function registarSinal(Pedido $pedido, float $valor, string $meioPagamento): Recibo
+    public function registarSinal(Pedido $pedido, string|int|float $valor, string $meioPagamento): Recibo
     {
         return DB::transaction(function () use ($pedido, $valor, $meioPagamento) {
             $original = $pedido;
@@ -50,7 +50,7 @@ class PedidoFaturacaoService
                 throw PedidoException::sinalJaRegistado();
             }
 
-            if ($valor <= 0) {
+            if (Dinheiro::centimos($valor) <= 0) {
                 throw PedidoException::valorInvalido();
             }
 
@@ -107,8 +107,8 @@ class PedidoFaturacaoService
                 [
                     'descricao' => "{$pedido->tipoServicoRotulo()}: {$pedido->descricao}",
                     'quantidade' => 1,
-                    'preco_unitario' => (float) $pedido->valor_orcamento,
-                    'taxa_iva' => (float) $pedido->taxa_iva_aplicada,
+                    'preco_unitario' => (string) $pedido->valor_orcamento,
+                    'taxa_iva' => (string) $pedido->taxa_iva_aplicada,
                     'operation_type' => 'SG',
                 ],
             ];
@@ -116,9 +116,9 @@ class PedidoFaturacaoService
             foreach ($pedido->materiais as $material) {
                 $linhas[] = [
                     'descricao' => $material->descricao,
-                    'quantidade' => (float) $material->quantidade,
-                    'preco_unitario' => (float) $material->valor_unitario,
-                    'taxa_iva' => (float) $pedido->taxa_iva_aplicada,
+                    'quantidade' => (string) $material->quantidade,
+                    'preco_unitario' => (string) $material->valor_unitario,
+                    'taxa_iva' => (string) $pedido->taxa_iva_aplicada,
                     'operation_type' => 'TB',
                 ];
             }

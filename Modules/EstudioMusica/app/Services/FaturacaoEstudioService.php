@@ -79,7 +79,7 @@ class FaturacaoEstudioService
                 'descricao' => "Sinal ({$percentual}%) - Projeto \"{$projeto->nome}\"",
                 'quantidade' => 1,
                 'preco_unitario' => Dinheiro::formatar($sinal),
-                'taxa_iva' => (float) config('faturacao.taxa_iva_geral'),
+                'taxa_iva' => (string) config('faturacao.taxa_iva_geral'),
             ]]);
 
             $projeto->faturas()->attach($fatura->id, ['tipo' => 'sinal']);
@@ -118,7 +118,7 @@ class FaturacaoEstudioService
                 'descricao' => "Saldo final - Projeto \"{$projeto->nome}\"",
                 'quantidade' => 1,
                 'preco_unitario' => Dinheiro::formatar($restante),
-                'taxa_iva' => (float) config('faturacao.taxa_iva_geral'),
+                'taxa_iva' => (string) config('faturacao.taxa_iva_geral'),
             ]]);
 
             $projeto->faturas()->attach($fatura->id, ['tipo' => 'saldo_final']);
@@ -188,12 +188,12 @@ class FaturacaoEstudioService
             ->first();
 
         if ($cupom) {
-            $percentual = (float) $cupom->percentual_desconto;
+            $percentual = (string) $cupom->percentual_desconto;
             $liquido = $total - $this->percentagemEmCentimos($total, $percentual);
 
             if ($liquido > 0) {
                 $total = $liquido;
-                $descricao .= ' — desconto '.rtrim(rtrim(number_format($percentual, 2, '.', ''), '0'), '.')."% (cupão {$cupom->codigo})";
+                $descricao .= ' — desconto '.rtrim(rtrim(Dinheiro::formatar(Dinheiro::pontosBase($percentual)), '0'), '.')."% (cupão {$cupom->codigo})";
             } else {
                 $cupom = null; // desconto total: não gasta o cupão numa fatura que não se emite
             }
@@ -204,7 +204,7 @@ class FaturacaoEstudioService
             'quantidade' => 1,
             'preco_unitario' => Dinheiro::formatar($total),
             'preco_unitario_base' => Dinheiro::formatar($precoUnitarioBase),
-            'taxa_iva' => (float) config('faturacao.taxa_iva_geral'),
+            'taxa_iva' => (string) config('faturacao.taxa_iva_geral'),
         ]]);
 
         $cupom?->marcarComoUsado();
@@ -225,7 +225,7 @@ class FaturacaoEstudioService
      *
      * @throws InvalidArgumentException|DomainException
      */
-    public function registrarRecibo(ProjetoMusical $projeto, Fatura $fatura, string $meioPagamento, ?float $valor = null): Recibo
+    public function registrarRecibo(ProjetoMusical $projeto, Fatura $fatura, string $meioPagamento, string|int|float|null $valor = null): Recibo
     {
         return DB::transaction(function () use ($projeto, $fatura, $meioPagamento, $valor) {
             $pertenceAoProjeto = (int) $fatura->empresa_id === (int) $projeto->empresa_id
@@ -262,7 +262,7 @@ class FaturacaoEstudioService
     }
 
     /**
-     * @param  array<int, array{descricao: string, quantidade: int|float, preco_unitario: string|float, taxa_iva: float}>  $linhas
+     * @param  array<int, array{descricao: string, quantidade: int|float, preco_unitario: string, taxa_iva: string}>  $linhas
      */
     protected function criarEEmitirFatura(Empresa $empresa, Cliente $cliente, array $linhas): Fatura
     {
@@ -272,9 +272,9 @@ class FaturacaoEstudioService
     }
 
     /** $percentual% de um valor em cêntimos, arredondado a meio para cima (40,00% de 100000,00 → 40000,00). */
-    protected function percentagemEmCentimos(int $centimos, float $percentual): int
+    protected function percentagemEmCentimos(int $centimos, string|int|float $percentual): int
     {
-        $pontosBase = (int) round($percentual * 100);
+        $pontosBase = Dinheiro::pontosBase($percentual);
 
         return intdiv($centimos * $pontosBase + 5000, 10000);
     }

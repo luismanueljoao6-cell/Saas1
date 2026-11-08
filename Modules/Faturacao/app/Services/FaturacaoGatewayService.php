@@ -36,7 +36,7 @@ class FaturacaoGatewayService implements FaturacaoGateway
     public function emitirRecibo(
         int $empresaId,
         int $clienteId,
-        string|int|float $valor,
+        string|int $valor,
         string $meioPagamento,
         ?int $faturaId = null,
     ): Recibo {

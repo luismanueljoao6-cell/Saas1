@@ -156,7 +156,7 @@ class PedidoController extends Controller
         $this->garantirQuePodeEmitirFaturas($pedido->empresa);
 
         try {
-            $this->faturacaoService->registarSinal($pedido, (float) $request->validated('valor'), $request->validated('meio_pagamento'));
+            $this->faturacaoService->registarSinal($pedido, $request->validated('valor'), $request->validated('meio_pagamento'));
         } catch (PedidoException $e) {
             return back()->with('erro', $e->getMessage());
         } catch (Throwable $e) {

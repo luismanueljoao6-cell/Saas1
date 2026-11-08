@@ -19,6 +19,15 @@ final class Dinheiro
         return self::escalar($valor, 2);
     }
 
+    /**
+     * Percentagem com 2 casas decimais em pontos base (33,33% → 3333; 40% → 4000),
+     * lida dígito a dígito: nunca multiplica um float por 100.
+     */
+    public static function pontosBase(string|int|float|null $percentagem): int
+    {
+        return self::escalar($percentagem, 2);
+    }
+
     /** Converte uma quantidade decimal em milésimos sem passar por float. */
     public static function milesimos(string|int|float|null $valor): int
     {
