@@ -36,7 +36,7 @@ class PedidoFaturacaoService
     /**
      * @throws PedidoException|Throwable
      */
-    public function registarSinal(Pedido $pedido, string|int|float $valor, string $meioPagamento): Recibo
+    public function registarSinal(Pedido $pedido, string|int $valor, string $meioPagamento): Recibo
     {
         return DB::transaction(function () use ($pedido, $valor, $meioPagamento) {
             $original = $pedido;

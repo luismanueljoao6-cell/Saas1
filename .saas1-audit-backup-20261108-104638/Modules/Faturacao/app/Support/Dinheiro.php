@@ -1,0 +1,106 @@
+<?php
+
+namespace Modules\Faturacao\Support;
+
+/**
+ * Aritmética monetária exata: tudo em inteiros (cêntimos / milésimos),
+ * sem passar por float na conversão (o texto decimal é lido dígito a
+ * dígito). Valores NÃO negativos. Arredondamento "half up" nos valores base e
+ * POR EXCESSO no imposto: a AGT exige que taxContribution seja arredondado
+ * por excesso ao cêntimo (ex.: 23.144 => 23.15).
+ */
+final class Dinheiro
+{
+    /** Máx. de quantidade × preço (milésimos × cêntimos) para não haver overflow de int. */
+    private const LIMITE_LINHA = 900_000_000_000_000_000;
+
+    public static function centimos(string|int|float|null $valor): int
+    {
+        return self::escalar($valor, 2);
+    }
+
+    /**
+     * Percentagem com 2 casas decimais em pontos base (33,33% → 3333; 40% → 4000),
+     * lida dígito a dígito: nunca multiplica um float por 100.
+     */
+    public static function pontosBase(string|int|float|null $percentagem): int
+    {
+        return self::escalar($percentagem, 2);
+    }
+
+    /** Converte uma quantidade decimal em milésimos sem passar por float. */
+    public static function milesimos(string|int|float|null $valor): int
+    {
+        return self::escalar($valor, 3);
+    }
+
+    public static function formatar(int $centimos): string
+    {
+        $sinal = $centimos < 0 ? '-' : '';
+        $abs = abs($centimos);
+
+        return sprintf('%s%d.%02d', $sinal, intdiv($abs, 100), $abs % 100);
+    }
+
+    /**
+     * @return array{sem_iva: string, iva: string, total: string}
+     */
+    public static function calcularLinha(string|int|float $quantidade, string|int|float $precoUnitario, string|int|float $taxaIva): array
+    {
+        $milesimos = self::escalar($quantidade, 3);
+        $preco = self::centimos($precoUnitario);
+        $taxa = self::escalar($taxaIva, 2); // 14.00 -> 1400
+
+        if ($milesimos <= 0) {
+            throw new \InvalidArgumentException('A quantidade tem de ser positiva.');
+        }
+
+        if ($preco < 0) {
+            throw new \InvalidArgumentException('O preço unitário não pode ser negativo.');
+        }
+
+        if ($taxa < 0 || $taxa > 10000) {
+            throw new \InvalidArgumentException('A taxa de IVA tem de estar entre 0 e 100.');
+        }
+
+        if ($preco > 0 && $milesimos > intdiv(self::LIMITE_LINHA, $preco)) {
+            throw new \InvalidArgumentException('O valor da linha excede o limite permitido.');
+        }
+
+        $semIva = intdiv($milesimos * $preco + 500, 1000);
+        $iva = intdiv($semIva * $taxa + 9999, 10000); // por excesso (AGT)
+
+        return [
+            'sem_iva' => self::formatar($semIva),
+            'iva' => self::formatar($iva),
+            'total' => self::formatar($semIva + $iva),
+        ];
+    }
+
+    /** Converte um decimal em inteiro com $casas casas, half-up, sem float. */
+    private static function escalar(string|int|float|null $valor, int $casas): int
+    {
+        if ($valor === null || $valor === '') {
+            return 0;
+        }
+
+        $texto = is_float($valor) ? number_format($valor, $casas + 4, '.', '') : trim((string) $valor);
+
+        if (! preg_match('/^([+-]?)(\d*)(?:\.(\d*))?$/', $texto, $m) || ($m[2] === '' && ($m[3] ?? '') === '')) {
+            throw new \InvalidArgumentException("Valor numérico inválido: '{$texto}'.");
+        }
+
+        if (strlen(ltrim($m[2], '0')) > 12) {
+            throw new \InvalidArgumentException('Valor numérico demasiado grande.');
+        }
+
+        $fracao = str_pad($m[3] ?? '', $casas + 1, '0');
+        $unidades = (int) ($m[2] ?: '0') * (10 ** $casas) + (int) substr($fracao, 0, $casas);
+
+        if ((int) $fracao[$casas] >= 5) {
+            $unidades++;
+        }
+
+        return $m[1] === '-' ? -$unidades : $unidades;
+    }
+}

@@ -25,7 +25,7 @@ class ReciboService
     ) {}
 
     /**
-     * @param  string|int|float  $valor  em unidades monetárias (ex.: '500.00')
+     * @param  string|int  $valor  em unidades monetárias (ex.: '500.00')
      * @param  int|null  $faturaId  nulo para recibos de adiantamento
      *
      * @throws Throwable
@@ -33,7 +33,7 @@ class ReciboService
     public function emitir(
         int $empresaId,
         int $clienteId,
-        string|int|float $valor,
+        string|int $valor,
         string $meioPagamento,
         ?int $faturaId = null,
     ): Recibo {

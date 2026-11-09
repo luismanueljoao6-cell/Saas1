@@ -79,7 +79,7 @@ class CampanhaReconciliador
 
         foreach ($campanhas as $campanha) {
             // Mesmo lock do DispararCampanhaJob: nunca reconciliar a meio de um envio.
-            $lock = Cache::lock('atelier:campanha:'.$campanha->id, 120);
+            $lock = Cache::lock('atelier:campanha:'.$campanha->id, 960);
 
             if (! $lock->get()) {
                 continue;
