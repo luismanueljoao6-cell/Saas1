@@ -391,6 +391,77 @@ class NotificationProcessorTest extends TestCase
     // ---------------------------------------------------------------------
     // Preparação
     // ---------------------------------------------------------------------
+    // Política de retry: nem todas as falhas se repetem
+    // ---------------------------------------------------------------------
+
+    public function test_destinatario_invalido_falha_de_vez_sem_retry(): void
+    {
+        $notificacao = $this->novaNotificacao('chave-destinatario-invalido');
+        $jobsAntes = Queue::pushed(ProcessNotificationJob::class)->count();
+        $this->canal->aoEnviar = fn (): NotificationSendResult => NotificationSendResult::rejected('teste', 'Número inválido.', 'invalid_recipient', 400);
+
+        $this->processar($notificacao);
+
+        $notificacao->refresh();
+        $this->assertSame(NotificationOutbox::STATUS_FAILED, $notificacao->status);
+        $this->assertSame(1, $this->canal->envios);
+        $this->assertCount($jobsAntes, Queue::pushed(ProcessNotificationJob::class), 'Falha definitiva não agenda retry.');
+    }
+
+    public function test_credenciais_invalidas_bloqueiam_e_geram_alerta_sem_expor_o_destinatario(): void
+    {
+        Log::spy();
+        $notificacao = $this->novaNotificacao('chave-credenciais');
+        $jobsAntes = Queue::pushed(ProcessNotificationJob::class)->count();
+        $this->canal->aoEnviar = fn (): NotificationSendResult => NotificationSendResult::rejected('teste', 'Unauthorized', null, 401);
+
+        $this->processar($notificacao);
+
+        $this->assertSame(NotificationOutbox::STATUS_FAILED, $notificacao->fresh()->status);
+        $this->assertCount($jobsAntes, Queue::pushed(ProcessNotificationJob::class));
+        Log::shouldHaveReceived('critical')->once()->withArgs(
+            fn (string $mensagem, array $contexto): bool => ! str_contains(json_encode($contexto), '+244923000000')
+                && ($contexto['response_code'] ?? null) === 401
+        );
+    }
+
+    public function test_limite_do_fornecedor_agenda_retry_respeitando_o_retry_after(): void
+    {
+        $notificacao = $this->novaNotificacao('chave-limite');
+        $this->canal->aoEnviar = fn (): NotificationSendResult => NotificationSendResult::rejected('teste', 'Too many requests', 'rate_limited', 429, ['retry_after' => 300]);
+
+        $this->processar($notificacao);
+
+        $notificacao->refresh();
+        $this->assertSame(NotificationOutbox::STATUS_RETRY_SCHEDULED, $notificacao->status);
+        $this->assertTrue($notificacao->available_at->gte(now()->addSeconds(295)), 'Deve esperar pelo menos o retry_after.');
+    }
+
+    public function test_payload_invalido_lancado_pelo_canal_nao_e_repetido(): void
+    {
+        $notificacao = $this->novaNotificacao('chave-payload-invalido');
+        $jobsAntes = Queue::pushed(ProcessNotificationJob::class)->count();
+        $this->canal->aoEnviar = function (): NotificationSendResult {
+            throw new \InvalidArgumentException('Payload.message é obrigatório.');
+        };
+
+        $this->processar($notificacao);
+
+        $this->assertSame(NotificationOutbox::STATUS_FAILED, $notificacao->fresh()->status);
+        $this->assertCount($jobsAntes, Queue::pushed(ProcessNotificationJob::class));
+    }
+
+    public function test_erro_temporario_continua_com_backoff_e_dead_letter_no_limite(): void
+    {
+        $notificacao = $this->novaNotificacao('chave-temporario', 1);
+        $this->canal->aoEnviar = fn (): NotificationSendResult => NotificationSendResult::rejected('teste', 'Indisponível', null, 503);
+
+        $this->processar($notificacao);
+
+        $this->assertSame(NotificationOutbox::STATUS_DEAD_LETTER, $notificacao->fresh()->status);
+    }
+
+    // ---------------------------------------------------------------------
 
     private function novaNotificacao(string $chave, int $maxAttempts = 5): NotificationOutbox
     {

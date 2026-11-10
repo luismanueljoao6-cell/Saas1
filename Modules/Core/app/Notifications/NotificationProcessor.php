@@ -3,6 +3,7 @@
 namespace Modules\Core\Notifications;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Core\Events\NotificationStateChanged;
 use Modules\Core\Jobs\ProcessNotificationJob;
@@ -10,6 +11,7 @@ use Modules\Core\Models\NotificationAttempt;
 use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException;
 use Modules\Core\Services\TenantManager;
+use InvalidArgumentException;
 use Throwable;
 
 class NotificationProcessor
@@ -134,6 +136,11 @@ class NotificationProcessor
             $this->recordUnknownResult($claim, $empresaId, $exception);
 
             return;
+        } catch (InvalidArgumentException $exception) {
+            // Payload inválido não se corrige a repetir: falha definitiva.
+            $this->recordFailure($claim, $empresaId, $exception->getMessage(), 'invalid_payload');
+
+            return;
         } catch (Throwable $exception) {
             $this->recordFailure($claim, $empresaId, $exception->getMessage());
 
@@ -241,9 +248,9 @@ class NotificationProcessor
         });
     }
 
-    private function recordFailure(array $claim, int $empresaId, string $message): void
+    private function recordFailure(array $claim, int $empresaId, string $message, ?string $errorCode = null): void
     {
-        DB::transaction(function () use ($claim, $empresaId, $message): void {
+        DB::transaction(function () use ($claim, $empresaId, $message, $errorCode): void {
             $notification = NotificationOutbox::withoutGlobalScopes()
                 ->where('empresa_id', $empresaId)
                 ->whereKey($claim['notification']->id)
@@ -260,7 +267,7 @@ class NotificationProcessor
                 ->whereKey($claim['attempt_id'])
                 ->first();
 
-            $this->scheduleRetry($notification, $attempt, $message);
+            $this->scheduleRetry($notification, $attempt, $message, $errorCode);
 
             $notification->refresh();
             if (in_array($notification->status, [NotificationOutbox::STATUS_FAILED, NotificationOutbox::STATUS_DEAD_LETTER], true)) {
@@ -296,10 +303,12 @@ class NotificationProcessor
         ?int $responseCode = null,
         array $metadata = [],
     ): void {
-        // Bloqueios legais ou de configuração não são resolvidos por retry.
-        $permanent = $errorCode === 'apd_transfer_not_authorized';
+        // Credenciais, bloqueios legais/configuração e destinatários inválidos não
+        // se resolvem por retry; limites do fornecedor esperam mais.
+        $classe = NotificationRetryPolicy::classify($errorCode, $responseCode);
+        $permanent = NotificationRetryPolicy::semRetry($classe);
         $terminal = $permanent || $notification->attempts >= $notification->max_attempts;
-        $delay = min(3600, 30 * (2 ** max(0, $notification->attempts - 1)));
+        $delay = NotificationRetryPolicy::atrasoSegundos($classe, (int) $notification->attempts, $metadata);
 
         $notification->forceFill([
             'status' => $permanent
@@ -320,6 +329,18 @@ class NotificationProcessor
             'metadata' => $metadata,
             'finished_at' => now(),
         ])->save();
+
+        if ($classe === NotificationRetryPolicy::BLOCKED) {
+            // Sem destinatário nem payload: só o necessário para um alerta operacional.
+            Log::critical('Outbox: envio bloqueado por credenciais ou configuração; é preciso intervenção, o retry não resolve.', [
+                'notification_id' => $notification->id,
+                'empresa_id' => $notification->empresa_id,
+                'channel' => $notification->channel,
+                'provider' => $notification->provider,
+                'error_code' => $errorCode,
+                'response_code' => $responseCode,
+            ]);
+        }
 
         if (! $terminal) {
             ProcessNotificationJob::dispatch($notification->id, (int) $notification->empresa_id)
