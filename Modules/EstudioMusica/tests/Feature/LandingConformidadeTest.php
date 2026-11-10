@@ -4,6 +4,7 @@ namespace Modules\EstudioMusica\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Testing\TestResponse;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\EstudioMusica\Models\Reclamacao;
@@ -31,7 +32,7 @@ class LandingConformidadeTest extends TestCase
         $this->empresa->aderirServicos(['estudio']);
     }
 
-    protected function orcamento(array $extra = []): \Illuminate\Testing\TestResponse
+    protected function orcamento(array $extra = []): TestResponse
     {
         return $this->post(route('estudiomusica.landing.orcamento', ['empresa' => $this->empresa->id]), array_merge([
             'nome' => 'Lead Teste',

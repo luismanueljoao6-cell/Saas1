@@ -111,12 +111,16 @@ class EstudioMusicaServiceProvider extends ServiceProvider
      * Regista adaptadores do Estúdio no pipeline persistente do Core.
      * Mantém os bindings existentes (incluindo a seleção de fornecedor por
      * configuração) e a política de transferência internacional.
+     *
+     * Registo preguiçoso: construir o canal aqui resolveria o fornecedor
+     * configurado, e um erro em ESTUDIOMUSICA_CANAL_WHATSAPP/SMS deitaria
+     * abaixo a aplicação inteira no arranque.
      */
     protected function registarCanaisOutbox(): void
     {
         $registry = $this->app->make(NotificationChannelRegistry::class);
-        $registry->register($this->app->make(EstudioWhatsAppOutboxChannel::class));
-        $registry->register($this->app->make(EstudioSmsOutboxChannel::class));
+        $registry->registerLazy('estudio.whatsapp', fn () => $this->app->make(EstudioWhatsAppOutboxChannel::class));
+        $registry->registerLazy('estudio.sms', fn () => $this->app->make(EstudioSmsOutboxChannel::class));
     }
 
     protected function registerMenuItems(): void

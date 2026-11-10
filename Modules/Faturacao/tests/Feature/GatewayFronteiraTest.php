@@ -5,11 +5,13 @@ namespace Modules\Faturacao\Tests\Feature;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
+use Modules\Faturacao\Support\Dinheiro;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -79,18 +81,26 @@ class GatewayFronteiraTest extends TestCase
     }
 
     #[DataProvider('valoresDificeis')]
-    public function test_o_mesmo_valor_em_texto_ou_em_float_da_o_mesmo_resultado(string $preco, string $quantidade, string $taxa): void
+    public function test_o_total_e_a_soma_exacta_da_base_e_do_iva(string $preco, string $quantidade, string $taxa): void
     {
         [$empresa, $cliente] = $this->cenario('610000003');
 
-        $emTexto = $this->emitirPeloGateway($empresa, $cliente, $preco, $quantidade, $taxa);
-        $emFloat = $this->emitirPeloGateway($empresa, $cliente, (float) $preco, (float) $quantidade, (float) $taxa);
+        $fatura = $this->emitirPeloGateway($empresa, $cliente, $preco, $quantidade, $taxa);
 
         $this->assertSame(
-            [(string) $emTexto->valor_sem_iva, (string) $emTexto->valor_iva, (string) $emTexto->valor_total],
-            [(string) $emFloat->valor_sem_iva, (string) $emFloat->valor_iva, (string) $emFloat->valor_total],
-            'O resultado não pode depender de o valor chegar como texto ou como float.'
+            Dinheiro::centimos($fatura->valor_sem_iva) + Dinheiro::centimos($fatura->valor_iva),
+            Dinheiro::centimos($fatura->valor_total),
         );
+    }
+
+    #[DataProvider('valoresDificeis')]
+    public function test_valores_em_float_sao_recusados_pelo_gateway(string $preco, string $quantidade, string $taxa): void
+    {
+        [$empresa, $cliente] = $this->cenario('610000003');
+
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->emitirPeloGateway($empresa, $cliente, (float) $preco, $quantidade, $taxa);
     }
 
     // ---------------------------------------------------------------------
@@ -106,10 +116,10 @@ class GatewayFronteiraTest extends TestCase
         $this->assertSame(114000, $gateway->saldoEmCentimos($fatura));
 
         $gateway->emitirRecibo($empresa->id, $cliente->id, '400.00', 'dinheiro', $fatura->id);
-        $this->assertSame(['recebido' => 40000, 'creditado' => 0, 'saldo' => 74000], $gateway->resumoDaFatura($fatura->fresh()));
+        $this->assertSame(['recebido' => 40000, 'creditado' => 0, 'abatido' => 0, 'saldo' => 74000], $gateway->resumoDaFatura($fatura->fresh()));
 
         $gateway->emitirRecibo($empresa->id, $cliente->id, '740.00', 'transferencia', $fatura->id);
-        $this->assertSame(['recebido' => 114000, 'creditado' => 0, 'saldo' => 0], $gateway->resumoDaFatura($fatura->fresh()));
+        $this->assertSame(['recebido' => 114000, 'creditado' => 0, 'abatido' => 0, 'saldo' => 0], $gateway->resumoDaFatura($fatura->fresh()));
 
         $this->assertRecusado(fn () => $gateway->emitirRecibo($empresa->id, $cliente->id, '0.01', 'dinheiro', $fatura->id));
     }
@@ -124,7 +134,7 @@ class GatewayFronteiraTest extends TestCase
         $linha = [['descricao' => 'Desconto', 'quantidade' => 1, 'preco_unitario' => '500.00', 'taxa_iva' => '14']];
         $notas->emitir($notas->criarRascunho($empresa->id, $cliente->id, 'credito', 'Desconto comercial', $linha, $fatura->id));
 
-        $this->assertSame(['recebido' => 0, 'creditado' => 57000, 'saldo' => 57000], $gateway->resumoDaFatura($fatura->fresh()));
+        $this->assertSame(['recebido' => 0, 'creditado' => 57000, 'abatido' => 0, 'saldo' => 57000], $gateway->resumoDaFatura($fatura->fresh()));
 
         $gateway->emitirRecibo($empresa->id, $cliente->id, '570.00', 'dinheiro', $fatura->id);
         $this->assertSame(0, $gateway->saldoEmCentimos($fatura->fresh()));
@@ -171,7 +181,7 @@ class GatewayFronteiraTest extends TestCase
         return [$empresa, $cliente];
     }
 
-    private function emitirPeloGateway(Empresa $empresa, Cliente $cliente, string|int|float $preco, string|int|float $quantidade, string|int|float $taxa): Fatura
+    private function emitirPeloGateway(Empresa $empresa, Cliente $cliente, string|int|string|int $preco, string|int|string|int $quantidade, string|int|string|int $taxa): Fatura
     {
         $gateway = app(FaturacaoGateway::class);
 

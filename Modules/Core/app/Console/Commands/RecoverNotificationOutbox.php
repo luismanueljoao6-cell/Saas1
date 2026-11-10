@@ -12,7 +12,9 @@ use Modules\Core\Notifications\NotificationProcessor;
 
 class RecoverNotificationOutbox extends Command
 {
-    protected $signature = 'notifications:recover {--limit=500}';
+    protected $signature = 'notifications:recover
+        {--limit=500}
+        {--min-age=0 : Só reagenda pendentes/retries parados há pelo menos N segundos (evita duplicar jobs acabados de despachar)}';
 
     protected $description = 'Reagenda notificações pendentes ou abandonadas na Outbox.';
 
@@ -20,20 +22,25 @@ class RecoverNotificationOutbox extends Command
     {
         $limit = max(1, min(5000, (int) $this->option('limit')));
         $now = now();
+        // Linhas pendentes/retry só contam como «paradas» depois deste instante.
+        // Com o agendador a correr de minuto a minuto, sem isto cada passagem
+        // reagendaria jobs que a fila ainda nem teve tempo de executar.
+        $maduraAte = $now->copy()->subSeconds(max(0, (int) $this->option('min-age')));
         $staleBefore = $now->copy()->subSeconds(NotificationProcessor::LEASE_SEGUNDOS);
         $count = 0;
         $abandonadas = 0;
 
-        DB::transaction(function () use ($limit, $now, $staleBefore, &$count, &$abandonadas): void {
+        DB::transaction(function () use ($limit, $now, $maduraAte, $staleBefore, &$count, &$abandonadas): void {
             $notifications = NotificationOutbox::withoutGlobalScopes()
-                ->where(function ($query) use ($now, $staleBefore): void {
-                    $query->where(function ($pending) use ($now): void {
+                ->where(function ($query) use ($maduraAte, $staleBefore): void {
+                    $query->where(function ($pending) use ($maduraAte): void {
                         $pending->whereIn('status', [
                             NotificationOutbox::STATUS_PENDING,
                             NotificationOutbox::STATUS_RETRY_SCHEDULED,
-                        ])->where(function ($due) use ($now): void {
-                            $due->whereNull('available_at')->orWhere('available_at', '<=', $now);
-                        });
+                        ])->where('updated_at', '<=', $maduraAte)
+                            ->where(function ($due): void {
+                                $due->whereNull('available_at')->orWhere('available_at', '<=', now());
+                            });
                     })->orWhere(function ($stale) use ($staleBefore): void {
                         $stale->where('status', NotificationOutbox::STATUS_PROCESSING)
                             ->whereNotNull('locked_at')
@@ -59,6 +66,10 @@ class RecoverNotificationOutbox extends Command
                         'lock_token' => null,
                         'available_at' => $now,
                     ])->save();
+                } else {
+                    // Marca a passagem: a próxima só volta a reagendar esta linha
+                    // depois de --min-age, em vez de empilhar um job por minuto.
+                    $notification->touch();
                 }
 
                 ProcessNotificationJob::dispatch($notification->id, (int) $notification->empresa_id)

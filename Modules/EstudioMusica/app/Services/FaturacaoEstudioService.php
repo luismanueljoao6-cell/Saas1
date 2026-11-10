@@ -274,7 +274,7 @@ class FaturacaoEstudioService
     /** $percentual% de um valor em cêntimos, arredondado a meio para cima (40,00% de 100000,00 → 40000,00). */
     protected function percentagemEmCentimos(int $centimos, string|int|float $percentual): int
     {
-        $pontosBase = Dinheiro::pontosBase($percentual);
+        $pontosBase = Dinheiro::pontosBase(is_float($percentual) ? (string) $percentual : $percentual);
 
         return intdiv($centimos * $pontosBase + 5000, 10000);
     }

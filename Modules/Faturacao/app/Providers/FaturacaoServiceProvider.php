@@ -4,6 +4,7 @@ namespace Modules\Faturacao\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Services\MenuRegistry;
+use Modules\Faturacao\Console\ValidarSafTCommand;
 use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Services\FaturacaoGatewayService;
 
@@ -24,7 +25,7 @@ class FaturacaoServiceProvider extends ServiceProvider
 
         $this->app->register(RouteServiceProvider::class);
 
-        $this->commands([\Modules\Faturacao\Console\ValidarSafTCommand::class]);
+        $this->commands([ValidarSafTCommand::class]);
 
         $menu = $this->app->make(MenuRegistry::class);
         $menu->adicionar('faturacao.faturas.index', 'Faturas', 20);

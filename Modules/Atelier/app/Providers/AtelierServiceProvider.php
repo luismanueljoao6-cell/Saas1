@@ -47,14 +47,16 @@ class AtelierServiceProvider extends ServiceProvider
 
     /**
      * Regista os canais de telefone do Atelier no pipeline persistente do Core.
+     * O registo é preguiçoso: o canal só é construído quando a Outbox o usa,
+     * para que um erro de configuração não impeça a aplicação de arrancar.
      * O envio legado continua disponível até cada fluxo adotar explicitamente
      * uma chave de idempotência e os estados assíncronos da Outbox.
      */
     protected function registarCanaisOutbox(): void
     {
         $registry = $this->app->make(NotificationChannelRegistry::class);
-        $registry->register($this->app->make(AtelierWhatsAppOutboxChannel::class));
-        $registry->register($this->app->make(AtelierSmsOutboxChannel::class));
+        $registry->registerLazy('atelier.whatsapp', fn () => $this->app->make(AtelierWhatsAppOutboxChannel::class));
+        $registry->registerLazy('atelier.sms', fn () => $this->app->make(AtelierSmsOutboxChannel::class));
     }
 
     protected function registarMenu(): void

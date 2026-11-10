@@ -35,12 +35,12 @@ class NotaDebitoSemIvaTest extends TestCase
         return [$empresa, $cliente];
     }
 
-    protected function linha(float $preco, float $taxa): array
+    protected function linha(string|int $preco, string|int $taxa): array
     {
         return [['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => $preco, 'taxa_iva' => $taxa]];
     }
 
-    protected function faturaEmitida(Empresa $e, Cliente $c, float $preco = 1000): Fatura
+    protected function faturaEmitida(Empresa $e, Cliente $c, string|int $preco = 1000): Fatura
     {
         $s = app(FaturaService::class);
 

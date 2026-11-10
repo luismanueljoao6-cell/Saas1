@@ -81,7 +81,7 @@ return [
         'outro' => 'Outro',
     ],
 
-    'taxa_iva_geral' => (float) env('FATURACAO_TAXA_IVA_GERAL', 14.0),
+    'taxa_iva_geral' => (string) env('FATURACAO_TAXA_IVA_GERAL', '14'),
 
     /*
     |--------------------------------------------------------------------------

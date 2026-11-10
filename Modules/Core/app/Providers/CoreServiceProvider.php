@@ -2,6 +2,7 @@
 
 namespace Modules\Core\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
@@ -62,12 +63,31 @@ class CoreServiceProvider extends ServiceProvider
         $this->registerMiddlewareAliases();
         $this->registerMenuItems();
         $this->limparTenantEntreJobs();
+        $this->agendarRecuperacaoDaOutbox();
 
         $this->app->register(RouteServiceProvider::class);
 
         $this->publishes([
             __DIR__.'/../../config/config.php' => config_path('core.php'),
         ], 'core-config');
+    }
+
+    /**
+     * Sem isto, linhas perdidas da Outbox (job nunca despachado, worker morto
+     * a meio de um envio) ficariam presas para sempre: o recuperador só existia
+     * como comando manual. --min-age evita reagendar jobs que a fila acabou de
+     * receber e ainda não teve tempo de executar. Requer o cron do Laravel
+     * (`php artisan schedule:run`), como as restantes tarefas agendadas.
+     */
+    protected function agendarRecuperacaoDaOutbox(): void
+    {
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            $schedule->command('notifications:recover', ['--min-age=60'])
+                ->everyMinute()
+                ->name('core:notifications-recover')
+                ->withoutOverlapping(10)
+                ->onOneServer();
+        });
     }
 
     protected function registerViews(): void

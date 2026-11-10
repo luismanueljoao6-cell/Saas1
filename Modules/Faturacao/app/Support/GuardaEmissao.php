@@ -5,8 +5,8 @@ namespace Modules\Faturacao\Support;
 use DomainException;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Models\Empresa;
-use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Exceptions\EmissaoNaoPermitidaException;
+use Modules\Faturacao\Models\Fatura;
 
 /**
  * Regra de negócio única: só se emitem faturas e recibos com subscrição

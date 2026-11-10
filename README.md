@@ -222,7 +222,7 @@ Além das do Laravel, o `.env.example` traz as da plataforma:
 | Variável | Para quê |
 |---|---|
 | `APP_TIMEZONE` | Fuso horário (`Africa/Luanda`) |
-| `QUEUE_CONNECTION`, `DB_QUEUE_RETRY_AFTER` | Fila em base de dados; o `retry_after` tem de ser **maior** que o timeout do `GerarSafTJob` (600 s) |
+| `QUEUE_CONNECTION`, `DB_QUEUE_RETRY_AFTER` | Fila em base de dados; o `retry_after` (960 s por omissão) tem de ser **maior** que o maior timeout de um job: `DispararCampanhaJob` (900 s) e `GerarSafTJob` (600 s) |
 | `FATURACAO_CHAVE_PRIVADA_PATH`, `FATURACAO_CHAVE_VERSAO` | Chave RSA privada que assina as faturas (fora do repositório) e a sua versão |
 | `FATURACAO_TAXA_IVA_GERAL`, `FATURACAO_TAXAS_IVA_PERMITIDAS` | Taxas de IVA aceites na emissão |
 | `FATURACAO_SAFT_NUMERO_CERTIFICADO` | Em produção, o SAF-T fica bloqueado enquanto for `0` |
