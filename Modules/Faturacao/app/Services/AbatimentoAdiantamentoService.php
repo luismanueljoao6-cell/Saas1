@@ -2,6 +2,7 @@
 
 namespace Modules\Faturacao\Services;
 
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Faturacao\Models\Fatura;
@@ -52,20 +53,8 @@ class AbatimentoAdiantamentoService
         return DB::transaction(function () use ($empresaId, $faturaAdiantamentoId, $faturaFinalId, $centimos, $chave) {
             GuardaEmissao::garantir($empresaId);
 
-            $existente = DB::table('adiantamento_abatimentos')
-                ->where('empresa_id', $empresaId)
-                ->where('chave', $chave)
-                ->lockForUpdate()
-                ->first();
-
-            if ($existente) {
-                if ((int) $existente->fatura_adiantamento_id !== $faturaAdiantamentoId
-                    || (int) $existente->fatura_final_id !== $faturaFinalId
-                    || (int) $existente->valor_centimos !== $centimos) {
-                    throw new \DomainException('Chave de idempotência reutilizada com dados diferentes.');
-                }
-
-                return (array) $existente;
+            if ($resultado = $this->resolverExistente($empresaId, $chave, $faturaAdiantamentoId, $faturaFinalId, $centimos)) {
+                return $resultado;
             }
 
             $faturas = Fatura::withoutGlobalScopes()
@@ -110,15 +99,26 @@ class AbatimentoAdiantamentoService
                 throw new \DomainException('O valor excede o saldo em dívida da fatura final.');
             }
 
-            $id = DB::table('adiantamento_abatimentos')->insertGetId([
-                'empresa_id' => $empresaId,
-                'fatura_adiantamento_id' => $faturaAdiantamentoId,
-                'fatura_final_id' => $faturaFinalId,
-                'valor_centimos' => $centimos,
-                'chave' => $chave,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            try {
+                $id = DB::table('adiantamento_abatimentos')->insertGetId([
+                    'empresa_id' => $empresaId,
+                    'fatura_adiantamento_id' => $faturaAdiantamentoId,
+                    'fatura_final_id' => $faturaFinalId,
+                    'valor_centimos' => $centimos,
+                    'chave' => $chave,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (UniqueConstraintViolationException $e) {
+                // Corrida perdida: outra requisição gravou a mesma chave entretanto.
+                $resultado = $this->resolverExistente($empresaId, $chave, $faturaAdiantamentoId, $faturaFinalId, $centimos);
+
+                if ($resultado) {
+                    return $resultado;
+                }
+
+                throw $e;
+            }
 
             Log::info('Adiantamento abatido', [
                 'abatimento_id' => $id,
@@ -130,5 +130,28 @@ class AbatimentoAdiantamentoService
 
             return (array) DB::table('adiantamento_abatimentos')->where('id', $id)->first();
         }, attempts: 5);
+    }
+
+    /** @return array<string, mixed>|null */
+    private function resolverExistente(
+        int $empresaId, string $chave, int $faId, int $ftId, int $centimos,
+    ): ?array {
+        $existente = DB::table('adiantamento_abatimentos')
+            ->where('empresa_id', $empresaId)
+            ->where('chave', $chave)
+            ->lockForUpdate()
+            ->first();
+
+        if (! $existente) {
+            return null;
+        }
+
+        if ((int) $existente->fatura_adiantamento_id !== $faId
+            || (int) $existente->fatura_final_id !== $ftId
+            || (int) $existente->valor_centimos !== $centimos) {
+            throw new \DomainException('Chave de idempotência reutilizada com dados diferentes.');
+        }
+
+        return (array) $existente;
     }
 }
