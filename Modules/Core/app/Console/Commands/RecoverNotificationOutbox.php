@@ -113,6 +113,17 @@ class RecoverNotificationOutbox extends Command
             ]);
         }
 
+        $desconhecidas = NotificationOutbox::withoutGlobalScopes()
+            ->where('status', NotificationOutbox::STATUS_UNKNOWN_RESULT)
+            ->where('updated_at', '<=', $now->copy()->subHour())
+            ->count();
+
+        if ($desconhecidas > 0) {
+            Log::warning('Outbox: notificações em resultado desconhecido há mais de 1 h aguardam decisão (notifications:list-unknown / notifications:resolve-unknown).', [
+                'unknown_result_1h' => $desconhecidas,
+            ]);
+        }
+
         $this->info("Notificações agendadas para processamento: {$count} (abandonadas recuperadas: {$abandonadas}; em dead letter nas últimas 24 h: {$deadLetters})");
 
         return self::SUCCESS;
