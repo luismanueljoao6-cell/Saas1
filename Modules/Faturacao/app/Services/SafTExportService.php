@@ -10,11 +10,12 @@ use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\Produto;
+use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
 
 /**
  * ESTRUTURA PROVISÓRIA do SAF-T (AO): ainda NÃO validada contra o XSD oficial
- * da AGT (falta, por exemplo, o namespace e o tratamento dos recibos). Tem
+ * da AGT (falta, por exemplo, a confirmação do namespace e da estrutura de Payments (recibos)). Tem
  * TaxTable e DocumentTotals, mas só deixa de ser provisória quando o XSD oficial
  * (faturacao.saft_xsd_path) a aceitar — o GerarSafTJob valida com o SafTValidadorXsd e
  * só publica o que passou. Não submeter à AGT sem validação XSD e software
@@ -242,6 +243,7 @@ class SafTExportService
         $noCredito->textContent = Dinheiro::formatar($totalCredito);
 
         $fonte->appendChild($vendas);
+        $fonte->appendChild($this->pagamentos($doc, $empresa, $inicio, $fim));
 
         return $fonte;
     }
@@ -292,6 +294,71 @@ class SafTExportService
         $no->appendChild($totais);
 
         return $no;
+    }
+
+    /** Recibos (RC/RG) emitidos no período. Estrutura PROVISÓRIA: confirmar contra o XSD oficial. */
+    protected function pagamentos(DOMDocument $doc, Empresa $empresa, Carbon $inicio, Carbon $fim): DOMElement
+    {
+        $pagamentos = $doc->createElement('Payments');
+
+        $noEntradas = $this->no($doc, 'NumberOfEntries', 0);
+        $noDebito = $this->no($doc, 'TotalDebit', '0.00');
+        $noCredito = $this->no($doc, 'TotalCredit', '0.00');
+        $pagamentos->appendChild($noEntradas);
+        $pagamentos->appendChild($noDebito);
+        $pagamentos->appendChild($noCredito);
+
+        $entradas = 0;
+        $totalCredito = 0;
+        $numerosFatura = [];
+
+        $recibos = Recibo::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)->where('estado', 'emitido')
+            ->whereBetween('data_emissao', [$inicio->toDateString(), $fim->toDateString()])
+            ->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
+
+        foreach ($recibos as $r) {
+            $valor = Dinheiro::formatar(Dinheiro::centimos($r->valor));
+
+            $p = $doc->createElement('Payment');
+            $p->appendChild($this->no($doc, 'PaymentRefNo', $r->numero_documento));
+            $p->appendChild($this->no($doc, 'TransactionDate', $r->data_emissao->format('Y-m-d')));
+            $p->appendChild($this->no($doc, 'PaymentType', $r->tipoDocumentoFiscal()));
+            $p->appendChild($this->no($doc, 'SystemEntryDate', $r->data_hora_sistema->format('Y-m-d\TH:i:s')));
+            $p->appendChild($this->no($doc, 'CustomerID', $r->cliente_id));
+            $p->appendChild($this->no($doc, 'Hash', $r->hash));
+            $p->appendChild($this->no($doc, 'HashControl', $r->chave_versao));
+
+            $metodo = $doc->createElement('PaymentMethod');
+            $metodo->appendChild($this->no($doc, 'PaymentMechanism', $r->meio_pagamento));
+            $metodo->appendChild($this->no($doc, 'PaymentAmount', $valor));
+            $p->appendChild($metodo);
+
+            if ($r->fatura_id) {
+                $numerosFatura[$r->fatura_id] ??= (string) Fatura::withoutGlobalScopes()
+                    ->where('empresa_id', $empresa->id)->whereKey($r->fatura_id)->value('numero_documento');
+
+                $linha = $doc->createElement('Line');
+                $origem = $doc->createElement('SourceDocumentID');
+                $origem->appendChild($this->no($doc, 'OriginatingON', $numerosFatura[$r->fatura_id]));
+                $linha->appendChild($origem);
+                $linha->appendChild($this->no($doc, 'CreditAmount', $valor));
+                $p->appendChild($linha);
+            }
+
+            $totais = $doc->createElement('DocumentTotals');
+            $totais->appendChild($this->no($doc, 'GrossTotal', $valor));
+            $p->appendChild($totais);
+
+            $pagamentos->appendChild($p);
+            $totalCredito += Dinheiro::centimos($r->valor);
+            $entradas++;
+        }
+
+        $noEntradas->textContent = (string) $entradas;
+        $noCredito->textContent = Dinheiro::formatar($totalCredito);
+
+        return $pagamentos;
     }
 
     /**
