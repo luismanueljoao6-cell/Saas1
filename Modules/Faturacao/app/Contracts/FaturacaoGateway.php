@@ -29,6 +29,18 @@ interface FaturacaoGateway
         ?string $observacoes = null,
     ): Fatura;
 
+    /**
+     * Cria um rascunho de FATURA DE ADIANTAMENTO (FA); emite-se com emitirFatura().
+     *
+     * @param  array<int, array<string, mixed>>  $linhas  mesmo formato de criarRascunho()
+     */
+    public function criarRascunhoAdiantamento(
+        Empresa $empresa,
+        Cliente $cliente,
+        array $linhas,
+        ?string $observacoes = null,
+    ): Fatura;
+
     /** Emite um rascunho pela sequência fiscal central. */
     public function emitirFatura(Fatura $fatura): Fatura;
 
@@ -39,6 +51,15 @@ interface FaturacaoGateway
         string|int $valor,
         string $meioPagamento,
         ?int $faturaId = null,
+    ): Recibo;
+
+    /** Emite um recibo de regularização (RG) que refere a fatura regularizada. */
+    public function emitirRegularizacao(
+        int $empresaId,
+        int $clienteId,
+        string|int $valor,
+        string $meioPagamento,
+        int $faturaId,
     ): Recibo;
 
     /** Saldo da fatura em cêntimos inteiros. */

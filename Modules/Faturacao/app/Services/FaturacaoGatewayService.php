@@ -28,6 +28,25 @@ class FaturacaoGatewayService implements FaturacaoGateway
         return $this->faturas->criarRascunho($empresa, $cliente, $linhas, $observacoes);
     }
 
+    public function criarRascunhoAdiantamento(
+        Empresa $empresa,
+        Cliente $cliente,
+        array $linhas,
+        ?string $observacoes = null,
+    ): Fatura {
+        return $this->faturas->criarRascunhoAdiantamento($empresa, $cliente, $linhas, $observacoes);
+    }
+
+    public function emitirRegularizacao(
+        int $empresaId,
+        int $clienteId,
+        string|int $valor,
+        string $meioPagamento,
+        int $faturaId,
+    ): Recibo {
+        return $this->recibos->emitirRegularizacao($empresaId, $clienteId, $valor, $meioPagamento, $faturaId);
+    }
+
     public function emitirFatura(Fatura $fatura): Fatura
     {
         return $this->faturas->emitir($fatura);

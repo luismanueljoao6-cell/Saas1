@@ -55,6 +55,7 @@ return [
     */
     'tipos_documento' => [
         'FT' => 'Fatura',
+        'FA' => 'Fatura de Adiantamento',
         'NC' => 'Nota de Crédito',
         'ND' => 'Nota de Débito',
         'RC' => 'Recibo',
