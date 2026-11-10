@@ -54,7 +54,7 @@ class PedidoFaturacaoService
                 throw PedidoException::valorInvalido();
             }
 
-            if (Dinheiro::centimos($valor) > Dinheiro::centimos(number_format($pedido->valorTotalComIva(), 2, '.', ''))) {
+            if (Dinheiro::centimos($valor) > $pedido->totalComIvaEmCentimos()) {
                 throw new PedidoException('O sinal não pode exceder o valor total do pedido.');
             }
 
