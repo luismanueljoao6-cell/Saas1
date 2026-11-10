@@ -296,6 +296,7 @@ class DispararCampanhaJob implements ShouldQueue
                             $campanha->canal,
                             $mensagem,
                             'atelier-campanha-'.$campanha->id.'-cliente-'.$cliente->id.'-tentativa-'.$envio->tentativa,
+                            ['finalidade' => 'marketing', 'cliente_id' => $cliente->id, 'campanha_id' => $campanha->id],
                         );
 
                         $envio->update([
@@ -322,8 +323,9 @@ class DispararCampanhaJob implements ShouldQueue
             }
         }
 
+        // Um envio incerto também mantém a campanha aberta: não há resultado final.
         $temPendente = $campanha->envios()
-            ->where('estado', CampanhaEnvio::ESTADO_PENDENTE)
+            ->whereIn('estado', [CampanhaEnvio::ESTADO_PENDENTE, CampanhaEnvio::ESTADO_INCERTO])
             ->exists();
 
         $temFalha = $campanha->envios()

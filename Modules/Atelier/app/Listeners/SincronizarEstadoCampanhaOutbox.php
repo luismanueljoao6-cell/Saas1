@@ -16,6 +16,7 @@ class SincronizarEstadoCampanhaOutbox
             NotificationOutbox::STATUS_ACCEPTED => CampanhaEnvio::ESTADO_ACEITE,
             NotificationOutbox::STATUS_FAILED,
             NotificationOutbox::STATUS_DEAD_LETTER => CampanhaEnvio::ESTADO_FALHOU,
+            NotificationOutbox::STATUS_UNKNOWN_RESULT => CampanhaEnvio::ESTADO_INCERTO,
             default => null,
         };
 
@@ -63,9 +64,11 @@ class SincronizarEstadoCampanhaOutbox
             if ($envio->estado !== CampanhaEnvio::ESTADO_ENVIADO) {
                 $envio->update([
                     'estado' => $estado,
-                    'erro' => $estado === CampanhaEnvio::ESTADO_FALHOU
-                        ? ($outbox->last_error ?: 'O transporte não aceitou a notificação após as tentativas disponíveis.')
-                        : null,
+                    'erro' => match ($estado) {
+                        CampanhaEnvio::ESTADO_FALHOU => $outbox->last_error ?: 'O transporte não aceitou a notificação após as tentativas disponíveis.',
+                        CampanhaEnvio::ESTADO_INCERTO => CampanhaEnvio::ERRO_INCERTO,
+                        default => null,
+                    },
                 ]);
             }
 
@@ -74,7 +77,7 @@ class SincronizarEstadoCampanhaOutbox
             }
 
             $temPendente = $campanha->envios()
-                ->where('estado', CampanhaEnvio::ESTADO_PENDENTE)
+                ->whereIn('estado', [CampanhaEnvio::ESTADO_PENDENTE, CampanhaEnvio::ESTADO_INCERTO])
                 ->exists();
 
             if ($temPendente) {

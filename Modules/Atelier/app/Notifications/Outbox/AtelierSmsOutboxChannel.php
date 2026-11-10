@@ -19,6 +19,10 @@ final class AtelierSmsOutboxChannel implements NotificationChannel
 
     public function send(NotificationOutbox $notification): NotificationSendResult
     {
+        if (($recusa = app(ConsentimentoNoEnvio::class)->recusaSe($notification)) !== null) {
+            return $recusa;
+        }
+
         $message = $notification->payload['message'] ?? null;
         if (! is_string($message) || trim($message) === '') {
             throw new InvalidArgumentException('Payload.message é obrigatório para SMS.');

@@ -38,6 +38,7 @@ final class NotificationRetryPolicy
     private const PERMANENT_CODES = [
         'invalid_recipient',
         'invalid_payload',
+        'consent_revoked',
     ];
 
     private const RATE_LIMITED_CODES = [

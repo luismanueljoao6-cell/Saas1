@@ -109,7 +109,7 @@ class CampanhaReconciliador
     {
         $campanha->envios()
             ->whereNotNull('notification_outbox_id')
-            ->whereIn('estado', [CampanhaEnvio::ESTADO_PENDENTE, CampanhaEnvio::ESTADO_ACEITE])
+            ->whereIn('estado', [CampanhaEnvio::ESTADO_PENDENTE, CampanhaEnvio::ESTADO_ACEITE, CampanhaEnvio::ESTADO_INCERTO])
             ->chunkById(200, function ($envios) use ($campanha): void {
                 // A consulta é sempre limitada à empresa da campanha.
                 $outboxes = NotificationOutbox::withoutGlobalScopes()
@@ -131,7 +131,7 @@ class CampanhaReconciliador
                         CampanhaEnvio::query()
                             ->whereKey($envio->id)
                             ->where('notification_outbox_id', $outbox->id)
-                            ->whereIn('estado', [CampanhaEnvio::ESTADO_PENDENTE, CampanhaEnvio::ESTADO_ACEITE])
+                            ->whereIn('estado', [CampanhaEnvio::ESTADO_PENDENTE, CampanhaEnvio::ESTADO_ACEITE, CampanhaEnvio::ESTADO_INCERTO])
                             ->update([
                                 'estado' => CampanhaEnvio::ESTADO_FALHOU,
                                 'erro' => $outbox->last_error
@@ -140,14 +140,33 @@ class CampanhaReconciliador
                                         : 'A notificação terminou sem sucesso na Outbox.'),
                             ]);
                     } elseif (
-                        $envio->estado === CampanhaEnvio::ESTADO_PENDENTE
+                        in_array($envio->estado, [CampanhaEnvio::ESTADO_PENDENTE, CampanhaEnvio::ESTADO_INCERTO], true)
                         && in_array($outbox->status, self::OUTBOX_ACEITE, true)
                     ) {
                         CampanhaEnvio::query()
                             ->whereKey($envio->id)
                             ->where('notification_outbox_id', $outbox->id)
-                            ->where('estado', CampanhaEnvio::ESTADO_PENDENTE)
+                            ->whereIn('estado', [CampanhaEnvio::ESTADO_PENDENTE, CampanhaEnvio::ESTADO_INCERTO])
                             ->update(['estado' => CampanhaEnvio::ESTADO_ACEITE, 'erro' => null]);
+                    } elseif (
+                        $envio->estado === CampanhaEnvio::ESTADO_PENDENTE
+                        && $outbox->status === NotificationOutbox::STATUS_UNKNOWN_RESULT
+                    ) {
+                        CampanhaEnvio::query()
+                            ->whereKey($envio->id)
+                            ->where('notification_outbox_id', $outbox->id)
+                            ->where('estado', CampanhaEnvio::ESTADO_PENDENTE)
+                            ->update(['estado' => CampanhaEnvio::ESTADO_INCERTO, 'erro' => CampanhaEnvio::ERRO_INCERTO]);
+                    } elseif (
+                        $envio->estado === CampanhaEnvio::ESTADO_INCERTO
+                        && $outbox->status !== NotificationOutbox::STATUS_UNKNOWN_RESULT
+                    ) {
+                        // Decisão humana de reenfileirar: o envio volta a aguardar o transporte.
+                        CampanhaEnvio::query()
+                            ->whereKey($envio->id)
+                            ->where('notification_outbox_id', $outbox->id)
+                            ->where('estado', CampanhaEnvio::ESTADO_INCERTO)
+                            ->update(['estado' => CampanhaEnvio::ESTADO_PENDENTE, 'erro' => null]);
                     }
                 }
             });
@@ -178,7 +197,7 @@ class CampanhaReconciliador
                 return;
             }
 
-            if ($bloqueada->envios()->where('estado', CampanhaEnvio::ESTADO_PENDENTE)->exists()) {
+            if ($bloqueada->envios()->whereIn('estado', [CampanhaEnvio::ESTADO_PENDENTE, CampanhaEnvio::ESTADO_INCERTO])->exists()) {
                 return;
             }
 

@@ -65,6 +65,7 @@ class NotificadorClienteService
         string $canal,
         string $mensagem,
         string $chaveIdempotencia,
+        array $contexto = [],
     ): NotificationOutbox {
         if (! in_array($canal, ['whatsapp', 'sms'], true)) {
             throw NotificacaoException::naoConfigurado($canal);
@@ -82,7 +83,7 @@ class NotificadorClienteService
         return app(NotificationDispatcher::class)->dispatch(
             channel: 'atelier.'.$canal,
             recipient: $destino,
-            payload: ['message' => $mensagem],
+            payload: array_merge($contexto, ['message' => $mensagem]),
             idempotencyKey: $chaveIdempotencia,
             empresaId: (int) $cliente->empresa_id,
         );

@@ -76,6 +76,12 @@ class CrmService
         };
     }
 
+    /** Consentimento de marketing válido AGORA (usado no momento efetivo do envio). */
+    public function temConsentimentoMarketing(int $empresaId, int $clienteId): bool
+    {
+        return $this->consentimentos($empresaId)->where('cliente_id', $clienteId)->exists();
+    }
+
     /** Registos CRM com consentimento de marketing válido (data registada, não revogado). */
     protected function consentimentos(int $empresaId)
     {
