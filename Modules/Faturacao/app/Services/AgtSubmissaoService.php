@@ -136,9 +136,9 @@ class AgtSubmissaoService
      * inválido ou rejeitado pela AGT nunca é reenviado — exige um documento de
      * correção. Ponto de entrada operacional: `php artisan faturacao:agt-reenviar`.
      */
-    public function reenviar(AgtSubmissao $submissao): AgtSubmissao
+    public function reenviar(AgtSubmissao $submissao, bool $confirmouAusenciaNaAgt = false): AgtSubmissao
     {
-        return DB::transaction(function () use ($submissao) {
+        return DB::transaction(function () use ($submissao, $confirmouAusenciaNaAgt) {
             // Re-leitura com lock: dois reenvios simultâneos não repõem a mesma submissão duas vezes.
             $atual = AgtSubmissao::query()->lockForUpdate()->findOrFail($submissao->id);
 
@@ -146,10 +146,17 @@ class AgtSubmissaoService
                 throw new \DomainException('Só se pode reenviar uma submissão em erro técnico ou parada por PAYLOAD_DIVERGENTE, sempre sem requestID. Se a AGT já devolveu um requestID, consulta o estado original; nunca cries uma segunda submissão para o mesmo documento.');
             }
 
+            // O pedido original pode ter sido aceite pela AGT apesar de o corpo já não se reproduzir:
+            // um UUID novo só avança com a confirmação explícita de que o documento não consta no portal.
+            if (($atual->erros[0]['codigo'] ?? null) === 'PAYLOAD_DIVERGENTE' && ! $confirmouAusenciaNaAgt) {
+                throw new \DomainException('O pedido original (UUID '.$atual->submission_uuid.') pode já ter sido aceite pela AGT. Confirma no portal da AGT que o documento não consta e repete com a confirmação explícita.');
+            }
+
             Log::warning('Submissão AGT reenviada manualmente', [
                 'submissao_id' => $atual->id,
                 'documento_no' => $atual->documento_no,
                 'estado_anterior' => $atual->estado,
+                'confirmou_ausencia_na_agt' => $confirmouAusenciaNaAgt,
                 'erros_anteriores' => $atual->erros,
             ]);
 

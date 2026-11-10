@@ -535,7 +535,7 @@ class AgtSubmissaoTest extends TestCase
         $uuidAntigo = $submissao->submission_uuid;
         $servico = app(AgtSubmissaoService::class);
 
-        $nova = $servico->reenviar($submissao);
+        $nova = $servico->reenviar($submissao, true);
 
         $this->assertSame(AgtSubmissao::PENDENTE, $nova->estado);
         $this->assertNull($nova->submission_uuid);
@@ -620,6 +620,22 @@ class AgtSubmissaoTest extends TestCase
         $this->assertCount(0, $servico->aguardamIntervencao($this->empresa->id + 1));
     }
 
+    public function test_payload_divergente_exige_confirmacao_explicita_no_servico(): void
+    {
+        $submissao = $this->submissaoComPayloadDivergente();
+        $servico = app(AgtSubmissaoService::class);
+
+        try {
+            $servico->reenviar($submissao);
+            $this->fail('Devia recusar o reenvio sem confirmação.');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('pode já ter sido aceite', $e->getMessage());
+        }
+
+        $this->assertSame(AgtSubmissao::AGUARDA_INTERVENCAO, $submissao->fresh()->estado);
+        $this->assertSame($submissao->submission_uuid, $submissao->fresh()->submission_uuid);
+    }
+
     public function test_comando_lista_as_paradas_e_reenvia_por_id(): void
     {
         $this->emitirFatura();
@@ -646,12 +662,12 @@ class AgtSubmissaoTest extends TestCase
         $this->assertSame(1, Artisan::call('faturacao:agt-reenviar', ['submissao' => $submissao->id, '--no-interaction' => true]));
         $this->assertSame(AgtSubmissao::AGUARDA_INTERVENCAO, $submissao->fresh()->estado);
 
-        $this->assertSame(0, Artisan::call('faturacao:agt-reenviar', ['submissao' => $submissao->id, '--force' => true]));
+        $this->assertSame(0, Artisan::call('faturacao:agt-reenviar', ['submissao' => $submissao->id, '--confirmo-ausencia-na-agt' => true]));
         $this->assertSame(AgtSubmissao::PENDENTE, $submissao->fresh()->estado);
         $this->assertNull($submissao->fresh()->submission_uuid);
 
         // Já pendente: o serviço recusa e o comando devolve erro.
-        $this->assertSame(1, Artisan::call('faturacao:agt-reenviar', ['submissao' => $submissao->id, '--force' => true]));
+        $this->assertSame(1, Artisan::call('faturacao:agt-reenviar', ['submissao' => $submissao->id, '--confirmo-ausencia-na-agt' => true]));
         $this->assertStringContainsString('Só se pode reenviar', Artisan::output());
 
         $this->assertSame(1, Artisan::call('faturacao:agt-reenviar', ['submissao' => 99999]));

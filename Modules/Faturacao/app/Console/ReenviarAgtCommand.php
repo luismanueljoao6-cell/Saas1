@@ -16,7 +16,7 @@ class ReenviarAgtCommand extends Command
     protected $signature = 'faturacao:agt-reenviar
         {submissao? : ID da submissão (tabela agt_submissoes); sem ID, lista as que precisam de intervenção}
         {--empresa= : Ao listar, limita a uma empresa (ID)}
-        {--force : Não pede confirmação (PAYLOAD_DIVERGENTE)}';
+        {--confirmo-ausencia-na-agt : Confirma que o documento NÃO consta no portal da AGT (PAYLOAD_DIVERGENTE) e dispensa a pergunta}';
 
     protected $description = 'Lista e reenvia à AGT as submissões paradas sem requestID (erro técnico ou PAYLOAD_DIVERGENTE)';
 
@@ -38,7 +38,9 @@ class ReenviarAgtCommand extends Command
             $this->line('AGT: '.$this->textoDoErro($erro));
         }
 
-        if (($submissao->erros[0]['codigo'] ?? null) === 'PAYLOAD_DIVERGENTE' && ! $this->option('force')) {
+        $confirmado = (bool) $this->option('confirmo-ausencia-na-agt');
+
+        if (($submissao->erros[0]['codigo'] ?? null) === 'PAYLOAD_DIVERGENTE' && ! $confirmado) {
             $this->warn("O pedido original (UUID {$submissao->submission_uuid}) pode já ter sido aceite pela AGT: o reenvio segue com um UUID novo.");
 
             if (! $this->confirm("Confirmas que {$submissao->documento_no} não consta no portal da AGT?", false)) {
@@ -46,10 +48,12 @@ class ReenviarAgtCommand extends Command
 
                 return self::FAILURE;
             }
+
+            $confirmado = true;
         }
 
         try {
-            $nova = $servico->reenviar($submissao);
+            $nova = $servico->reenviar($submissao, $confirmado);
         } catch (\DomainException $e) {
             $this->error($e->getMessage());
 
