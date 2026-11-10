@@ -9,6 +9,7 @@ use Modules\Core\Console\ProvisionarServicosCommand;
 use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Core\Support\ProxiesConfiaveis;
 use Modules\Faturacao\Console\CorrigirDocumentoAgtCommand;
+use Modules\Faturacao\Console\ReenviarAgtCommand;
 use Modules\Faturacao\Console\SincronizarAgtCommand;
 use Modules\Faturacao\Console\SolicitarSerieAgtCommand;
 use Modules\Faturacao\Console\VerificarCadeiaFiscalCommand;
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
         SolicitarSerieAgtCommand::class,
         SincronizarAgtCommand::class,
         CorrigirDocumentoAgtCommand::class,
+        ReenviarAgtCommand::class,
         VerificarChavesCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {

@@ -5,6 +5,7 @@ namespace Modules\Faturacao\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\AgtSubmissao;
@@ -505,6 +506,155 @@ class AgtSubmissaoTest extends TestCase
                 $this->assertStringContainsString('Só se pode reenviar uma submissão em erro técnico', $e->getMessage());
             }
         }
+    }
+
+    /** Leva a submissão a PAYLOAD_DIVERGENTE pelo caminho real: timeout, corpo que muda, nova tentativa. */
+    protected function submissaoComPayloadDivergente(): AgtSubmissao
+    {
+        $this->emitirFatura();
+        $servico = app(AgtSubmissaoService::class);
+
+        $this->falharRede = true;
+        $servico->enviarPendentes();
+
+        AgtSubmissao::query()->firstOrFail()->update(['submission_payload_hash' => str_repeat('0', 64)]);
+
+        $this->falharRede = false;
+        $servico->enviarPendentes();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $this->assertSame(AgtSubmissao::AGUARDA_INTERVENCAO, $submissao->estado);
+        $this->assertSame('PAYLOAD_DIVERGENTE', $submissao->erros[0]['codigo']);
+
+        return $submissao;
+    }
+
+    public function test_payload_divergente_pode_ser_reenviado_com_uuid_novo(): void
+    {
+        $submissao = $this->submissaoComPayloadDivergente();
+        $uuidAntigo = $submissao->submission_uuid;
+        $servico = app(AgtSubmissaoService::class);
+
+        $nova = $servico->reenviar($submissao);
+
+        $this->assertSame(AgtSubmissao::PENDENTE, $nova->estado);
+        $this->assertNull($nova->submission_uuid);
+        $this->assertNull($nova->submission_timestamp);
+        $this->assertNull($nova->submission_payload_hash);
+        $this->assertNull($nova->request_id);
+        $this->assertNull($nova->erros);
+        $this->assertSame(0, $nova->tentativas);
+
+        $this->assertSame(1, $servico->enviarPendentes()['enviados']);
+
+        $enviada = AgtSubmissao::query()->firstOrFail();
+        $this->assertSame(AgtSubmissao::ENVIADO, $enviada->estado);
+        $this->assertNotNull($enviada->request_id);
+        $this->assertNotSame($uuidAntigo, $enviada->submission_uuid);
+
+        $ultimo = collect(Http::recorded())
+            ->map(fn ($par) => $par[0])
+            ->filter(fn (Request $pedido) => str_contains($pedido->url(), 'registarFactura'))
+            ->last();
+
+        $this->assertSame($enviada->submission_uuid, $ultimo->data()['submissionUUID']);
+        $this->assertNotSame($uuidAntigo, $ultimo->data()['submissionUUID']);
+    }
+
+    public function test_a_aguardar_intervencao_com_request_id_ou_por_outro_motivo_nao_se_reenvia(): void
+    {
+        $this->emitirFatura();
+        $servico = app(AgtSubmissaoService::class);
+        $servico->enviarPendentes();
+
+        AgtSubmissao::query()->update(['enviado_em' => now()->subHours(25)]);
+        $servico->consultarEstados();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $this->assertSame(AgtSubmissao::AGUARDA_INTERVENCAO, $submissao->estado);
+        $this->assertNotNull($submissao->request_id);
+
+        try {
+            $servico->reenviar($submissao);
+            $this->fail('Com requestID a AGT já conhece o pedido: consulta-se, não se reenvia.');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('consulta o estado original', $e->getMessage());
+        }
+
+        // Sem requestID, mas por um motivo que não é PAYLOAD_DIVERGENTE: também recusado.
+        $submissao->update(['request_id' => null]);
+
+        $this->expectException(\DomainException::class);
+
+        $servico->reenviar($submissao->fresh());
+    }
+
+    public function test_aguardam_intervencao_lista_so_o_que_o_reenvio_aceita(): void
+    {
+        $this->emitirFatura();
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $servico = app(AgtSubmissaoService::class);
+
+        $casos = [
+            [AgtSubmissao::ERRO, null, 'REDE', 1],
+            [AgtSubmissao::AGUARDA_INTERVENCAO, null, 'PAYLOAD_DIVERGENTE', 1],
+            [AgtSubmissao::AGUARDA_INTERVENCAO, null, 'SEM_RESPOSTA', 0],
+            [AgtSubmissao::ERRO, '202500000010689', 'E99', 0],
+            [AgtSubmissao::ENVIADO, '202500000010689', null, 0],
+            [AgtSubmissao::PENDENTE, null, null, 0],
+        ];
+
+        foreach ($casos as [$estado, $requestId, $codigo, $esperadas]) {
+            $submissao->update([
+                'estado' => $estado,
+                'request_id' => $requestId,
+                'erros' => $codigo === null ? null : [['codigo' => $codigo, 'descricao' => 'teste']],
+            ]);
+
+            $this->assertCount($esperadas, $servico->aguardamIntervencao(), "{$estado} / {$codigo}");
+        }
+
+        $submissao->update(['estado' => AgtSubmissao::ERRO, 'request_id' => null, 'erros' => [['codigo' => 'REDE', 'descricao' => 'timeout']]]);
+
+        $this->assertCount(1, $servico->aguardamIntervencao($this->empresa->id));
+        $this->assertCount(0, $servico->aguardamIntervencao($this->empresa->id + 1));
+    }
+
+    public function test_comando_lista_as_paradas_e_reenvia_por_id(): void
+    {
+        $this->emitirFatura();
+        $submissao = AgtSubmissao::query()->firstOrFail();
+
+        $this->assertSame(0, Artisan::call('faturacao:agt-reenviar'));
+        $this->assertStringContainsString('Nenhuma submissão', Artisan::output());
+
+        $submissao->update(['estado' => AgtSubmissao::ERRO, 'tentativas' => 5, 'erros' => [['codigo' => 'REDE', 'descricao' => 'timeout']]]);
+
+        $this->assertSame(0, Artisan::call('faturacao:agt-reenviar'));
+        $this->assertStringContainsString('FT FT6325S2C/1', Artisan::output());
+
+        $this->assertSame(0, Artisan::call('faturacao:agt-reenviar', ['submissao' => $submissao->id]));
+        $this->assertSame(AgtSubmissao::PENDENTE, $submissao->fresh()->estado);
+        $this->assertSame(1, app(AgtSubmissaoService::class)->enviarPendentes()['enviados']);
+    }
+
+    public function test_comando_exige_confirmacao_para_payload_divergente_e_recusa_o_que_nao_se_reenvia(): void
+    {
+        $submissao = $this->submissaoComPayloadDivergente();
+
+        // Sem confirmação (modo não interactivo): nada muda.
+        $this->assertSame(1, Artisan::call('faturacao:agt-reenviar', ['submissao' => $submissao->id, '--no-interaction' => true]));
+        $this->assertSame(AgtSubmissao::AGUARDA_INTERVENCAO, $submissao->fresh()->estado);
+
+        $this->assertSame(0, Artisan::call('faturacao:agt-reenviar', ['submissao' => $submissao->id, '--force' => true]));
+        $this->assertSame(AgtSubmissao::PENDENTE, $submissao->fresh()->estado);
+        $this->assertNull($submissao->fresh()->submission_uuid);
+
+        // Já pendente: o serviço recusa e o comando devolve erro.
+        $this->assertSame(1, Artisan::call('faturacao:agt-reenviar', ['submissao' => $submissao->id, '--force' => true]));
+        $this->assertStringContainsString('Só se pode reenviar', Artisan::output());
+
+        $this->assertSame(1, Artisan::call('faturacao:agt-reenviar', ['submissao' => 99999]));
     }
 
     public function test_so_o_estado_valido_conta_como_confirmacao_fiscal(): void

@@ -2,7 +2,9 @@
 
 namespace Modules\Faturacao\Services;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Core\Models\Empresa;
@@ -110,38 +112,78 @@ class AgtSubmissaoService
     }
 
     /**
-     * Reenvio controlado. Só para falhas técnicas: um documento inválido ou
-     * rejeitado pela AGT nunca é reenviado — exige um documento de correção.
+     * Submissões sem requestID que só voltam a andar com uma decisão humana
+     * (ver reenviar()): erro técnico ou PAYLOAD_DIVERGENTE.
+     *
+     * @return Collection<int, AgtSubmissao>
+     */
+    public function aguardamIntervencao(?int $empresaId = null): Collection
+    {
+        return AgtSubmissao::query()
+            ->whereIn('estado', [AgtSubmissao::ERRO, AgtSubmissao::AGUARDA_INTERVENCAO])
+            ->whereNull('request_id')
+            ->when($empresaId, fn ($q) => $q->where('empresa_id', $empresaId))
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (AgtSubmissao $s) => $this->reenviavel($s))
+            ->values();
+    }
+
+    /**
+     * Reenvio controlado, só para submissões sem requestID: erro técnico ou
+     * PAYLOAD_DIVERGENTE (o corpo reconstruído já não coincide com o pedido
+     * original do UUID, que ficou parado a aguardar intervenção). Um documento
+     * inválido ou rejeitado pela AGT nunca é reenviado — exige um documento de
+     * correção. Ponto de entrada operacional: `php artisan faturacao:agt-reenviar`.
      */
     public function reenviar(AgtSubmissao $submissao): AgtSubmissao
     {
-        if ($submissao->estado !== AgtSubmissao::ERRO || $submissao->request_id !== null) {
-            throw new \DomainException('Só se pode reenviar uma submissão em erro técnico sem requestID. Se a AGT já devolveu um requestID, consulta o estado original; nunca cries uma segunda submissão para o mesmo documento.');
+        return DB::transaction(function () use ($submissao) {
+            // Re-leitura com lock: dois reenvios simultâneos não repõem a mesma submissão duas vezes.
+            $atual = AgtSubmissao::query()->lockForUpdate()->findOrFail($submissao->id);
+
+            if (! $this->reenviavel($atual)) {
+                throw new \DomainException('Só se pode reenviar uma submissão em erro técnico ou parada por PAYLOAD_DIVERGENTE, sempre sem requestID. Se a AGT já devolveu um requestID, consulta o estado original; nunca cries uma segunda submissão para o mesmo documento.');
+            }
+
+            Log::warning('Submissão AGT reenviada manualmente', [
+                'submissao_id' => $atual->id,
+                'documento_no' => $atual->documento_no,
+                'estado_anterior' => $atual->estado,
+                'erros_anteriores' => $atual->erros,
+            ]);
+
+            $codigoErro = $atual->erros[0]['codigo'] ?? null;
+            $dados = ['estado' => AgtSubmissao::PENDENTE, 'tentativas' => 0, 'erros' => null, 'request_id' => null];
+
+            // Falha de transporte: a AGT pode ter aceite o pedido apesar do timeout.
+            // Mantém UUID e timestamp para repetir exactamente a mesma submissão.
+            // Erro local/estrutural ou PAYLOAD_DIVERGENTE: o corpo original já não
+            // se reproduz, pelo que a nova tentativa usa um UUID novo.
+            if ($codigoErro !== 'REDE') {
+                $dados['submission_uuid'] = null;
+                $dados['submission_timestamp'] = null;
+                $dados['submission_payload_hash'] = null;
+            }
+
+            $atual->update($dados);
+
+            return $atual->fresh();
+        });
+    }
+
+    /** Sem requestID e parada por erro técnico ou por PAYLOAD_DIVERGENTE (o único "a aguardar intervenção" sem requestID). */
+    protected function reenviavel(AgtSubmissao $submissao): bool
+    {
+        if ($submissao->request_id !== null) {
+            return false;
         }
 
-        Log::warning('Submissão AGT reenviada manualmente', [
-            'submissao_id' => $submissao->id,
-            'documento_no' => $submissao->documento_no,
-            'estado_anterior' => $submissao->estado,
-            'erros_anteriores' => $submissao->erros,
-        ]);
-
-        $codigoErro = $submissao->erros[0]['codigo'] ?? null;
-        $dados = ['estado' => AgtSubmissao::PENDENTE, 'tentativas' => 0, 'erros' => null, 'request_id' => null];
-
-        // Falha de transporte: a AGT pode ter aceite o pedido apesar do timeout.
-        // Mantém UUID e timestamp para repetir exactamente a mesma submissão.
-        // Erro local/estrutural: o pedido foi recusado, pelo que uma nova tentativa
-        // corrigida deve usar um UUID novo.
-        if ($codigoErro !== 'REDE') {
-            $dados['submission_uuid'] = null;
-            $dados['submission_timestamp'] = null;
-            $dados['submission_payload_hash'] = null;
-        }
-
-        $submissao->update($dados);
-
-        return $submissao->fresh();
+        return match ($submissao->estado) {
+            AgtSubmissao::ERRO => true,
+            AgtSubmissao::AGUARDA_INTERVENCAO => ($submissao->erros[0]['codigo'] ?? null) === 'PAYLOAD_DIVERGENTE',
+            default => false,
+        };
     }
 
     /** @return array{enviados: int, rejeitados: int, erros: int} */
@@ -238,6 +280,12 @@ class AgtSubmissaoService
                 ]);
                 $res['erros']++;
             }
+
+            Log::error('Submissões AGT paradas: o conteúdo reconstruído difere do pedido original do UUID. Decide com "php artisan faturacao:agt-reenviar".', [
+                'empresa_id' => $empresaId,
+                'submission_uuid' => $uuid,
+                'documentos' => collect($enviar)->pluck('documento_no')->all(),
+            ]);
 
             return $res;
         }
