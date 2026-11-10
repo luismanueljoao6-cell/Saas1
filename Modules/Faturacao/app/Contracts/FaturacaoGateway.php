@@ -62,9 +62,23 @@ interface FaturacaoGateway
         int $faturaId,
     ): Recibo;
 
+    /**
+     * Abate (parte de) um adiantamento já recebido (FA) na fatura final (FT) do mesmo cliente.
+     * Contabilidade interna de saldos; a chave torna o pedido idempotente.
+     *
+     * @return array<string, mixed> linha do abatimento
+     */
+    public function abaterAdiantamento(
+        int $empresaId,
+        int $faturaAdiantamentoId,
+        int $faturaFinalId,
+        string|int $valor,
+        string $chave,
+    ): array;
+
     /** Saldo da fatura em cêntimos inteiros. */
     public function saldoEmCentimos(Fatura $fatura): int;
 
-    /** @return array{recebido: int, creditado: int, saldo: int} valores em cêntimos */
+    /** @return array{recebido: int, creditado: int, abatido: int, saldo: int} valores em cêntimos */
     public function resumoDaFatura(Fatura $fatura): array;
 }

@@ -47,7 +47,36 @@ class SafTExportService
         $raiz->appendChild($this->tabelasMestras($doc, $empresa, $impostosUsados));
         $raiz->appendChild($fonte);
 
-        return $doc->saveXML();
+        $xml = (string) $doc->saveXML();
+        $namespace = $this->namespaceDoFicheiro();
+
+        if ($namespace !== null) {
+            $xml = preg_replace(
+                '/<AuditFile>/',
+                '<AuditFile xmlns="'.htmlspecialchars($namespace, ENT_XML1 | ENT_QUOTES, 'UTF-8').'">',
+                $xml,
+                1
+            ) ?? $xml;
+        }
+
+        return $xml;
+    }
+
+    /** xmlns do ficheiro: o configurado ou, se houver XSD oficial, o seu targetNamespace. Null = sem namespace. */
+    protected function namespaceDoFicheiro(): ?string
+    {
+        $configurado = trim((string) config('faturacao.saft_namespace', ''));
+        $namespace = $configurado !== '' ? $configurado : app(SafTValidadorXsd::class)->namespaceAlvo();
+
+        if ($namespace === null || $namespace === '') {
+            return null;
+        }
+
+        if (! preg_match('/^[A-Za-z0-9:._\-\/]+$/', $namespace)) {
+            throw new \RuntimeException('O namespace do SAF-T (AO) contém caracteres inválidos.');
+        }
+
+        return $namespace;
     }
 
     /** Em produção, o SAF-T fica bloqueado enquanto não houver número de certificação AGT. */
@@ -189,7 +218,7 @@ class SafTExportService
             ->with('linhas')->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
 
         foreach ($faturas as $f) {
-            $vendas->appendChild($this->documento($doc, 'FT', $f, 'CreditAmount', $impostosUsados));
+            $vendas->appendChild($this->documento($doc, $f->tipoDocumentoFiscal(), $f, 'CreditAmount', $impostosUsados));
             $totalCredito += Dinheiro::centimos($f->valor_sem_iva);
             $entradas++;
         }
@@ -271,7 +300,7 @@ class SafTExportService
      *
      * @return array{0: string, 1: string, 2: ?string} [taxType, taxCode, taxExemptionCode]
      */
-    protected function classificarImposto(Fatura|NotaCreditoDebito $documento, object $linha): array
+    public function classificarImposto(Fatura|NotaCreditoDebito $documento, object $linha): array
     {
         $taxa = (float) $linha->taxa_iva;
 

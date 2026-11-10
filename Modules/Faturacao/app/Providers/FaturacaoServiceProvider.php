@@ -24,6 +24,8 @@ class FaturacaoServiceProvider extends ServiceProvider
 
         $this->app->register(RouteServiceProvider::class);
 
+        $this->commands([\Modules\Faturacao\Console\ValidarSafTCommand::class]);
+
         $menu = $this->app->make(MenuRegistry::class);
         $menu->adicionar('faturacao.faturas.index', 'Faturas', 20);
         $menu->adicionar('faturacao.notas.index', 'Notas de crédito e débito', 25);

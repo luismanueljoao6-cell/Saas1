@@ -17,6 +17,7 @@ class FaturacaoGatewayService implements FaturacaoGateway
     public function __construct(
         protected FaturaService $faturas,
         protected ReciboService $recibos,
+        protected AbatimentoAdiantamentoService $abatimentos,
     ) {}
 
     public function criarRascunho(
@@ -60,6 +61,16 @@ class FaturacaoGatewayService implements FaturacaoGateway
         ?int $faturaId = null,
     ): Recibo {
         return $this->recibos->emitir($empresaId, $clienteId, $valor, $meioPagamento, $faturaId);
+    }
+
+    public function abaterAdiantamento(
+        int $empresaId,
+        int $faturaAdiantamentoId,
+        int $faturaFinalId,
+        string|int $valor,
+        string $chave,
+    ): array {
+        return $this->abatimentos->abater($empresaId, $faturaAdiantamentoId, $faturaFinalId, $valor, $chave);
     }
 
     public function saldoEmCentimos(Fatura $fatura): int

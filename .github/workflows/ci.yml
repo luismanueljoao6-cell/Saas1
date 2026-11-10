@@ -111,6 +111,14 @@ jobs:
       - run: cp .env.example .env && php artisan key:generate
       # Triggers de imutabilidade, locks e snapshots só se testam em MySQL.
       - run: php artisan test --exclude-group=auditoria
+      # Concorrência real: processos PHP independentes contra o MySQL do serviço.
+      # Corre sozinha, depois de um migrate:fresh, porque compromete dados (sem transação).
+      - name: Concorrência real (MySQL)
+        env:
+          SAAS1_CONCORRENCIA_REAL: '1'
+        run: |
+          php artisan migrate:fresh --force
+          php artisan test --group=concorrencia-real
       - name: Auditoria de subscrições (MySQL)
         shell: bash
         run: |

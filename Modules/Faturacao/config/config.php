@@ -102,6 +102,12 @@ return [
     'saft_xsd_path' => env('FATURACAO_SAFT_XSD_PATH') ?: storage_path('app/faturacao/saft/SAF-T-AO.xsd'),
 
     /*
+    | xmlns do elemento raiz do SAF-T (AO). Vazio por omissão: nesse caso usa-se o targetNamespace do
+    | XSD oficial, se estiver presente. Só preenche se o confirmares no XSD/especificação da AGT.
+    */
+    'saft_namespace' => env('FATURACAO_SAFT_NAMESPACE') ?: null,
+
+    /*
     | Nota de débito e IVA. Por omissão a nota de débito NÃO liquida imposto
     | (regime jurídico angolano, segundo a auditoria técnica — confirma com a
     | AGT/contabilista). Só passa a true se a tua análise jurídica disser o contrário.
