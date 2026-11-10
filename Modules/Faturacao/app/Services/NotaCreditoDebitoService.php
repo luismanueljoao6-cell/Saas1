@@ -2,6 +2,7 @@
 
 namespace Modules\Faturacao\Services;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Faturacao\Models\Cliente;
@@ -161,6 +162,8 @@ class NotaCreditoDebitoService
             }
         }
 
+        $linhas = $this->herdarTiposOperacao($tipo, $empresaId, $faturaId, $linhas);
+
         return DB::transaction(function () use ($empresaId, $clienteId, $tipo, $motivo, $linhas, $faturaId, $debitoSemIva) {
             $tipoDocumento = $tipo === 'debito' ? 'ND' : 'NC';
 
@@ -220,6 +223,7 @@ class NotaCreditoDebitoService
 
                 $this->recalcularTotais($nota);
                 $this->garantirDebitoSemIva($nota);
+                $this->completarTiposOperacaoDoRascunho($nota);
                 $this->garantirLimiteDeCredito($nota);
 
                 $resultado = $this->numeracaoService->proximoNumero($nota->empresa_id, $nota->tipoDocumentoFiscal());
@@ -258,6 +262,108 @@ class NotaCreditoDebitoService
 
             throw $e;
         }
+    }
+
+    /**
+     * Uma nota de crédito deve declarar o mesmo operationType da fatura que corrige. As linhas
+     * sem tipo herdam-no da fatura de origem. Sem certeza, ficam por preencher (o
+     * AgtDocumentoBuilder aplica então o tipo padrão).
+     *
+     * @param  array<int, array<string, mixed>>  $linhas
+     * @return array<int, array<string, mixed>>
+     */
+    protected function herdarTiposOperacao(string $tipo, int $empresaId, ?int $faturaId, array $linhas): array
+    {
+        if ($tipo !== 'credito' || $faturaId === null) {
+            return $linhas;
+        }
+
+        $origem = Fatura::withoutGlobalScopes()
+            ->where('empresa_id', $empresaId)
+            ->with('linhas')
+            ->find($faturaId);
+
+        if (! $origem) {
+            return $linhas;
+        }
+
+        foreach ($linhas as $indice => $linha) {
+            if (trim((string) ($linha['operation_type'] ?? '')) !== '') {
+                continue;
+            }
+
+            $herdado = $this->tipoOperacaoDeOrigem($origem->linhas, (string) ($linha['descricao'] ?? ''), $linha['taxa_iva'] ?? 0);
+
+            if ($herdado !== null) {
+                $linhas[$indice]['operation_type'] = $herdado;
+            }
+        }
+
+        return $linhas;
+    }
+
+    /** Rascunhos criados antes desta regra: completam-se na emissão, antes de a nota ficar imutável. */
+    protected function completarTiposOperacaoDoRascunho(NotaCreditoDebito $nota): void
+    {
+        if ($nota->tipo !== 'credito' || ! $nota->fatura_id) {
+            return;
+        }
+
+        $semTipo = $nota->linhas()->get()->filter(fn ($linha) => trim((string) $linha->operation_type) === '');
+
+        if ($semTipo->isEmpty()) {
+            return;
+        }
+
+        $origem = Fatura::withoutGlobalScopes()
+            ->where('empresa_id', $nota->empresa_id)
+            ->with('linhas')
+            ->find($nota->fatura_id);
+
+        if (! $origem) {
+            return;
+        }
+
+        foreach ($semTipo as $linha) {
+            $herdado = $this->tipoOperacaoDeOrigem($origem->linhas, (string) $linha->descricao, $linha->taxa_iva);
+
+            if ($herdado !== null) {
+                $linha->operation_type = $herdado;
+                $linha->save();
+            }
+        }
+    }
+
+    /**
+     * Tipo da linha de origem com a mesma descrição e taxa (se for único); senão, o tipo único da
+     * fatura inteira, desde que todas as suas linhas o tenham. Caso contrário, null.
+     */
+    protected function tipoOperacaoDeOrigem(Collection $linhasOrigem, string $descricao, mixed $taxa): ?string
+    {
+        $tipos = fn (Collection $linhas) => $linhas
+            ->map(fn ($linha) => strtoupper(trim((string) $linha->operation_type)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $chaveTaxa = number_format((float) $taxa, 2, '.', '');
+
+        $correspondentes = $tipos($linhasOrigem->filter(
+            fn ($origem) => (string) $origem->descricao === $descricao
+                && number_format((float) $origem->taxa_iva, 2, '.', '') === $chaveTaxa
+        ));
+
+        if ($correspondentes->count() === 1) {
+            return $correspondentes->first();
+        }
+
+        if ($linhasOrigem->contains(fn ($origem) => trim((string) $origem->operation_type) === '')) {
+            return null;
+        }
+
+        $todos = $tipos($linhasOrigem);
+
+        return $todos->count() === 1 ? $todos->first() : null;
     }
 
     /** Soma das NC emitidas + esta nota nunca pode exceder o valor da fatura. */
