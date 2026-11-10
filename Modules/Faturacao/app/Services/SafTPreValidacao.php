@@ -86,7 +86,7 @@ class SafTPreValidacao
 
         $recibos = Recibo::withoutGlobalScopes()
             ->where('empresa_id', $empresa->id)
-            ->where('estado', 'emitido')
+            ->whereIn('estado', ['emitido', 'anulado'])
             ->whereBetween('data_emissao', [$de, $ate])
             ->orderBy('serie_id')
             ->orderBy('numero_sequencial')

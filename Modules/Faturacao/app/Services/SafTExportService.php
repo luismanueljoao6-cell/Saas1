@@ -313,17 +313,19 @@ class SafTExportService
         $numerosFatura = [];
 
         $recibos = Recibo::withoutGlobalScopes()
-            ->where('empresa_id', $empresa->id)->where('estado', 'emitido')
+            ->where('empresa_id', $empresa->id)->whereIn('estado', ['emitido', 'anulado'])
             ->whereBetween('data_emissao', [$inicio->toDateString(), $fim->toDateString()])
             ->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
 
         foreach ($recibos as $r) {
             $valor = Dinheiro::formatar(Dinheiro::centimos($r->valor));
+            $anulado = $r->estado === 'anulado';
 
             $p = $doc->createElement('Payment');
             $p->appendChild($this->no($doc, 'PaymentRefNo', $r->numero_documento));
             $p->appendChild($this->no($doc, 'TransactionDate', $r->data_emissao->format('Y-m-d')));
             $p->appendChild($this->no($doc, 'PaymentType', $r->tipoDocumentoFiscal()));
+            $p->appendChild($this->no($doc, 'PaymentStatus', $anulado ? 'A' : 'N'));
             $p->appendChild($this->no($doc, 'SystemEntryDate', $r->data_hora_sistema->format('Y-m-d\TH:i:s')));
             $p->appendChild($this->no($doc, 'CustomerID', $r->cliente_id));
             $p->appendChild($this->no($doc, 'Hash', $r->hash));
@@ -351,7 +353,10 @@ class SafTExportService
             $p->appendChild($totais);
 
             $pagamentos->appendChild($p);
-            $totalCredito += Dinheiro::centimos($r->valor);
+            if (! $anulado) {
+                $totalCredito += Dinheiro::centimos($r->valor);
+            }
+
             $entradas++;
         }
 
