@@ -160,6 +160,10 @@ class PedidoController extends Controller
         try {
             $this->faturacaoService->registarSinal($pedido, $request->validated('valor'), $request->validated('meio_pagamento'));
         } catch (PedidoException|DomainException|InvalidArgumentException $e) {
+            if (! $e instanceof PedidoException && ! $e instanceof DomainException) {
+                report($e);
+            }
+
             // DomainException inclui o bloqueio deliberado de RC com AGT ativa:
             // a mensagem é para o utilizador, não um erro transitório.
             return back()->with('erro', $e->getMessage());
@@ -195,6 +199,10 @@ class PedidoController extends Controller
         try {
             $this->faturacaoService->registarPagamentoFinal($pedido, $request->validated('meio_pagamento'));
         } catch (PedidoException|DomainException|InvalidArgumentException $e) {
+            if (! $e instanceof PedidoException && ! $e instanceof DomainException) {
+                report($e);
+            }
+
             return back()->with('erro', $e->getMessage());
         } catch (Throwable $e) {
             Log::error('Falha ao registar pagamento final do Atelier', ['pedido_id' => $pedido->id, 'erro' => $e->getMessage()]);
