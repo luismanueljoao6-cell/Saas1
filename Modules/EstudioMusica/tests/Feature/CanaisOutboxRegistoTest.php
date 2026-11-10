@@ -20,6 +20,7 @@ class CanaisOutboxRegistoTest extends TestCase
 
         $this->assertTrue($registry->has('estudio.whatsapp'));
         $this->assertTrue($registry->has('estudio.sms'));
+        $this->assertTrue($registry->has('estudio.email'));
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('canal-que-nao-existe');

@@ -2,7 +2,6 @@
 
 namespace Modules\EstudioMusica\Services;
 
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Notifications\NotificationDispatcher;
@@ -17,7 +16,6 @@ use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterfac
 use Modules\EstudioMusica\Support\NumeroTelefone;
 use Modules\EstudioMusica\Support\TransferenciaInternacional;
 use Modules\Faturacao\Models\Cliente;
-use Throwable;
 
 /**
  * Compõe notificações do Estúdio e enfileira o envio fora do pedido HTTP.
@@ -86,8 +84,8 @@ class NotificacaoEstudioService
      *  - Telefone: vai pela Outbox do Core com uma chave determinística por
      *    sessão, janela, destinatário e conteúdo. Uma segunda chamada recupera
      *    a mesma notificação em vez de criar outra.
-     *  - E-mail: continua a sair pelo job, protegido por uma guarda de cache
-     *    com a mesma chave.
+     *  - E-mail: também vai pela Outbox (canal estudio.email), com a mesma chave
+     *    determinística. Já não depende da cache nem do job legado.
      *
      * Já não há fallback WhatsApp -> SMS neste fluxo: um timeout no WhatsApp
      * mandava também SMS e duplicava a mensagem.
@@ -110,7 +108,13 @@ class NotificacaoEstudioService
 
         $email = trim((string) $cliente->email);
         if ($email !== '') {
-            $this->lembreteEmail($sessao, $horasAntes, $email, $assunto, $mensagem);
+            app(NotificationDispatcher::class)->dispatch(
+                channel: 'estudio.email',
+                recipient: $email,
+                payload: ['subject' => $assunto, 'message' => $mensagem],
+                idempotencyKey: $this->chaveLembrete($sessao, $horasAntes, $email, $mensagem),
+                empresaId: (int) $sessao->empresa_id,
+            );
             $enfileirou = true;
         }
 
@@ -163,24 +167,6 @@ class NotificacaoEstudioService
     protected function chaveLembrete(SessaoEstudio $sessao, int $horasAntes, string $destinatario, string $mensagem): string
     {
         return 'estudio-lembrete-sessao-'.$sessao->id.'-'.$horasAntes.'h-'.substr(sha1($destinatario."\n".$mensagem), 0, 16);
-    }
-
-    protected function lembreteEmail(SessaoEstudio $sessao, int $horasAntes, string $email, string $assunto, string $mensagem): void
-    {
-        $chave = 'estudiomusica:'.$this->chaveLembrete($sessao, $horasAntes, $email, $mensagem);
-
-        // Já enfileirado por uma execução anterior (por exemplo, a marcação da coluna perdeu-se).
-        if (! Cache::add($chave, now()->toIso8601String(), now()->addDays(3))) {
-            return;
-        }
-
-        try {
-            EnviarMensagemClienteJob::dispatch(null, $email, $assunto, $mensagem);
-        } catch (Throwable $e) {
-            Cache::forget($chave);
-
-            throw $e;
-        }
     }
 
     public function atualizacaoEstadoProjeto(ProjetoMusical $projeto): void

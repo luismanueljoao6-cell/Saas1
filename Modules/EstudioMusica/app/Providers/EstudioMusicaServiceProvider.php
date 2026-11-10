@@ -24,6 +24,7 @@ use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterfac
 use Modules\EstudioMusica\Notifications\Channels\LogChannel;
 use Modules\EstudioMusica\Notifications\Channels\TwilioSmsChannel;
 use Modules\EstudioMusica\Notifications\Channels\WhatsAppCloudApiChannel;
+use Modules\EstudioMusica\Notifications\Outbox\EstudioEmailOutboxChannel;
 use Modules\EstudioMusica\Notifications\Outbox\EstudioSmsOutboxChannel;
 use Modules\EstudioMusica\Notifications\Outbox\EstudioWhatsAppOutboxChannel;
 use Modules\EstudioMusica\Support\PapeisEstudio;
@@ -121,6 +122,7 @@ class EstudioMusicaServiceProvider extends ServiceProvider
         $registry = $this->app->make(NotificationChannelRegistry::class);
         $registry->registerLazy('estudio.whatsapp', fn () => $this->app->make(EstudioWhatsAppOutboxChannel::class));
         $registry->registerLazy('estudio.sms', fn () => $this->app->make(EstudioSmsOutboxChannel::class));
+        $registry->registerLazy('estudio.email', fn () => $this->app->make(EstudioEmailOutboxChannel::class));
     }
 
     protected function registerMenuItems(): void

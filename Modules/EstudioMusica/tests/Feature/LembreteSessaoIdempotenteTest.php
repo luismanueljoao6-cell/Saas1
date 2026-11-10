@@ -3,6 +3,7 @@
 namespace Modules\EstudioMusica\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Models\User;
@@ -68,9 +69,10 @@ class LembreteSessaoIdempotenteTest extends TestCase
         $this->assertTrue($servico->lembreteSessao($sessao, 24));
         $this->assertTrue($servico->lembreteSessao($sessao, 24));
 
-        $this->assertSame(1, NotificationOutbox::withoutGlobalScopes()->count());
-        Queue::assertPushed(EnviarMensagemClienteJob::class, 1);
-        Queue::assertPushed(EnviarMensagemClienteJob::class, fn (EnviarMensagemClienteJob $job): bool => $job->telefone === null && $job->email === 'artista@example.test');
+        $this->assertSame(2, NotificationOutbox::withoutGlobalScopes()->count());
+        $this->assertSame(1, NotificationOutbox::withoutGlobalScopes()->where('channel', 'estudio.email')->count());
+        $this->assertSame(1, NotificationOutbox::withoutGlobalScopes()->where('channel', 'estudio.whatsapp')->count());
+        Queue::assertNotPushed(EnviarMensagemClienteJob::class);
     }
 
     public function test_marcacao_da_coluna_perdida_nao_duplica_quando_o_job_corre_outra_vez(): void
@@ -123,8 +125,9 @@ class LembreteSessaoIdempotenteTest extends TestCase
 
         $this->assertTrue(app(NotificacaoEstudioService::class)->lembreteSessao($sessao, 24));
 
-        $this->assertSame(0, NotificationOutbox::withoutGlobalScopes()->count());
-        Queue::assertPushed(EnviarMensagemClienteJob::class, 1);
+        $this->assertSame(1, NotificationOutbox::withoutGlobalScopes()->count());
+        $this->assertSame('estudio.email', NotificationOutbox::withoutGlobalScopes()->sole()->channel);
+        Queue::assertNotPushed(EnviarMensagemClienteJob::class);
     }
 
     public function test_sem_nenhum_canal_elegivel_devolve_false(): void
@@ -135,6 +138,23 @@ class LembreteSessaoIdempotenteTest extends TestCase
 
         $this->assertFalse(app(NotificacaoEstudioService::class)->lembreteSessao($sessao, 24));
         $this->assertSame(0, NotificationOutbox::withoutGlobalScopes()->count());
+    }
+
+    public function test_lembrete_por_email_nao_depende_da_cache(): void
+    {
+        Queue::fake();
+        $sessao = $this->sessao(['email' => 'artista@example.test']);
+        $servico = app(NotificacaoEstudioService::class);
+
+        $servico->lembreteSessao($sessao, 24);
+        Cache::flush();
+        $servico->lembreteSessao($sessao, 24);
+
+        $outbox = NotificationOutbox::withoutGlobalScopes()->sole();
+        $this->assertSame('estudio.email', $outbox->channel);
+        $this->assertSame('artista@example.test', $outbox->recipient);
+        $this->assertSame('Lembrete de sessão de estúdio', $outbox->payload['subject']);
+        Queue::assertNotPushed(EnviarMensagemClienteJob::class);
     }
 
     private function correrJob(): void

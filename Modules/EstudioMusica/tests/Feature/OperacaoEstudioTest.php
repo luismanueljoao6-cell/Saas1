@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\EstudioMusica\Jobs\EnviarLembretesSessaoJob;
@@ -238,7 +239,13 @@ class OperacaoEstudioTest extends TestCase
 
         (new EnviarLembretesSessaoJob)->handle(app(TenantManager::class), app(NotificacaoEstudioService::class));
 
-        Queue::assertPushed(EnviarMensagemClienteJob::class, 1);
+        // O e-mail do lembrete vai agora pela Outbox (não pelo job legado).
+        Queue::assertNotPushed(EnviarMensagemClienteJob::class);
+        $this->assertSame(1, NotificationOutbox::withoutGlobalScopes()->where('channel', 'estudio.email')->count());
+        $this->assertSame(
+            (int) $this->admin->empresa_id,
+            (int) NotificationOutbox::withoutGlobalScopes()->where('channel', 'estudio.email')->sole()->empresa_id,
+        );
 
         app(TenantManager::class)->semTenant(function () use ($deles, $dele): void {
             $this->assertNotNull($deles->fresh()->lembrete_24h_enviado_em);
