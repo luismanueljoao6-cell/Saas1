@@ -181,7 +181,7 @@ class GatewayFronteiraTest extends TestCase
         return [$empresa, $cliente];
     }
 
-    private function emitirPeloGateway(Empresa $empresa, Cliente $cliente, string|int|string|int $preco, string|int|string|int $quantidade, string|int|string|int $taxa): Fatura
+    private function emitirPeloGateway(Empresa $empresa, Cliente $cliente, string|int|float $preco, string|int $quantidade, string|int $taxa): Fatura
     {
         $gateway = app(FaturacaoGateway::class);
 
