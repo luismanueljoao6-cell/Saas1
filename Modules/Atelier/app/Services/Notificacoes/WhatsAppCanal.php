@@ -8,7 +8,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Atelier\Exceptions\NotificacaoException;
 use Modules\Atelier\Services\Notificacoes\Contracts\CanalNotificacaoInterface;
+use Modules\Atelier\Support\FalhaDeLigacao;
 use Modules\Atelier\Support\NumeroTelefone;
+use Modules\Atelier\Support\TransferenciaInternacional;
 
 /**
  * IMPORTANTE — À SEMELHANÇA DA ProxyPayGateway (módulo Subscricoes): esta
@@ -34,6 +36,10 @@ class WhatsAppCanal implements CanalNotificacaoInterface
 
     public function enviar(string $destino, string $mensagem): void
     {
+        if (! TransferenciaInternacional::permitida()) {
+            throw NotificacaoException::transferenciaNaoAutorizada('whatsapp');
+        }
+
         $baseUrl = config('atelier.whatsapp.base_url');
         $token = config('atelier.whatsapp.token');
         $numeroId = config('atelier.whatsapp.numero_remetente_id');
@@ -56,7 +62,12 @@ class WhatsAppCanal implements CanalNotificacaoInterface
         } catch (ConnectionException $e) {
             Log::error('Falha de ligação ao enviar WhatsApp', ['destino' => NumeroTelefone::mascarar($destino)]);
 
-            throw NotificacaoException::falhaNoEnvio('whatsapp', 'Sem ligação ao fornecedor (tempo esgotado ou rede indisponível).');
+            if (FalhaDeLigacao::foiAntesDoEnvio($e)) {
+                throw NotificacaoException::falhaNoEnvio('whatsapp', 'Sem ligação ao fornecedor (rede indisponível).');
+            }
+
+            // Tempo esgotado ou ligação cortada: o fornecedor pode já ter recebido a mensagem.
+            throw NotificacaoException::resultadoIndeterminado('whatsapp', 'ligação interrompida ou tempo esgotado depois do pedido.');
         }
 
         if ($resposta->failed()) {

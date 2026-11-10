@@ -31,6 +31,14 @@ class CampanhaConsentimentoEIncertosTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Autorização APD presente: estes testes não a exercitam.
+        config(['atelier.apd_autorizacao_transferencia' => 'APD-TESTE']);
+    }
+
     // ------------------------------------------------------------------
     // Consentimento no momento do envio
     // ------------------------------------------------------------------

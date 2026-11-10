@@ -3,10 +3,13 @@
 namespace Modules\Atelier\Notifications\Outbox;
 
 use InvalidArgumentException;
+use Modules\Atelier\Exceptions\NotificacaoResultadoIndeterminadoException;
+use Modules\Atelier\Support\TransferenciaInternacional;
 use Modules\Atelier\Services\Notificacoes\WhatsAppCanal;
 use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Notifications\Contracts\NotificationChannel;
 use Modules\Core\Notifications\DTO\NotificationSendResult;
+use Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException;
 
 final class AtelierWhatsAppOutboxChannel implements NotificationChannel
 {
@@ -19,6 +22,14 @@ final class AtelierWhatsAppOutboxChannel implements NotificationChannel
 
     public function send(NotificationOutbox $notification): NotificationSendResult
     {
+        if (! TransferenciaInternacional::permitida()) {
+            return NotificationSendResult::rejected(
+                $this->canal->identificador(),
+                'Envio bloqueado: falta configurar a autorização para transferência internacional de dados.',
+                'apd_transfer_not_authorized',
+            );
+        }
+
         if (($recusa = app(ConsentimentoNoEnvio::class)->recusaSe($notification)) !== null) {
             return $recusa;
         }
@@ -28,7 +39,12 @@ final class AtelierWhatsAppOutboxChannel implements NotificationChannel
             throw new InvalidArgumentException('Payload.message é obrigatório para WhatsApp.');
         }
 
-        $this->canal->enviar((string) $notification->recipient, $message);
+        try {
+            $this->canal->enviar((string) $notification->recipient, $message);
+        } catch (NotificacaoResultadoIndeterminadoException $e) {
+            // Nunca repetir automaticamente: a Outbox fica em «unknown_result» até haver decisão.
+            throw new ResultadoIndeterminadoException($e->getMessage(), 0, $e);
+        }
 
         // O canal legado não expõe ID nem estado final de entrega.
         return NotificationSendResult::accepted($this->canal->identificador());

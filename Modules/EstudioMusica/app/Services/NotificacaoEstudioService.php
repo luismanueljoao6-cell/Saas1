@@ -2,8 +2,10 @@
 
 namespace Modules\EstudioMusica\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Notifications\NotificationDispatcher;
 use Modules\EstudioMusica\Jobs\EnviarMensagemClienteJob;
 use Modules\EstudioMusica\Models\FaixaMusical;
 use Modules\EstudioMusica\Models\ProjetoMusical;
@@ -12,8 +14,10 @@ use Modules\EstudioMusica\Models\SessaoEstudio;
 use Modules\EstudioMusica\Models\VersaoAudio;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
+use Modules\EstudioMusica\Support\NumeroTelefone;
 use Modules\EstudioMusica\Support\TransferenciaInternacional;
 use Modules\Faturacao\Models\Cliente;
+use Throwable;
 
 /**
  * Compõe notificações do Estúdio e enfileira o envio fora do pedido HTTP.
@@ -75,15 +79,108 @@ class NotificacaoEstudioService
         return true;
     }
 
+    /**
+     * Lembrete de sessão IDEMPOTENTE: repetir o job (ou perder a marcação da
+     * coluna lembrete_*_enviado_em) nunca duplica a mensagem.
+     *
+     *  - Telefone: vai pela Outbox do Core com uma chave determinística por
+     *    sessão, janela, destinatário e conteúdo. Uma segunda chamada recupera
+     *    a mesma notificação em vez de criar outra.
+     *  - E-mail: continua a sair pelo job, protegido por uma guarda de cache
+     *    com a mesma chave.
+     *
+     * Já não há fallback WhatsApp -> SMS neste fluxo: um timeout no WhatsApp
+     * mandava também SMS e duplicava a mensagem.
+     *
+     * @return bool true quando pelo menos um destino ficou (ou já estava) enfileirado
+     */
     public function lembreteSessao(SessaoEstudio $sessao, int $horasAntes): bool
     {
-        $data = $sessao->inicio_previsto->format('d/m').' às '.$sessao->inicio_previsto->format('H:i');
+        $cliente = $sessao->cliente;
 
-        return $this->enviar(
-            $sessao->cliente,
-            'Lembrete de sessão de estúdio',
-            "Olá! A tua sessão de {$sessao->rotuloTipoServico()} está marcada para {$data}, daqui a cerca de {$horasAntes}h. Até já!"
-        );
+        if ($cliente->trashed()) {
+            return false;
+        }
+
+        $data = $sessao->inicio_previsto->format('d/m').' às '.$sessao->inicio_previsto->format('H:i');
+        $assunto = 'Lembrete de sessão de estúdio';
+        $mensagem = "Olá! A tua sessão de {$sessao->rotuloTipoServico()} está marcada para {$data}, daqui a cerca de {$horasAntes}h. Até já!";
+
+        $enfileirou = false;
+
+        $email = trim((string) $cliente->email);
+        if ($email !== '') {
+            $this->lembreteEmail($sessao, $horasAntes, $email, $assunto, $mensagem);
+            $enfileirou = true;
+        }
+
+        $destino = NumeroTelefone::internacional($cliente->telefone);
+        if ($destino !== null) {
+            $canal = $this->canalTelefoneAutorizado();
+
+            if ($canal !== null) {
+                app(NotificationDispatcher::class)->dispatch(
+                    channel: $canal,
+                    recipient: $destino,
+                    payload: ['message' => $mensagem],
+                    idempotencyKey: $this->chaveLembrete($sessao, $horasAntes, $destino, $mensagem),
+                    empresaId: (int) $sessao->empresa_id,
+                );
+                $enfileirou = true;
+            } else {
+                Log::notice('EstudioMusica: lembrete por telefone não enfileirado — falta a autorização da APD.', [
+                    'sessao_id' => $sessao->id,
+                    'empresa_id' => $sessao->empresa_id,
+                ]);
+            }
+        }
+
+        if (! $enfileirou) {
+            Log::notice('EstudioMusica: lembrete não enfileirado — cliente sem canal elegível.', [
+                'sessao_id' => $sessao->id,
+                'empresa_id' => $sessao->empresa_id,
+            ]);
+        }
+
+        return $enfileirou;
+    }
+
+    /** O canal de telefone que a política APD permite, ou null se nenhum. */
+    protected function canalTelefoneAutorizado(): ?string
+    {
+        if (TransferenciaInternacional::permitida(app(CanalWhatsAppInterface::class))) {
+            return 'estudio.whatsapp';
+        }
+
+        if (TransferenciaInternacional::permitida(app(CanalSmsInterface::class))) {
+            return 'estudio.sms';
+        }
+
+        return null;
+    }
+
+    /** Determinística: mesma sessão + janela + destinatário + conteúdo = mesma chave. */
+    protected function chaveLembrete(SessaoEstudio $sessao, int $horasAntes, string $destinatario, string $mensagem): string
+    {
+        return 'estudio-lembrete-sessao-'.$sessao->id.'-'.$horasAntes.'h-'.substr(sha1($destinatario."\n".$mensagem), 0, 16);
+    }
+
+    protected function lembreteEmail(SessaoEstudio $sessao, int $horasAntes, string $email, string $assunto, string $mensagem): void
+    {
+        $chave = 'estudiomusica:'.$this->chaveLembrete($sessao, $horasAntes, $email, $mensagem);
+
+        // Já enfileirado por uma execução anterior (por exemplo, a marcação da coluna perdeu-se).
+        if (! Cache::add($chave, now()->toIso8601String(), now()->addDays(3))) {
+            return;
+        }
+
+        try {
+            EnviarMensagemClienteJob::dispatch(null, $email, $assunto, $mensagem);
+        } catch (Throwable $e) {
+            Cache::forget($chave);
+
+            throw $e;
+        }
     }
 
     public function atualizacaoEstadoProjeto(ProjetoMusical $projeto): void
