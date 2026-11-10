@@ -10,6 +10,7 @@ use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Console\Commands\RecoverNotificationOutbox;
+use Modules\Core\Console\Commands\ResolveUnknownNotification;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Http\Middleware\ExigirPapel;
 use Modules\Core\Http\Middleware\ExigirServico;
@@ -59,7 +60,7 @@ class CoreServiceProvider extends ServiceProvider
     {
         $this->registerViews();
         $this->registerMigrations();
-        $this->commands([RecoverNotificationOutbox::class]);
+        $this->commands([RecoverNotificationOutbox::class, ResolveUnknownNotification::class]);
         $this->registerMiddlewareAliases();
         $this->registerMenuItems();
         $this->limparTenantEntreJobs();

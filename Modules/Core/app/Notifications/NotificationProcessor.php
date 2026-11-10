@@ -8,6 +8,7 @@ use Modules\Core\Events\NotificationStateChanged;
 use Modules\Core\Jobs\ProcessNotificationJob;
 use Modules\Core\Models\NotificationAttempt;
 use Modules\Core\Models\NotificationOutbox;
+use Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException;
 use Modules\Core\Services\TenantManager;
 use Throwable;
 
@@ -128,6 +129,11 @@ class NotificationProcessor
         try {
             $channel = $this->channels->get($notification->channel);
             $result = $channel->send($notification);
+        } catch (ResultadoIndeterminadoException $exception) {
+            // O pedido pode ter chegado ao fornecedor: nunca se repete sozinho.
+            $this->recordUnknownResult($claim, $empresaId, $exception);
+
+            return;
         } catch (Throwable $exception) {
             $this->recordFailure($claim, $empresaId, $exception->getMessage());
 
@@ -186,16 +192,53 @@ class NotificationProcessor
         });
     }
 
-    private function marcarResultadoDesconhecido(NotificationOutbox $notification, int $empresaId): void
+    private function marcarResultadoDesconhecido(NotificationOutbox $notification, int $empresaId, ?string $motivo = null): void
     {
         $notification->forceFill([
             'status' => NotificationOutbox::STATUS_UNKNOWN_RESULT,
             'locked_at' => null,
             'lock_token' => null,
-            'last_error' => 'Resultado desconhecido: o worker foi interrompido sem registar a resposta do fornecedor.',
+            'last_error' => $motivo === null
+                ? 'Resultado desconhecido: o worker foi interrompido sem registar a resposta do fornecedor.'
+                : 'Resultado desconhecido: '.mb_substr($motivo, 0, 4800),
         ])->save();
 
         $this->emitirEstado((int) $notification->id, $empresaId, NotificationOutbox::STATUS_UNKNOWN_RESULT);
+    }
+
+    /**
+     * O canal declarou que não sabe se o fornecedor recebeu a mensagem. Fica em
+     * «unknown_result», sem retry, até haver reconciliação ou decisão controlada
+     * (php artisan notifications:resolve-unknown).
+     */
+    private function recordUnknownResult(array $claim, int $empresaId, ResultadoIndeterminadoException $exception): void
+    {
+        DB::transaction(function () use ($claim, $empresaId, $exception): void {
+            $notification = NotificationOutbox::withoutGlobalScopes()
+                ->where('empresa_id', $empresaId)
+                ->whereKey($claim['notification']->id)
+                ->where('lock_token', $claim['lock_token'])
+                ->lockForUpdate()
+                ->first();
+
+            if (! $notification) {
+                return;
+            }
+
+            $attempt = NotificationAttempt::withoutGlobalScopes()
+                ->where('empresa_id', $empresaId)
+                ->whereKey($claim['attempt_id'])
+                ->first();
+
+            $attempt?->forceFill([
+                'status' => 'unknown',
+                'error_code' => 'unknown_result',
+                'error_message' => mb_substr($exception->getMessage(), 0, 5000),
+                'finished_at' => now(),
+            ])->save();
+
+            $this->marcarResultadoDesconhecido($notification, $empresaId, $exception->getMessage());
+        });
     }
 
     private function recordFailure(array $claim, int $empresaId, string $message): void
