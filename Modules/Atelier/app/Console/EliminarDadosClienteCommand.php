@@ -58,7 +58,7 @@ class EliminarDadosClienteCommand extends Command
             DB::table('atelier_pedido_fotos')->whereIn('pedido_id', $pedidoIds)->delete();
             DB::table('atelier_medidas')->where('empresa_id', $empresaId)->where('cliente_id', $clienteId)->delete();
             DB::table('atelier_clientes_crm')->where('empresa_id', $empresaId)->where('cliente_id', $clienteId)->delete();
-            DB::table('atelier_campanha_envios')->where('cliente_id', $clienteId)->delete();
+            DB::table('atelier_campanha_envios')->where('cliente_id', $clienteId)->whereIn('campanha_id', DB::table('atelier_campanhas')->where('empresa_id', $empresaId)->select('id'))->delete();
         });
 
         foreach ($caminhosFotos as $caminho) {
