@@ -29,9 +29,9 @@ use Tests\TestCase;
  * falha noutro módulo nunca desfaz o estado já confirmado; e uma empresa
  * nunca processa notificações de outra.
  *
- * Não se promete «exatamente uma vez»: se o lease expira a meio de um envio,
- * o fornecedor pode receber a mensagem duas vezes. O que é garantido é que
- * o estado guardado fica coerente com a última tentativa.
+ * Não se promete «exatamente uma vez»: se o lease expira a meio de um envio, o
+ * resultado é desconhecido e a notificação fica em «unknown_result», sem
+ * reenvio automático até haver reconciliação ou decisão controlada.
  */
 class NotificationProcessorTest extends TestCase
 {
@@ -141,14 +141,14 @@ class NotificationProcessorTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
-    // Um worker antigo nunca sobrepõe a tentativa já recuperada
+    // Lease expirado = resultado desconhecido: nunca se reenvia automaticamente
     // ---------------------------------------------------------------------
 
-    public function test_worker_antigo_nao_sobrepoe_o_resultado_da_tentativa_recuperada(): void
+    public function test_lease_expirado_a_meio_do_envio_nao_provoca_segundo_envio(): void
     {
         $notificacao = $this->novaNotificacao('chave-worker-antigo');
 
-        // Durante o envio do worker 1 o lease expira e um segundo worker recupera e conclui a mensagem.
+        // Durante o envio do worker 1 o lease expira e um segundo worker tenta recuperar a mensagem.
         $this->canal->aoEnviar = function (NotificationOutbox $enviada, int $numeroDoEnvio) use ($notificacao): NotificationSendResult {
             if ($numeroDoEnvio === 1) {
                 $this->expirarLease($notificacao);
@@ -161,46 +161,35 @@ class NotificationProcessorTest extends TestCase
         $this->processar($notificacao);
 
         $notificacao->refresh();
-        $this->assertSame(2, $this->canal->envios, 'Com o lease expirado a meio do envio o fornecedor pode receber duas vezes…');
-        $this->assertSame(NotificationOutbox::STATUS_ACCEPTED, $notificacao->status);
-        $this->assertSame('msg-2', $notificacao->provider_message_id, '…mas prevalece o resultado da tentativa recuperada.');
-        $this->assertSame(2, $notificacao->attempts);
-
-        $tentativas = $this->tentativas($notificacao);
-        $this->assertSame('accepted', $tentativas->firstWhere('attempt_number', 2)->status);
-        $this->assertNotSame('accepted', $tentativas->firstWhere('attempt_number', 1)->status, 'O worker antigo não pode marcar a sua tentativa como aceite.');
+        $this->assertSame(1, $this->canal->envios, 'Um lease expirado nunca provoca um segundo envio.');
+        $this->assertSame(NotificationOutbox::STATUS_UNKNOWN_RESULT, $notificacao->status);
+        $this->assertNull($notificacao->provider_message_id, 'O worker antigo não pode sobrepor o estado de resultado desconhecido.');
+        $this->assertSame(1, $notificacao->attempts);
+        $this->assertNotSame('accepted', $this->tentativas($notificacao)->firstWhere('attempt_number', 1)->status);
     }
 
-    public function test_falha_tardia_de_um_worker_antigo_nao_estraga_a_tentativa_recuperada(): void
+    public function test_falha_tardia_de_um_worker_antigo_nao_agenda_retry(): void
     {
         $notificacao = $this->novaNotificacao('chave-falha-tardia');
         $jobsAntes = Queue::pushed(ProcessNotificationJob::class)->count();
 
         $this->canal->aoEnviar = function (NotificationOutbox $enviada, int $numeroDoEnvio) use ($notificacao): NotificationSendResult {
-            if ($numeroDoEnvio === 1) {
-                $this->expirarLease($notificacao);
-                $this->processar($notificacao);
+            $this->expirarLease($notificacao);
+            $this->processar($notificacao);
 
-                throw new RuntimeException('o worker antigo só falha depois de a tentativa ter sido recuperada');
-            }
-
-            return NotificationSendResult::accepted('teste', 'msg-recuperada');
+            throw new RuntimeException('o worker antigo só falha depois de o lease ter expirado');
         };
 
         $this->processar($notificacao);
 
         $notificacao->refresh();
-        $this->assertSame(NotificationOutbox::STATUS_ACCEPTED, $notificacao->status);
-        $this->assertSame('msg-recuperada', $notificacao->provider_message_id);
-        $this->assertNull($notificacao->last_error, 'A falha tardia do worker antigo não pode ser registada.');
+        $this->assertSame(1, $this->canal->envios);
+        $this->assertSame(NotificationOutbox::STATUS_UNKNOWN_RESULT, $notificacao->status);
+        $this->assertStringContainsString('Resultado desconhecido', (string) $notificacao->last_error, 'A falha tardia do worker antigo não pode ser registada por cima.');
         $this->assertCount($jobsAntes, Queue::pushed(ProcessNotificationJob::class), 'A falha tardia não pode agendar um retry.');
     }
 
-    // ---------------------------------------------------------------------
-    // Leases e recuperação
-    // ---------------------------------------------------------------------
-
-    public function test_lease_ativo_impede_um_segundo_worker_e_lease_expirado_permite_recuperar(): void
+    public function test_lease_ativo_impede_um_segundo_worker_e_lease_expirado_deixa_resultado_desconhecido(): void
     {
         $notificacao = $this->novaNotificacao('chave-lease');
         $notificacao->forceFill([
@@ -212,17 +201,19 @@ class NotificationProcessorTest extends TestCase
 
         $this->processar($notificacao);
         $this->assertSame(0, $this->canal->envios, 'Com o lease ativo ninguém mais pode enviar.');
+        $this->assertSame(NotificationOutbox::STATUS_PROCESSING, $notificacao->fresh()->status);
 
         $this->expirarLease($notificacao);
         $this->processar($notificacao);
 
-        $this->assertSame(1, $this->canal->envios);
+        $this->assertSame(0, $this->canal->envios, 'Lease expirado não reenvia: o resultado é desconhecido.');
         $notificacao->refresh();
-        $this->assertSame(NotificationOutbox::STATUS_ACCEPTED, $notificacao->status);
-        $this->assertSame(2, $notificacao->attempts, 'A tentativa perdida conta para o limite.');
+        $this->assertSame(NotificationOutbox::STATUS_UNKNOWN_RESULT, $notificacao->status);
+        $this->assertSame(1, $notificacao->attempts);
+        $this->assertNull($notificacao->lock_token);
     }
 
-    public function test_tentativa_perdida_fica_registada_como_abandonada_e_nao_como_a_processar(): void
+    public function test_tentativa_perdida_fica_registada_como_abandonada_e_sem_nova_tentativa(): void
     {
         $notificacao = $this->novaNotificacao('chave-abandonada');
 
@@ -247,10 +238,39 @@ class NotificationProcessorTest extends TestCase
         $this->assertSame('abandoned', $primeira->status, 'O resultado da tentativa perdida é desconhecido e tem de ficar assinalado.');
         $this->assertSame('lease_expired', $primeira->error_code);
         $this->assertNotNull($primeira->finished_at);
-        $this->assertSame('accepted', $this->tentativas($notificacao)->firstWhere('attempt_number', 2)->status);
+        $this->assertNull($this->tentativas($notificacao)->firstWhere('attempt_number', 2), 'Não há segunda tentativa automática.');
+        $this->assertSame(0, $this->canal->envios);
     }
 
-    public function test_recuperador_reagenda_pendentes_e_abandonadas_mas_nunca_as_aceites(): void
+    public function test_resultado_desconhecido_nunca_e_reenviado_nem_reagendado(): void
+    {
+        $notificacao = $this->novaNotificacao('chave-desconhecida');
+        $notificacao->forceFill([
+            'status' => NotificationOutbox::STATUS_PROCESSING,
+            'attempts' => 1,
+            'locked_at' => now()->subMinutes(5),
+            'lock_token' => 'morto',
+        ])->save();
+
+        Event::fake([NotificationStateChanged::class]);
+        Queue::fake();
+
+        Artisan::call('notifications:recover');
+
+        $this->assertSame(NotificationOutbox::STATUS_UNKNOWN_RESULT, $notificacao->fresh()->status);
+        Queue::assertNothingPushed();
+        Event::assertDispatched(NotificationStateChanged::class);
+
+        // Nem um job repetido, nem uma segunda passagem do recuperador, o voltam a enviar.
+        $this->processar($notificacao);
+        Artisan::call('notifications:recover');
+
+        $this->assertSame(0, $this->canal->envios);
+        $this->assertSame(NotificationOutbox::STATUS_UNKNOWN_RESULT, $notificacao->fresh()->status);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_recuperador_reagenda_pendentes_mas_nunca_aceites_nem_resultados_desconhecidos(): void
     {
         $devida = $this->novaNotificacao('rec-pendente-devida');
         $retry = $this->novaNotificacao('rec-retry-devido');
@@ -272,18 +292,18 @@ class NotificationProcessorTest extends TestCase
 
         $reagendadas = Queue::pushed(ProcessNotificationJob::class)->map(fn ($job) => $job->notificationId)->sort()->values()->all();
         $this->assertSame(
-            collect([$devida, $retry, $abandonada])->pluck('id')->sort()->values()->all(),
+            collect([$devida, $retry])->pluck('id')->sort()->values()->all(),
             $reagendadas,
-            'Só pendentes devidas, retries devidos e leases abandonados são reagendados.'
+            'Só pendentes devidas e retries devidos são reagendados; um lease abandonado não.'
         );
 
         $abandonada->refresh();
-        $this->assertSame(NotificationOutbox::STATUS_RETRY_SCHEDULED, $abandonada->status);
+        $this->assertSame(NotificationOutbox::STATUS_UNKNOWN_RESULT, $abandonada->status);
         $this->assertNull($abandonada->lock_token);
         $this->assertSame('vivo', $viva->fresh()->lock_token, 'Um lease ativo não pode ser tocado.');
     }
 
-    public function test_abandonada_no_limite_de_tentativas_vai_para_dead_letter_sem_novo_envio(): void
+    public function test_abandonada_no_limite_de_tentativas_fica_em_resultado_desconhecido_sem_novo_envio(): void
     {
         $notificacao = $this->novaNotificacao('chave-limite', maxAttempts: 2);
         $notificacao->forceFill([
@@ -296,8 +316,8 @@ class NotificationProcessorTest extends TestCase
         Artisan::call('notifications:recover');
         $this->processar($notificacao);
 
-        $this->assertSame(NotificationOutbox::STATUS_DEAD_LETTER, $notificacao->fresh()->status);
-        $this->assertSame(0, $this->canal->envios, 'Passado o limite não há mais nenhuma tentativa.');
+        $this->assertSame(NotificationOutbox::STATUS_UNKNOWN_RESULT, $notificacao->fresh()->status);
+        $this->assertSame(0, $this->canal->envios, 'Nunca há um novo envio automático.');
     }
 
     public function test_recuperador_assinala_abandonadas_e_dead_letter_recentes_para_monitorizacao(): void

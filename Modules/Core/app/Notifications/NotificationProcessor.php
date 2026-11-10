@@ -73,9 +73,13 @@ class NotificationProcessor
             }
 
             if ($notification->status === NotificationOutbox::STATUS_PROCESSING) {
-                // O lease ativo já devolveu null acima: este expirou e a tentativa
-                // anterior ficou sem resultado conhecido.
+                // O lease expirou: o worker foi interrompido e não sabemos se o fornecedor
+                // aceitou a mensagem. Reenviar poderia duplicá-la; fica em «resultado
+                // desconhecido» até haver reconciliação ou decisão controlada.
                 NotificationAttempt::assinalarAbandonadas($empresaId, (int) $notification->id);
+                $this->marcarResultadoDesconhecido($notification, $empresaId);
+
+                return null;
             }
 
             if ($notification->attempts >= $notification->max_attempts) {
@@ -180,6 +184,18 @@ class NotificationProcessor
                 $this->emitirEstado((int) $notification->id, $empresaId, $notification->status);
             }
         });
+    }
+
+    private function marcarResultadoDesconhecido(NotificationOutbox $notification, int $empresaId): void
+    {
+        $notification->forceFill([
+            'status' => NotificationOutbox::STATUS_UNKNOWN_RESULT,
+            'locked_at' => null,
+            'lock_token' => null,
+            'last_error' => 'Resultado desconhecido: o worker foi interrompido sem registar a resposta do fornecedor.',
+        ])->save();
+
+        $this->emitirEstado((int) $notification->id, $empresaId, NotificationOutbox::STATUS_UNKNOWN_RESULT);
     }
 
     private function recordFailure(array $claim, int $empresaId, string $message): void

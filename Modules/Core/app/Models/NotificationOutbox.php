@@ -29,6 +29,9 @@ class NotificationOutbox extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
+    /** O fornecedor pode ou não ter recebido a mensagem: sem reenvio automático até haver reconciliação ou decisão humana. */
+    public const STATUS_UNKNOWN_RESULT = 'unknown_result';
+
     protected $table = 'notification_outbox';
 
     protected $fillable = [
@@ -115,6 +118,7 @@ class NotificationOutbox extends Model
             self::STATUS_FAILED,
             self::STATUS_DEAD_LETTER,
             self::STATUS_CANCELLED,
+            self::STATUS_UNKNOWN_RESULT,
         ], true);
     }
 }

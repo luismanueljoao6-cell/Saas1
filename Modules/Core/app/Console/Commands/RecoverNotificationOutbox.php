@@ -5,10 +5,12 @@ namespace Modules\Core\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Core\Events\NotificationStateChanged;
 use Modules\Core\Jobs\ProcessNotificationJob;
 use Modules\Core\Models\NotificationAttempt;
 use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Notifications\NotificationProcessor;
+use Throwable;
 
 class RecoverNotificationOutbox extends Command
 {
@@ -61,11 +63,25 @@ class RecoverNotificationOutbox extends Command
                     $abandonadas++;
 
                     $notification->forceFill([
-                        'status' => NotificationOutbox::STATUS_RETRY_SCHEDULED,
+                        'status' => NotificationOutbox::STATUS_UNKNOWN_RESULT,
                         'locked_at' => null,
                         'lock_token' => null,
-                        'available_at' => $now,
+                        'last_error' => 'Resultado desconhecido: o worker foi interrompido sem registar a resposta do fornecedor.',
                     ])->save();
+
+                    $notificacaoId = (int) $notification->id;
+                    $empresaId = (int) $notification->empresa_id;
+
+                    DB::afterCommit(function () use ($notificacaoId, $empresaId): void {
+                        try {
+                            NotificationStateChanged::dispatch($notificacaoId, $empresaId, NotificationOutbox::STATUS_UNKNOWN_RESULT);
+                        } catch (Throwable $exception) {
+                            report($exception);
+                        }
+                    });
+
+                    // Sem reenvio automático: pode já ter sido aceite pelo fornecedor.
+                    continue;
                 } else {
                     // Marca a passagem: a próxima só volta a reagendar esta linha
                     // depois de --min-age, em vez de empilhar um job por minuto.
@@ -81,7 +97,7 @@ class RecoverNotificationOutbox extends Command
 
         // Monitorização mínima, para um alerta poder apoiar-se nestas linhas de log.
         if ($abandonadas > 0) {
-            Log::warning('Outbox: leases abandonados recuperados; o resultado das tentativas perdidas é desconhecido e a mensagem pode ser reenviada.', [
+            Log::warning('Outbox: leases abandonados; o resultado das tentativas perdidas é desconhecido e as notificações ficaram em unknown_result (sem reenvio automático) até haver reconciliação.', [
                 'abandonadas' => $abandonadas,
             ]);
         }
