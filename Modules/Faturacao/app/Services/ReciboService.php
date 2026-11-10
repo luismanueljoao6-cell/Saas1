@@ -37,6 +37,37 @@ class ReciboService
         string $meioPagamento,
         ?int $faturaId = null,
     ): Recibo {
+        return $this->emitirTipo('RC', $empresaId, $clienteId, $valor, $meioPagamento, $faturaId);
+    }
+
+    /**
+     * Recibo de regularização (RG): refere SEMPRE a fatura que regulariza e, com a AGT ativa,
+     * segue como `paymentReceipt` (a AGT só aceita paymentReceipt em AR/RG). Usa série própria
+     * do tipo RG (com a AGT ativa, a série RG tem de estar autorizada: AgtSerieService::solicitar).
+     *
+     * @param  string|int  $valor  em unidades monetárias (ex.: '500.00')
+     *
+     * @throws Throwable
+     */
+    public function emitirRegularizacao(
+        int $empresaId,
+        int $clienteId,
+        string|int $valor,
+        string $meioPagamento,
+        int $faturaId,
+    ): Recibo {
+        return $this->emitirTipo('RG', $empresaId, $clienteId, $valor, $meioPagamento, $faturaId);
+    }
+
+    /** @throws Throwable */
+    protected function emitirTipo(
+        string $tipo,
+        int $empresaId,
+        int $clienteId,
+        string|int $valor,
+        string $meioPagamento,
+        ?int $faturaId,
+    ): Recibo {
         $centimos = Dinheiro::centimos($valor);
 
         if ($centimos <= 0) {
@@ -47,17 +78,21 @@ class ReciboService
             throw new \InvalidArgumentException('O meio de pagamento é obrigatório.');
         }
 
+        if ($tipo === 'RG' && $faturaId === null) {
+            throw new \InvalidArgumentException('Um recibo de regularização (RG) tem de referir a fatura que regulariza.');
+        }
+
         // O modelo Recibo emite RC. A especificação AGT exige "lines" para RC,
         // enquanto "paymentReceipt" só é permitido para AR/RG. Como este modelo
         // ainda não guarda linhas fiscais próprias nem selecciona RG, bloquear a
         // emissão com AGT activa é mais seguro do que criar um documento impossível
         // de submeter ou enviar um payload estruturalmente inválido.
-        if (config('faturacao.agt.ativo')) {
+        if ($tipo === 'RC' && config('faturacao.agt.ativo')) {
             throw new \DomainException('A emissão de recibos RC ainda não está habilitada com a AGT ativa: é necessário implementar a estrutura RC (linhas) ou o tipo RG (paymentReceipt) conforme a especificação AGT.');
         }
 
         try {
-            return DB::transaction(function () use ($empresaId, $clienteId, $centimos, $meioPagamento, $faturaId) {
+            return DB::transaction(function () use ($tipo, $empresaId, $clienteId, $centimos, $meioPagamento, $faturaId) {
                 GuardaEmissao::garantir($empresaId);
 
                 $cliente = Cliente::withoutGlobalScopes()->where('empresa_id', $empresaId)->find($clienteId);
@@ -72,7 +107,8 @@ class ReciboService
 
                 $recibo = Recibo::create([
                     'empresa_id' => $empresaId,
-                    'serie_id' => $this->numeracaoService->obterOuCriarSerie($empresaId, 'RC')->id,
+                    'tipo_documento' => $tipo,
+                    'serie_id' => $this->numeracaoService->obterOuCriarSerie($empresaId, $tipo)->id,
                     'cliente_id' => $clienteId,
                     'fatura_id' => $faturaId,
                     'estado' => 'rascunho',
@@ -81,7 +117,7 @@ class ReciboService
                     'meio_pagamento' => $meioPagamento,
                 ]);
 
-                $resultado = $this->numeracaoService->proximoNumero($empresaId, 'RC');
+                $resultado = $this->numeracaoService->proximoNumero($empresaId, $tipo);
 
                 $hashAnterior = $this->numeracaoService->hashDoDocumentoAnterior(
                     Recibo::class,

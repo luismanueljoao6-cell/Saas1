@@ -14,7 +14,7 @@ final class Dinheiro
     /** Máx. de quantidade × preço (milésimos × cêntimos) para não haver overflow de int. */
     private const LIMITE_LINHA = 900_000_000_000_000_000;
 
-    public static function centimos(string|int|null $valor): int
+    public static function centimos(mixed $valor): int
     {
         return self::escalar($valor, 2);
     }
@@ -23,13 +23,13 @@ final class Dinheiro
      * Percentagem com 2 casas decimais em pontos base (33,33% → 3333; 40% → 4000),
      * lida dígito a dígito: nunca multiplica um float por 100.
      */
-    public static function pontosBase(string|int|null $percentagem): int
+    public static function pontosBase(mixed $percentagem): int
     {
         return self::escalar($percentagem, 2);
     }
 
     /** Converte uma quantidade decimal em milésimos sem passar por float. */
-    public static function milesimos(string|int|null $valor): int
+    public static function milesimos(mixed $valor): int
     {
         return self::escalar($valor, 3);
     }
@@ -45,7 +45,7 @@ final class Dinheiro
     /**
      * @return array{sem_iva: string, iva: string, total: string}
      */
-    public static function calcularLinha(string|int $quantidade, string|int $precoUnitario, string|int $taxaIva): array
+    public static function calcularLinha(mixed $quantidade, mixed $precoUnitario, mixed $taxaIva): array
     {
         $milesimos = self::escalar($quantidade, 3);
         $preco = self::centimos($precoUnitario);
@@ -78,7 +78,7 @@ final class Dinheiro
     }
 
     /** Converte um decimal em inteiro com $casas casas, half-up, sem float. */
-    private static function escalar(string|int|null $valor, int $casas): int
+    private static function escalar(mixed $valor, int $casas): int
     {
         if (is_float($valor)) {
             throw new \InvalidArgumentException('Valores monetários devem ser enviados como string decimal ou inteiro; float não é permitido.');
@@ -88,7 +88,7 @@ final class Dinheiro
             return 0;
         }
 
-        $texto = is_float($valor) ? number_format($valor, $casas + 4, '.', '') : trim((string) $valor);
+        $texto = trim((string) $valor);
 
         if (! preg_match('/^([+-]?)(\d*)(?:\.(\d*))?$/', $texto, $m) || ($m[2] === '' && ($m[3] ?? '') === '')) {
             throw new \InvalidArgumentException("Valor numérico inválido: '{$texto}'.");

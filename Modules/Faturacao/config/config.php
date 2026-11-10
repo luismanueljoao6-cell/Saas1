@@ -58,6 +58,7 @@ return [
         'NC' => 'Nota de Crédito',
         'ND' => 'Nota de Débito',
         'RC' => 'Recibo',
+        'RG' => 'Recibo de Regularização',
     ],
 
     /*

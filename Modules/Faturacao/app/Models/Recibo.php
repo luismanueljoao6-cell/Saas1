@@ -22,6 +22,7 @@ class Recibo extends Model implements DocumentoFiscalInterface
     protected $fillable = [
         'empresa_id',
         'serie_id',
+        'tipo_documento',
         'cliente_id',
         'fatura_id',
         'numero_sequencial',
@@ -65,7 +66,7 @@ class Recibo extends Model implements DocumentoFiscalInterface
 
     public function tipoDocumentoFiscal(): string
     {
-        return 'RC';
+        return $this->tipo_documento ?: 'RC';
     }
 
     public function getSerieId(): int
