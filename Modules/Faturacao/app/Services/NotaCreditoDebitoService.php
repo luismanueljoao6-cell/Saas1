@@ -58,6 +58,8 @@ class NotaCreditoDebitoService
             throw new \DomainException('Esta fatura já tem uma nota de crédito associada.');
         }
 
+        $this->garantirAdiantamentoSemAbatimentos($fatura);
+
         $linhas = $fatura->linhas()->get()->map(fn ($linha) => [
             'descricao' => $linha->descricao,
             'quantidade' => $linha->quantidade,
@@ -288,6 +290,7 @@ class NotaCreditoDebitoService
             throw new \DomainException('O total creditado excede o valor da fatura de origem.');
         }
 
+        $this->garantirCreditoCompativelComAbatimentos($nota, $fatura, (int) $jaCreditado);
         $this->garantirLimitePorTaxa($nota, $fatura);
     }
 
@@ -331,6 +334,42 @@ class NotaCreditoDebitoService
             if ($valor > ($faturado[$taxa] ?? 0)) {
                 throw new \DomainException("O valor creditado à taxa de IVA {$taxa}% excede o valor faturado a essa taxa.");
             }
+        }
+    }
+
+    /** Total já abatido de um adiantamento (FA) em faturas finais, em cêntimos. */
+    protected function abatidoDoAdiantamento(int $empresaId, int $faturaId): int
+    {
+        return (int) DB::table('adiantamento_abatimentos')
+            ->where('empresa_id', $empresaId)
+            ->where('fatura_adiantamento_id', $faturaId)
+            ->sum('valor_centimos');
+    }
+
+    /** Anulação total de um FA que já foi (em parte) abatido não é possível: o valor já foi usado. */
+    protected function garantirAdiantamentoSemAbatimentos(Fatura $fatura): void
+    {
+        if ($fatura->tipoDocumentoFiscal() !== 'FA') {
+            return;
+        }
+
+        if ($this->abatidoDoAdiantamento((int) $fatura->empresa_id, (int) $fatura->id) > 0) {
+            throw new \DomainException('Este adiantamento já tem valores abatidos em faturas finais: a anulação total não é possível. Emita uma nota de crédito parcial sobre a parte não abatida.');
+        }
+    }
+
+    /** Num FA, créditos + abatimentos nunca podem exceder o total do adiantamento. */
+    protected function garantirCreditoCompativelComAbatimentos(NotaCreditoDebito $nota, Fatura $fatura, int $jaCreditado): void
+    {
+        if ($fatura->tipoDocumentoFiscal() !== 'FA') {
+            return;
+        }
+
+        $abatido = $this->abatidoDoAdiantamento((int) $nota->empresa_id, (int) $fatura->id);
+
+        if ($abatido > 0
+            && $jaCreditado + Dinheiro::centimos($nota->valor_total) + $abatido > Dinheiro::centimos($fatura->valor_total)) {
+            throw new \DomainException('Este adiantamento já tem valores abatidos em faturas finais: o crédito não pode incidir sobre a parte já abatida.');
         }
     }
 

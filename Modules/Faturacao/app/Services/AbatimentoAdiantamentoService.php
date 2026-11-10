@@ -89,7 +89,9 @@ class AbatimentoAdiantamentoService
                 ->where('fatura_adiantamento_id', $faturaAdiantamentoId)
                 ->sum('valor_centimos');
 
-            $disponivel = $this->recibos->resumoDaFatura($fa)['recebido'] - $jaAbatidoDoFa;
+            // Notas de crédito já emitidas sobre o FA também reduzem o que ainda se pode abater.
+            $resumoFa = $this->recibos->resumoDaFatura($fa);
+            $disponivel = $resumoFa['recebido'] - $jaAbatidoDoFa - $resumoFa['creditado'];
 
             if ($centimos > $disponivel) {
                 throw new \DomainException('O valor excede o adiantamento já recebido e ainda por abater.');
