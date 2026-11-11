@@ -115,6 +115,15 @@ return [
     'nota_debito_liquida_iva' => (bool) env('FATURACAO_ND_LIQUIDA_IVA', false),
 
     /*
+    | Abatimento de adiantamentos (FA) em faturas finais (FT). Hoje é contabilidade interna:
+    | não gera documento fiscal nem entra na comunicação AGT/SAF-T. Enquanto a representação
+    | fiscal não estiver definida com a AGT e implementada, em produção a pré-validação do
+    | SAF-T recusa períodos com abatimentos. NÃO ponhas true só para desbloquear a exportação:
+    | true afirma que a representação fiscal existe (ver docs/homologacao-agt.md, ponto H3).
+    */
+    'abatimentos_adiantamento_confirmados' => (bool) env('FATURACAO_ABATIMENTOS_ADIANTAMENTO_CONFIRMADOS', false),
+
+    /*
     | Taxas de IVA aceites na emissão (percentagens, separadas por vírgula no .env).
     | Confirma contra a tabela atual da AGT antes de produção. A taxa 0 (isenção)
     | está DESATIVADA por omissão: para a ativar junta-a (FATURACAO_TAXAS_IVA_PERMITIDAS=14,0)

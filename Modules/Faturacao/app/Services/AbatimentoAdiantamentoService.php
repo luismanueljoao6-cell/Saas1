@@ -135,7 +135,7 @@ class AbatimentoAdiantamentoService
     }
 
     /** @return array<string, mixed>|null */
-    private function resolverExistente(
+    protected function resolverExistente(
         int $empresaId, string $chave, int $faId, int $ftId, int $centimos,
     ): ?array {
         $existente = DB::table('adiantamento_abatimentos')

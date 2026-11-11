@@ -3,6 +3,7 @@
 namespace Modules\Faturacao\Services;
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
@@ -66,6 +67,10 @@ class SafTPreValidacao
         }
 
         foreach ($this->validarRecibos($empresa, $de, $ate) as $erro) {
+            $erros[] = $erro;
+        }
+
+        foreach ($this->validarAbatimentos($empresa, $de, $ate) as $erro) {
             $erros[] = $erro;
         }
 
@@ -153,6 +158,104 @@ class SafTPreValidacao
             if (count($erros) >= self::MAX_ERROS) {
                 break;
             }
+        }
+
+        return $erros;
+    }
+
+    /**
+     * Abatimentos de adiantamentos (FA -> FT) registados no período.
+     *
+     * São contabilidade interna: não geram documento fiscal nem entram no SAF-T. Por isso (1) reconcilia-se
+     * o registo interno com os documentos — mesma empresa, tipos FA/FT, mesmo cliente, totais — e (2) em
+     * produção o SAF-T recusa períodos com abatimentos até a representação fiscal estar confirmada.
+     *
+     * @return list<string>
+     */
+    public function validarAbatimentos(Empresa $empresa, string $de, string $ate): array
+    {
+        $erros = [];
+
+        $abatimentos = DB::table('adiantamento_abatimentos')
+            ->where('empresa_id', $empresa->id)
+            ->whereBetween('created_at', [$de.' 00:00:00', $ate.' 23:59:59'])
+            ->orderBy('id')
+            ->get();
+
+        if ($abatimentos->isEmpty()) {
+            return [];
+        }
+
+        $faturas = [];
+        $buscar = function (int $id) use ($empresa, &$faturas): ?Fatura {
+            return $faturas[$id] ??= Fatura::withoutGlobalScopes()->where('empresa_id', $empresa->id)->find($id);
+        };
+
+        $faVerificados = [];
+        $ftVerificadas = [];
+
+        foreach ($abatimentos as $abatimento) {
+            $ref = "Abatimento #{$abatimento->id}";
+            $fa = $buscar((int) $abatimento->fatura_adiantamento_id);
+            $ft = $buscar((int) $abatimento->fatura_final_id);
+
+            if (! $fa) {
+                $erros[] = "{$ref}: o adiantamento #{$abatimento->fatura_adiantamento_id} não existe nesta empresa.";
+            }
+
+            if (! $ft) {
+                $erros[] = "{$ref}: a fatura final #{$abatimento->fatura_final_id} não existe nesta empresa.";
+            }
+
+            if (! $fa || ! $ft) {
+                continue;
+            }
+
+            if ($fa->tipoDocumentoFiscal() !== 'FA') {
+                $erros[] = "{$ref}: o documento {$fa->numero_documento} não é uma fatura de adiantamento (FA).";
+            }
+
+            if ($ft->tipoDocumentoFiscal() !== 'FT') {
+                $erros[] = "{$ref}: o documento {$ft->numero_documento} não é uma fatura (FT).";
+            }
+
+            if ((int) $fa->cliente_id !== (int) $ft->cliente_id) {
+                $erros[] = "{$ref}: o adiantamento {$fa->numero_documento} e a fatura final {$ft->numero_documento} são de clientes diferentes.";
+            }
+
+            if (! isset($faVerificados[$fa->id])) {
+                $faVerificados[$fa->id] = true;
+
+                $abatido = (int) DB::table('adiantamento_abatimentos')
+                    ->where('empresa_id', $empresa->id)
+                    ->where('fatura_adiantamento_id', $fa->id)
+                    ->sum('valor_centimos');
+
+                $resumo = app(ReciboService::class)->resumoDaFatura($fa);
+                $liquido = (int) $resumo['recebido'] - (int) $resumo['creditado'];
+
+                if ($abatido > $liquido) {
+                    $erros[] = "Adiantamento {$fa->numero_documento}: o total abatido (".Dinheiro::formatar($abatido).') excede o recebido líquido de notas de crédito ('.Dinheiro::formatar($liquido).').';
+                }
+            }
+
+            if (! isset($ftVerificadas[$ft->id])) {
+                $ftVerificadas[$ft->id] = true;
+
+                $abatido = (int) DB::table('adiantamento_abatimentos')
+                    ->where('empresa_id', $empresa->id)
+                    ->where('fatura_final_id', $ft->id)
+                    ->sum('valor_centimos');
+
+                if ($abatido > Dinheiro::centimos($ft->valor_total)) {
+                    $erros[] = "Fatura final {$ft->numero_documento}: o total abatido (".Dinheiro::formatar($abatido).') excede o total da fatura ('.Dinheiro::formatar(Dinheiro::centimos($ft->valor_total)).').';
+                }
+            }
+        }
+
+        if (app()->isProduction() && ! config('faturacao.abatimentos_adiantamento_confirmados')) {
+            $erros[] = "O período tem {$abatimentos->count()} abatimento(s) de adiantamentos (FA -> FT), que hoje são só contabilidade interna: "
+                .'a representação fiscal (AGT/SAF-T) ainda não está confirmada (FATURACAO_ABATIMENTOS_ADIANTAMENTO_CONFIRMADOS; ver docs/homologacao-agt.md, ponto H3).';
         }
 
         return $erros;

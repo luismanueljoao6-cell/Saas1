@@ -37,3 +37,12 @@ homologação fiscal** e não devem ser apresentados como tal.
 
 - Nunca afirmar «homologado» ou «conforme à AGT» enquanto H1, H3, H6 e H7 estiverem abertos.
 - Cada ponto fechado regista aqui a evidência (data, ficheiro XSD/versão, resposta da AGT) e o commit.
+
+## 4. H3 — salvaguarda ativa (adiantamentos e abatimentos)
+
+- Os abatimentos continuam a ser **contabilidade interna**: não geram documento fiscal nem entram na comunicação AGT/SAF-T.
+- A pré-validação do SAF-T reconcilia cada abatimento (mesma empresa, FA→FT, mesmo cliente, totais) e, **em produção**,
+  recusa períodos com abatimentos enquanto `FATURACAO_ABATIMENTOS_ADIANTAMENTO_CONFIRMADOS` for `false` (por omissão).
+- `true` afirma que a representação fiscal está definida **e implementada**. Só se muda depois de fechar o ponto H3
+  com a especificação da AGT; nunca para desbloquear a exportação.
+- Testes: `AbatimentoReconciliacaoSafTTest`, `AbatimentoIdempotenciaConcorrenteTest`.
