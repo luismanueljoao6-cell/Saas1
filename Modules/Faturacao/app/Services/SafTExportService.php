@@ -10,11 +10,12 @@ use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\Produto;
+use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
 
 /**
  * ESTRUTURA PROVISÓRIA do SAF-T (AO): ainda NÃO validada contra o XSD oficial
- * da AGT (falta, por exemplo, o namespace e o tratamento dos recibos). Tem
+ * da AGT (falta, por exemplo, a confirmação do namespace e da estrutura de Payments (recibos)). Tem
  * TaxTable e DocumentTotals, mas só deixa de ser provisória quando o XSD oficial
  * (faturacao.saft_xsd_path) a aceitar — o GerarSafTJob valida com o SafTValidadorXsd e
  * só publica o que passou. Não submeter à AGT sem validação XSD e software
@@ -47,14 +48,45 @@ class SafTExportService
         $raiz->appendChild($this->tabelasMestras($doc, $empresa, $impostosUsados));
         $raiz->appendChild($fonte);
 
-        return $doc->saveXML();
+        $xml = (string) $doc->saveXML();
+        $namespace = $this->namespaceDoFicheiro();
+
+        if ($namespace !== null) {
+            $xml = preg_replace(
+                '/<AuditFile>/',
+                '<AuditFile xmlns="'.htmlspecialchars($namespace, ENT_XML1 | ENT_QUOTES, 'UTF-8').'">',
+                $xml,
+                1
+            ) ?? $xml;
+        }
+
+        return $xml;
+    }
+
+    /** xmlns do ficheiro: o configurado ou, se houver XSD oficial, o seu targetNamespace. Null = sem namespace. */
+    protected function namespaceDoFicheiro(): ?string
+    {
+        $configurado = trim((string) config('faturacao.saft_namespace', ''));
+        $namespace = $configurado !== '' ? $configurado : app(SafTValidadorXsd::class)->namespaceAlvo();
+
+        if ($namespace === null || $namespace === '') {
+            return null;
+        }
+
+        if (! preg_match('/^[A-Za-z0-9:._\-\/]+$/', $namespace)) {
+            throw new \RuntimeException('O namespace do SAF-T (AO) contém caracteres inválidos.');
+        }
+
+        return $namespace;
     }
 
     /** Em produção, o SAF-T fica bloqueado enquanto não houver número de certificação AGT. */
     public function exportacaoBloqueada(): bool
     {
+        $numeroCertificado = trim((string) config('faturacao.saft_numero_certificado', ''));
+
         return app()->isProduction()
-            && (string) config('faturacao.saft_numero_certificado', '0') === '0';
+            && ($numeroCertificado === '' || $numeroCertificado === '0');
     }
 
     /** Devolve a mensagem de erro do período, ou null se for válido. */
@@ -187,7 +219,7 @@ class SafTExportService
             ->with('linhas')->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
 
         foreach ($faturas as $f) {
-            $vendas->appendChild($this->documento($doc, 'FT', $f, 'CreditAmount', $impostosUsados));
+            $vendas->appendChild($this->documento($doc, $f->tipoDocumentoFiscal(), $f, 'CreditAmount', $impostosUsados));
             $totalCredito += Dinheiro::centimos($f->valor_sem_iva);
             $entradas++;
         }
@@ -211,6 +243,7 @@ class SafTExportService
         $noCredito->textContent = Dinheiro::formatar($totalCredito);
 
         $fonte->appendChild($vendas);
+        $fonte->appendChild($this->pagamentos($doc, $empresa, $inicio, $fim));
 
         return $fonte;
     }
@@ -263,35 +296,120 @@ class SafTExportService
         return $no;
     }
 
+    /** Recibos (RC/RG) emitidos no período. Estrutura PROVISÓRIA: confirmar contra o XSD oficial. */
+    protected function pagamentos(DOMDocument $doc, Empresa $empresa, Carbon $inicio, Carbon $fim): DOMElement
+    {
+        $pagamentos = $doc->createElement('Payments');
+
+        $noEntradas = $this->no($doc, 'NumberOfEntries', 0);
+        $noDebito = $this->no($doc, 'TotalDebit', '0.00');
+        $noCredito = $this->no($doc, 'TotalCredit', '0.00');
+        $pagamentos->appendChild($noEntradas);
+        $pagamentos->appendChild($noDebito);
+        $pagamentos->appendChild($noCredito);
+
+        $entradas = 0;
+        $totalCredito = 0;
+        $numerosFatura = [];
+
+        $recibos = Recibo::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)->whereIn('estado', ['emitido', 'anulado'])
+            ->whereBetween('data_emissao', [$inicio->toDateString(), $fim->toDateString()])
+            ->orderBy('serie_id')->orderBy('numero_sequencial')->lazy(200);
+
+        foreach ($recibos as $r) {
+            $valor = Dinheiro::formatar(Dinheiro::centimos($r->valor));
+            $anulado = $r->estado === 'anulado';
+
+            $p = $doc->createElement('Payment');
+            $p->appendChild($this->no($doc, 'PaymentRefNo', $r->numero_documento));
+            $p->appendChild($this->no($doc, 'TransactionDate', $r->data_emissao->format('Y-m-d')));
+            $p->appendChild($this->no($doc, 'PaymentType', $r->tipoDocumentoFiscal()));
+            $p->appendChild($this->no($doc, 'PaymentStatus', $anulado ? 'A' : 'N'));
+            $p->appendChild($this->no($doc, 'SystemEntryDate', $r->data_hora_sistema->format('Y-m-d\TH:i:s')));
+            $p->appendChild($this->no($doc, 'CustomerID', $r->cliente_id));
+            $p->appendChild($this->no($doc, 'Hash', $r->hash));
+            $p->appendChild($this->no($doc, 'HashControl', $r->chave_versao));
+
+            $metodo = $doc->createElement('PaymentMethod');
+            $metodo->appendChild($this->no($doc, 'PaymentMechanism', $r->meio_pagamento));
+            $metodo->appendChild($this->no($doc, 'PaymentAmount', $valor));
+            $p->appendChild($metodo);
+
+            if ($r->fatura_id) {
+                $numerosFatura[$r->fatura_id] ??= (string) Fatura::withoutGlobalScopes()
+                    ->where('empresa_id', $empresa->id)->whereKey($r->fatura_id)->value('numero_documento');
+
+                $linha = $doc->createElement('Line');
+                $origem = $doc->createElement('SourceDocumentID');
+                $origem->appendChild($this->no($doc, 'OriginatingON', $numerosFatura[$r->fatura_id]));
+                $linha->appendChild($origem);
+                $linha->appendChild($this->no($doc, 'CreditAmount', $valor));
+                $p->appendChild($linha);
+            }
+
+            $totais = $doc->createElement('DocumentTotals');
+            $totais->appendChild($this->no($doc, 'GrossTotal', $valor));
+            $p->appendChild($totais);
+
+            $pagamentos->appendChild($p);
+            if (! $anulado) {
+                $totalCredito += Dinheiro::centimos($r->valor);
+            }
+
+            $entradas++;
+        }
+
+        $noEntradas->textContent = (string) $entradas;
+        $noCredito->textContent = Dinheiro::formatar($totalCredito);
+
+        return $pagamentos;
+    }
+
     /**
      * Mesma classificação que segue para a AGT (AgtDocumentoBuilder): IVA com código da
      * taxa, isento (IVA/ISE) ou não sujeito (NS); nota de débito é sempre não sujeita.
      *
      * @return array{0: string, 1: string, 2: ?string} [taxType, taxCode, taxExemptionCode]
      */
-    protected function classificarImposto(Fatura|NotaCreditoDebito $documento, object $linha): array
+    public function classificarImposto(Fatura|NotaCreditoDebito $documento, object $linha): array
     {
         $taxa = (float) $linha->taxa_iva;
 
         if ($taxa > 0) {
             $codigos = (array) config('faturacao.agt.codigos_taxa', []);
 
-            return ['IVA', (string) ($codigos[number_format($taxa, 2, '.', '')] ?? 'OUT'), null];
+            $chave = number_format($taxa, 2, '.', '');
+            $codigo = $codigos[$chave] ?? null;
+
+            if (! is_string($codigo) || trim($codigo) === '') {
+                throw new \RuntimeException("A taxa de IVA {$chave}% não tem código SAF-T (AO) configurado; a exportação foi interrompida.");
+            }
+
+            return ['IVA', $codigo, null];
         }
 
         if ($documento instanceof NotaCreditoDebito && $documento->tipo === 'debito') {
             $codigo = strtoupper(trim((string) config('faturacao.agt.nd_codigo_nao_sujeicao')));
 
-            return ['NS', 'NS', $codigo !== '' ? $codigo : null];
+            if ($codigo === '') {
+                throw new \RuntimeException('A nota de débito não tem código de não sujeição configurado para o SAF-T (AO).');
+            }
+
+            return ['NS', 'NS', $codigo];
         }
 
         $motivo = strtoupper(trim((string) ($linha->motivo_isencao ?? '')));
         $entrada = ((array) config('faturacao.motivos_isencao', []))[$motivo] ?? null;
 
-        if (is_array($entrada) && ($entrada['tipo'] ?? 'ISE') === 'NS') {
+        if ($motivo === '' || ! is_array($entrada)) {
+            throw new \RuntimeException('Uma linha isenta não tem um motivo de isenção SAF-T (AO) válido.');
+        }
+
+        if (($entrada['tipo'] ?? 'ISE') === 'NS') {
             return ['NS', 'NS', $motivo];
         }
 
-        return ['IVA', 'ISE', $motivo !== '' ? $motivo : null];
+        return ['IVA', 'ISE', $motivo];
     }
 }

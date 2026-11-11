@@ -1,0 +1,85 @@
+<?php
+
+namespace Modules\Faturacao\Services;
+
+use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Contracts\FaturacaoGateway;
+use Modules\Faturacao\Models\Cliente;
+use Modules\Faturacao\Models\Fatura;
+use Modules\Faturacao\Models\Recibo;
+
+/**
+ * Fachada estável para os módulos consumidores da Faturação.
+ * Não contém regras fiscais: delega sempre nos serviços de domínio oficiais.
+ */
+class FaturacaoGatewayService implements FaturacaoGateway
+{
+    public function __construct(
+        protected FaturaService $faturas,
+        protected ReciboService $recibos,
+        protected AbatimentoAdiantamentoService $abatimentos,
+    ) {}
+
+    public function criarRascunho(
+        Empresa $empresa,
+        Cliente $cliente,
+        array $linhas,
+        ?string $observacoes = null,
+    ): Fatura {
+        return $this->faturas->criarRascunho($empresa, $cliente, $linhas, $observacoes);
+    }
+
+    public function criarRascunhoAdiantamento(
+        Empresa $empresa,
+        Cliente $cliente,
+        array $linhas,
+        ?string $observacoes = null,
+    ): Fatura {
+        return $this->faturas->criarRascunhoAdiantamento($empresa, $cliente, $linhas, $observacoes);
+    }
+
+    public function emitirRegularizacao(
+        int $empresaId,
+        int $clienteId,
+        string|int $valor,
+        string $meioPagamento,
+        int $faturaId,
+    ): Recibo {
+        return $this->recibos->emitirRegularizacao($empresaId, $clienteId, $valor, $meioPagamento, $faturaId);
+    }
+
+    public function emitirFatura(Fatura $fatura): Fatura
+    {
+        return $this->faturas->emitir($fatura);
+    }
+
+    public function emitirRecibo(
+        int $empresaId,
+        int $clienteId,
+        string|int $valor,
+        string $meioPagamento,
+        ?int $faturaId = null,
+    ): Recibo {
+        return $this->recibos->emitir($empresaId, $clienteId, $valor, $meioPagamento, $faturaId);
+    }
+
+    public function abaterAdiantamento(
+        int $empresaId,
+        int $faturaAdiantamentoId,
+        int $faturaFinalId,
+        string|int $valor,
+        string $chave,
+    ): array {
+        return $this->abatimentos->abater($empresaId, $faturaAdiantamentoId, $faturaFinalId, $valor, $chave);
+    }
+
+    public function saldoEmCentimos(Fatura $fatura): int
+    {
+        return $this->recibos->saldoEmCentimos($fatura);
+    }
+
+    public function resumoDaFatura(Fatura $fatura): array
+    {
+        return $this->recibos->resumoDaFatura($fatura);
+    }
+}

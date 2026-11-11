@@ -2,12 +2,12 @@
 
 namespace Modules\EstudioMusica\Http\Controllers;
 
+use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
-use DomainException;
 use InvalidArgumentException;
 use Modules\Core\Models\User;
 use Modules\EstudioMusica\Http\Requests\AtualizarPortfolioRequest;
@@ -133,7 +133,7 @@ class ProjetoMusicalController extends Controller
                 $projeto,
                 $fatura,
                 $dados['meio_pagamento'],
-                isset($dados['valor']) ? (float) $dados['valor'] : null,
+                $dados['valor'] ?? null,
             );
         } catch (InvalidArgumentException|DomainException $e) {
             return back()->with('erro', $e->getMessage());

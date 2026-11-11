@@ -2,6 +2,7 @@
 
 namespace Modules\Faturacao\Services;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Faturacao\Models\Cliente;
@@ -58,11 +59,15 @@ class NotaCreditoDebitoService
             throw new \DomainException('Esta fatura já tem uma nota de crédito associada.');
         }
 
+        $this->garantirAdiantamentoSemAbatimentos($fatura);
+
         $linhas = $fatura->linhas()->get()->map(fn ($linha) => [
             'descricao' => $linha->descricao,
             'quantidade' => $linha->quantidade,
             'preco_unitario' => $linha->preco_unitario,
+            'preco_unitario_base' => $linha->preco_unitario_base ?? $linha->preco_unitario,
             'taxa_iva' => $linha->taxa_iva,
+            'operation_type' => $linha->operation_type,
             'motivo_isencao' => $linha->motivo_isencao,
         ])->all();
 
@@ -70,7 +75,7 @@ class NotaCreditoDebitoService
     }
 
     /**
-     * @param  array<int, array{descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float}>  $linhas
+     * @param  array<int, array{descricao: string, quantidade: float, preco_unitario: float, preco_unitario_base?: float, taxa_iva: float, operation_type?: string|null}>  $linhas
      */
     /** Elimina uma nota ainda em rascunho; uma nota emitida é um documento fiscal e não se apaga. */
     public function eliminarRascunho(NotaCreditoDebito $nota): void
@@ -157,6 +162,8 @@ class NotaCreditoDebitoService
             }
         }
 
+        $linhas = $this->herdarTiposOperacao($tipo, $empresaId, $faturaId, $linhas);
+
         return DB::transaction(function () use ($empresaId, $clienteId, $tipo, $motivo, $linhas, $faturaId, $debitoSemIva) {
             $tipoDocumento = $tipo === 'debito' ? 'ND' : 'NC';
 
@@ -177,7 +184,9 @@ class NotaCreditoDebitoService
                     'descricao' => $dadosLinha['descricao'],
                     'quantidade' => $dadosLinha['quantidade'],
                     'preco_unitario' => $dadosLinha['preco_unitario'],
+                    'preco_unitario_base' => $dadosLinha['preco_unitario_base'] ?? $dadosLinha['preco_unitario'],
                     'taxa_iva' => $dadosLinha['taxa_iva'],
+                    'operation_type' => isset($dadosLinha['operation_type']) ? strtoupper(trim((string) $dadosLinha['operation_type'])) : null,
                     'motivo_isencao' => $debitoSemIva ? null : ValidacaoLinhas::normalizarMotivo($dadosLinha['motivo_isencao'] ?? null),
                     'ordem' => $indice,
                 ]))->calcularValores()->save();
@@ -214,6 +223,7 @@ class NotaCreditoDebitoService
 
                 $this->recalcularTotais($nota);
                 $this->garantirDebitoSemIva($nota);
+                $this->completarTiposOperacaoDoRascunho($nota);
                 $this->garantirLimiteDeCredito($nota);
 
                 $resultado = $this->numeracaoService->proximoNumero($nota->empresa_id, $nota->tipoDocumentoFiscal());
@@ -254,6 +264,108 @@ class NotaCreditoDebitoService
         }
     }
 
+    /**
+     * Uma nota de crédito deve declarar o mesmo operationType da fatura que corrige. As linhas
+     * sem tipo herdam-no da fatura de origem. Sem certeza, ficam por preencher (o
+     * AgtDocumentoBuilder aplica então o tipo padrão).
+     *
+     * @param  array<int, array<string, mixed>>  $linhas
+     * @return array<int, array<string, mixed>>
+     */
+    protected function herdarTiposOperacao(string $tipo, int $empresaId, ?int $faturaId, array $linhas): array
+    {
+        if ($tipo !== 'credito' || $faturaId === null) {
+            return $linhas;
+        }
+
+        $origem = Fatura::withoutGlobalScopes()
+            ->where('empresa_id', $empresaId)
+            ->with('linhas')
+            ->find($faturaId);
+
+        if (! $origem) {
+            return $linhas;
+        }
+
+        foreach ($linhas as $indice => $linha) {
+            if (trim((string) ($linha['operation_type'] ?? '')) !== '') {
+                continue;
+            }
+
+            $herdado = $this->tipoOperacaoDeOrigem($origem->linhas, (string) ($linha['descricao'] ?? ''), $linha['taxa_iva'] ?? 0);
+
+            if ($herdado !== null) {
+                $linhas[$indice]['operation_type'] = $herdado;
+            }
+        }
+
+        return $linhas;
+    }
+
+    /** Rascunhos criados antes desta regra: completam-se na emissão, antes de a nota ficar imutável. */
+    protected function completarTiposOperacaoDoRascunho(NotaCreditoDebito $nota): void
+    {
+        if ($nota->tipo !== 'credito' || ! $nota->fatura_id) {
+            return;
+        }
+
+        $semTipo = $nota->linhas()->get()->filter(fn ($linha) => trim((string) $linha->operation_type) === '');
+
+        if ($semTipo->isEmpty()) {
+            return;
+        }
+
+        $origem = Fatura::withoutGlobalScopes()
+            ->where('empresa_id', $nota->empresa_id)
+            ->with('linhas')
+            ->find($nota->fatura_id);
+
+        if (! $origem) {
+            return;
+        }
+
+        foreach ($semTipo as $linha) {
+            $herdado = $this->tipoOperacaoDeOrigem($origem->linhas, (string) $linha->descricao, $linha->taxa_iva);
+
+            if ($herdado !== null) {
+                $linha->operation_type = $herdado;
+                $linha->save();
+            }
+        }
+    }
+
+    /**
+     * Tipo da linha de origem com a mesma descrição e taxa (se for único); senão, o tipo único da
+     * fatura inteira, desde que todas as suas linhas o tenham. Caso contrário, null.
+     */
+    protected function tipoOperacaoDeOrigem(Collection $linhasOrigem, string $descricao, mixed $taxa): ?string
+    {
+        $tipos = fn (Collection $linhas) => $linhas
+            ->map(fn ($linha) => strtoupper(trim((string) $linha->operation_type)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $chaveTaxa = number_format((float) $taxa, 2, '.', '');
+
+        $correspondentes = $tipos($linhasOrigem->filter(
+            fn ($origem) => (string) $origem->descricao === $descricao
+                && number_format((float) $origem->taxa_iva, 2, '.', '') === $chaveTaxa
+        ));
+
+        if ($correspondentes->count() === 1) {
+            return $correspondentes->first();
+        }
+
+        if ($linhasOrigem->contains(fn ($origem) => trim((string) $origem->operation_type) === '')) {
+            return null;
+        }
+
+        $todos = $tipos($linhasOrigem);
+
+        return $todos->count() === 1 ? $todos->first() : null;
+    }
+
     /** Soma das NC emitidas + esta nota nunca pode exceder o valor da fatura. */
     protected function garantirLimiteDeCredito(NotaCreditoDebito $nota): void
     {
@@ -284,6 +396,7 @@ class NotaCreditoDebitoService
             throw new \DomainException('O total creditado excede o valor da fatura de origem.');
         }
 
+        $this->garantirCreditoCompativelComAbatimentos($nota, $fatura, (int) $jaCreditado);
         $this->garantirLimitePorTaxa($nota, $fatura);
     }
 
@@ -327,6 +440,42 @@ class NotaCreditoDebitoService
             if ($valor > ($faturado[$taxa] ?? 0)) {
                 throw new \DomainException("O valor creditado à taxa de IVA {$taxa}% excede o valor faturado a essa taxa.");
             }
+        }
+    }
+
+    /** Total já abatido de um adiantamento (FA) em faturas finais, em cêntimos. */
+    protected function abatidoDoAdiantamento(int $empresaId, int $faturaId): int
+    {
+        return (int) DB::table('adiantamento_abatimentos')
+            ->where('empresa_id', $empresaId)
+            ->where('fatura_adiantamento_id', $faturaId)
+            ->sum('valor_centimos');
+    }
+
+    /** Anulação total de um FA que já foi (em parte) abatido não é possível: o valor já foi usado. */
+    protected function garantirAdiantamentoSemAbatimentos(Fatura $fatura): void
+    {
+        if ($fatura->tipoDocumentoFiscal() !== 'FA') {
+            return;
+        }
+
+        if ($this->abatidoDoAdiantamento((int) $fatura->empresa_id, (int) $fatura->id) > 0) {
+            throw new \DomainException('Este adiantamento já tem valores abatidos em faturas finais: a anulação total não é possível. Emita uma nota de crédito parcial sobre a parte não abatida.');
+        }
+    }
+
+    /** Num FA, créditos + abatimentos nunca podem exceder o total do adiantamento. */
+    protected function garantirCreditoCompativelComAbatimentos(NotaCreditoDebito $nota, Fatura $fatura, int $jaCreditado): void
+    {
+        if ($fatura->tipoDocumentoFiscal() !== 'FA') {
+            return;
+        }
+
+        $abatido = $this->abatidoDoAdiantamento((int) $nota->empresa_id, (int) $fatura->id);
+
+        if ($abatido > 0
+            && $jaCreditado + Dinheiro::centimos($nota->valor_total) + $abatido > Dinheiro::centimos($fatura->valor_total)) {
+            throw new \DomainException('Este adiantamento já tem valores abatidos em faturas finais: o crédito não pode incidir sobre a parte já abatida.');
         }
     }
 

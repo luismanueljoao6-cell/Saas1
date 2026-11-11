@@ -2,11 +2,13 @@
 
 namespace Modules\Atelier\Http\Controllers\Admin;
 
+use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
+use InvalidArgumentException;
 use Modules\Atelier\Exceptions\PedidoException;
 use Modules\Atelier\Http\Requests\AtualizarPedidoRequest;
 use Modules\Atelier\Http\Requests\AvancarEstadoPedidoRequest;
@@ -72,7 +74,7 @@ class PedidoController extends Controller
                 'prazo_interno' => $request->validated('prazo_interno'),
                 'valor_orcamento' => $request->validated('valor_orcamento'),
                 'percentual_sinal' => $request->validated('percentual_sinal'),
-                'taxa_iva_aplicada' => (float) config('faturacao.taxa_iva_geral'),
+                'taxa_iva_aplicada' => (string) config('faturacao.taxa_iva_geral'),
             ]);
 
             foreach ($request->validated('materiais', []) as $indice => $dadosMaterial) {
@@ -156,8 +158,14 @@ class PedidoController extends Controller
         $this->garantirQuePodeEmitirFaturas($pedido->empresa);
 
         try {
-            $this->faturacaoService->registarSinal($pedido, (float) $request->validated('valor'), $request->validated('meio_pagamento'));
-        } catch (PedidoException $e) {
+            $this->faturacaoService->registarSinal($pedido, $request->validated('valor'), $request->validated('meio_pagamento'));
+        } catch (PedidoException|DomainException|InvalidArgumentException $e) {
+            if (! $e instanceof PedidoException && ! $e instanceof DomainException) {
+                report($e);
+            }
+
+            // DomainException inclui o bloqueio deliberado de RC com AGT ativa:
+            // a mensagem é para o utilizador, não um erro transitório.
             return back()->with('erro', $e->getMessage());
         } catch (Throwable $e) {
             Log::error('Falha ao registar sinal do Atelier', ['pedido_id' => $pedido->id, 'erro' => $e->getMessage()]);
@@ -190,7 +198,11 @@ class PedidoController extends Controller
 
         try {
             $this->faturacaoService->registarPagamentoFinal($pedido, $request->validated('meio_pagamento'));
-        } catch (PedidoException $e) {
+        } catch (PedidoException|DomainException|InvalidArgumentException $e) {
+            if (! $e instanceof PedidoException && ! $e instanceof DomainException) {
+                report($e);
+            }
+
             return back()->with('erro', $e->getMessage());
         } catch (Throwable $e) {
             Log::error('Falha ao registar pagamento final do Atelier', ['pedido_id' => $pedido->id, 'erro' => $e->getMessage()]);

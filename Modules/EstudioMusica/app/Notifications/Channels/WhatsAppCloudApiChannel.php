@@ -2,9 +2,12 @@
 
 namespace Modules\EstudioMusica\Notifications\Channels;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException;
+use Modules\Core\Notifications\Support\FalhaDeLigacao;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
 use Modules\EstudioMusica\Support\NumeroTelefone;
 use Throwable;
@@ -84,6 +87,18 @@ class WhatsAppCloudApiChannel implements CanalWhatsAppInterface
             ]);
 
             return false;
+        } catch (ConnectionException $e) {
+            Log::error('WhatsApp Cloud API: falha de ligação ao enviar mensagem', [
+                'destino' => NumeroTelefone::mascarar($destino),
+                'erro' => $e->getMessage(),
+            ]);
+
+            if (FalhaDeLigacao::foiAntesDoEnvio($e)) {
+                return false; // o pedido nem saiu: seguro repetir
+            }
+
+            // Timeout ou ligação cortada: o fornecedor pode já ter enviado a mensagem.
+            throw new ResultadoIndeterminadoException('WhatsApp Cloud API: ligação interrompida ou tempo esgotado depois do pedido.', 0, $e);
         } catch (Throwable $e) {
             Log::error('WhatsApp Cloud API: erro inesperado ao enviar mensagem', [
                 'destino' => NumeroTelefone::mascarar($destino),

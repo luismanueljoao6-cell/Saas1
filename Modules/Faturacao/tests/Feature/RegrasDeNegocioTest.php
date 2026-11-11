@@ -36,12 +36,12 @@ class RegrasDeNegocioTest extends TestCase
         return [$empresa, $cliente];
     }
 
-    protected function linha(float $preco = 1000): array
+    protected function linha(string $preco = '1000'): array
     {
         return [['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => $preco, 'taxa_iva' => 14]];
     }
 
-    protected function faturaEmitida(Empresa $e, Cliente $c, float $preco = 1000): Fatura
+    protected function faturaEmitida(Empresa $e, Cliente $c, string $preco = '1000'): Fatura
     {
         $s = app(FaturaService::class);
 
@@ -108,7 +108,12 @@ class RegrasDeNegocioTest extends TestCase
     {
         $this->assertSame(101, Dinheiro::centimos('1.005'));
         $this->assertSame(29, Dinheiro::centimos('0.285'));
-        $this->assertSame(101, Dinheiro::centimos(1.005));
+        try {
+            Dinheiro::centimos(1.005);
+            $this->fail('Valores float devem ser rejeitados explicitamente.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('float não é permitido', $e->getMessage());
+        }
         $this->assertSame(12345, Dinheiro::centimos('123.45'));
         $this->assertSame(-250, Dinheiro::centimos('-2.50'));
         $this->assertSame(0, Dinheiro::centimos(null));

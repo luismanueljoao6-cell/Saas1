@@ -25,7 +25,7 @@ class ReciboService
     ) {}
 
     /**
-     * @param  string|int|float  $valor  em unidades monetárias (ex.: '500.00')
+     * @param  string|int  $valor  em unidades monetárias (ex.: '500.00')
      * @param  int|null  $faturaId  nulo para recibos de adiantamento
      *
      * @throws Throwable
@@ -33,9 +33,40 @@ class ReciboService
     public function emitir(
         int $empresaId,
         int $clienteId,
-        string|int|float $valor,
+        string|int $valor,
         string $meioPagamento,
         ?int $faturaId = null,
+    ): Recibo {
+        return $this->emitirTipo('RC', $empresaId, $clienteId, $valor, $meioPagamento, $faturaId);
+    }
+
+    /**
+     * Recibo de regularização (RG): refere SEMPRE a fatura que regulariza e, com a AGT ativa,
+     * segue como `paymentReceipt` (a AGT só aceita paymentReceipt em AR/RG). Usa série própria
+     * do tipo RG (com a AGT ativa, a série RG tem de estar autorizada: AgtSerieService::solicitar).
+     *
+     * @param  string|int  $valor  em unidades monetárias (ex.: '500.00')
+     *
+     * @throws Throwable
+     */
+    public function emitirRegularizacao(
+        int $empresaId,
+        int $clienteId,
+        string|int $valor,
+        string $meioPagamento,
+        int $faturaId,
+    ): Recibo {
+        return $this->emitirTipo('RG', $empresaId, $clienteId, $valor, $meioPagamento, $faturaId);
+    }
+
+    /** @throws Throwable */
+    protected function emitirTipo(
+        string $tipo,
+        int $empresaId,
+        int $clienteId,
+        string|int $valor,
+        string $meioPagamento,
+        ?int $faturaId,
     ): Recibo {
         $centimos = Dinheiro::centimos($valor);
 
@@ -47,13 +78,21 @@ class ReciboService
             throw new \InvalidArgumentException('O meio de pagamento é obrigatório.');
         }
 
-        // O AgtDocumentoBuilder não suporta adiantamentos: recusar já, não só no envio.
-        if ($faturaId === null && config('faturacao.agt.ativo')) {
-            throw new \DomainException('Recibos de adiantamento ainda não são suportados com a comunicação AGT ativa.');
+        if ($tipo === 'RG' && $faturaId === null) {
+            throw new \InvalidArgumentException('Um recibo de regularização (RG) tem de referir a fatura que regulariza.');
+        }
+
+        // O modelo Recibo emite RC. A especificação AGT exige "lines" para RC,
+        // enquanto "paymentReceipt" só é permitido para AR/RG. Como este modelo
+        // ainda não guarda linhas fiscais próprias nem selecciona RG, bloquear a
+        // emissão com AGT activa é mais seguro do que criar um documento impossível
+        // de submeter ou enviar um payload estruturalmente inválido.
+        if ($tipo === 'RC' && config('faturacao.agt.ativo')) {
+            throw new \DomainException('A emissão de recibos RC ainda não está habilitada com a AGT ativa: é necessário implementar a estrutura RC (linhas) ou o tipo RG (paymentReceipt) conforme a especificação AGT.');
         }
 
         try {
-            return DB::transaction(function () use ($empresaId, $clienteId, $centimos, $meioPagamento, $faturaId) {
+            return DB::transaction(function () use ($tipo, $empresaId, $clienteId, $centimos, $meioPagamento, $faturaId) {
                 GuardaEmissao::garantir($empresaId);
 
                 $cliente = Cliente::withoutGlobalScopes()->where('empresa_id', $empresaId)->find($clienteId);
@@ -68,7 +107,8 @@ class ReciboService
 
                 $recibo = Recibo::create([
                     'empresa_id' => $empresaId,
-                    'serie_id' => $this->numeracaoService->obterOuCriarSerie($empresaId, 'RC')->id,
+                    'tipo_documento' => $tipo,
+                    'serie_id' => $this->numeracaoService->obterOuCriarSerie($empresaId, $tipo)->id,
                     'cliente_id' => $clienteId,
                     'fatura_id' => $faturaId,
                     'estado' => 'rascunho',
@@ -77,7 +117,7 @@ class ReciboService
                     'meio_pagamento' => $meioPagamento,
                 ]);
 
-                $resultado = $this->numeracaoService->proximoNumero($empresaId, 'RC');
+                $resultado = $this->numeracaoService->proximoNumero($empresaId, $tipo);
 
                 $hashAnterior = $this->numeracaoService->hashDoDocumentoAnterior(
                     Recibo::class,
@@ -133,9 +173,9 @@ class ReciboService
             throw new \DomainException('O cliente do recibo tem de ser o da fatura.');
         }
 
-        [$jaRecebido, $creditado] = $this->recebidoECreditado($empresaId, $faturaId);
+        [$jaRecebido, $creditado, $abatido] = $this->recebidoECreditado($empresaId, $faturaId);
 
-        if ($jaRecebido + $centimos > Dinheiro::centimos($fatura->valor_total) - $creditado) {
+        if ($jaRecebido + $centimos > Dinheiro::centimos($fatura->valor_total) - $creditado - $abatido) {
             throw new \DomainException('O total recebido excede o valor em dívida da fatura (já deduzidas as notas de crédito).');
         }
     }
@@ -149,19 +189,20 @@ class ReciboService
         return $this->resumoDaFatura($fatura)['saldo'];
     }
 
-    /** @return array{recebido: int, creditado: int, saldo: int} em cêntimos */
+    /** @return array{recebido: int, creditado: int, abatido: int, saldo: int} em cêntimos */
     public function resumoDaFatura(Fatura $fatura): array
     {
-        [$recebido, $creditado] = $this->recebidoECreditado((int) $fatura->empresa_id, (int) $fatura->id);
+        [$recebido, $creditado, $abatido] = $this->recebidoECreditado((int) $fatura->empresa_id, (int) $fatura->id);
 
         return [
             'recebido' => $recebido,
             'creditado' => $creditado,
-            'saldo' => Dinheiro::centimos($fatura->valor_total) - $recebido - $creditado,
+            'abatido' => $abatido,
+            'saldo' => Dinheiro::centimos($fatura->valor_total) - $recebido - $creditado - $abatido,
         ];
     }
 
-    /** @return array{0: int, 1: int} [recebido, creditado] em cêntimos */
+    /** @return array{0: int, 1: int, 2: int} [recebido, creditado, abatido por adiantamentos] em cêntimos */
     protected function recebidoECreditado(int $empresaId, int $faturaId): array
     {
         $recebido = Recibo::withoutGlobalScopes()
@@ -179,6 +220,11 @@ class ReciboService
             ->get(['valor_total'])
             ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_total));
 
-        return [(int) $recebido, (int) $creditado];
+        $abatido = (int) DB::table('adiantamento_abatimentos')
+            ->where('empresa_id', $empresaId)
+            ->where('fatura_final_id', $faturaId)
+            ->sum('valor_centimos');
+
+        return [(int) $recebido, (int) $creditado, $abatido];
     }
 }

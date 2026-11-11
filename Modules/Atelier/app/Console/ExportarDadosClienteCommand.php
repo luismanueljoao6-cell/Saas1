@@ -46,7 +46,7 @@ class ExportarDadosClienteCommand extends Command
             'pedidos' => $pedidos,
             'fotos' => DB::table('atelier_pedido_fotos')->whereIn('pedido_id', $pedidoIds)->get(),
             'provas' => DB::table('atelier_provas')->whereIn('pedido_id', $pedidoIds)->get(),
-            'envios_de_campanhas' => DB::table('atelier_campanha_envios')->where('cliente_id', $clienteId)->get(),
+            'envios_de_campanhas' => DB::table('atelier_campanha_envios')->where('cliente_id', $clienteId)->whereIn('campanha_id', DB::table('atelier_campanhas')->where('empresa_id', $empresaId)->select('id'))->get(),
         ];
 
         $this->line(json_encode($dados, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));

@@ -2,46 +2,171 @@
 
 namespace Modules\EstudioMusica\Services;
 
+use Illuminate\Support\Facades\Log;
+use Modules\Core\Models\Empresa;
+use Modules\Core\Notifications\NotificationDispatcher;
 use Modules\EstudioMusica\Jobs\EnviarMensagemClienteJob;
 use Modules\EstudioMusica\Models\FaixaMusical;
 use Modules\EstudioMusica\Models\ProjetoMusical;
-use Modules\EstudioMusica\Models\SessaoEstudio;
-use Modules\Core\Models\Empresa;
 use Modules\EstudioMusica\Models\Reclamacao;
+use Modules\EstudioMusica\Models\SessaoEstudio;
 use Modules\EstudioMusica\Models\VersaoAudio;
+use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
+use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
+use Modules\EstudioMusica\Support\NumeroTelefone;
+use Modules\EstudioMusica\Support\TransferenciaInternacional;
 use Modules\Faturacao\Models\Cliente;
 
 /**
- * "Automação de Notificações" (secção D): compõe o texto dos 5 avisos
- * pedidos — lembrete de sessão, atualização de estado, nova demo
- * disponível, aprovação pendente, projeto finalizado — e entrega-os a
- * Jobs\EnviarMensagemClienteJob, que os envia por WhatsApp, SMS e e-mail
- * fora do pedido HTTP. Nenhum canal tem de estar configurado para os
- * outros funcionarem (ver o job).
+ * Compõe notificações do Estúdio e enfileira o envio fora do pedido HTTP.
+ * O dispatch confirma apenas que o trabalho foi enfileirado; não prova
+ * que o fornecedor entregou a mensagem ao destinatário.
  */
 class NotificacaoEstudioService
 {
-    public function enviar(Cliente $cliente, string $assunto, string $mensagem): void
+    /**
+     * Verifica se existe pelo menos um canal que o sistema pode usar.
+     * E-mail não depende da autorização de transferência internacional;
+     * telefone só é elegível quando WhatsApp ou SMS estão autorizados.
+     */
+    public function podeEnviar(Cliente $cliente): bool
     {
-        // Um cliente apagado (soft delete) em Faturação mantém-se nos
-        // projetos/sessões antigos, por histórico, mas deixa de receber
-        // mensagens.
         if ($cliente->trashed()) {
-            return;
+            return false;
         }
 
-        EnviarMensagemClienteJob::dispatch($cliente->telefone, $cliente->email, $assunto, $mensagem);
+        if (trim((string) $cliente->email) !== '') {
+            return true;
+        }
+
+        if (trim((string) $cliente->telefone) === '') {
+            return false;
+        }
+
+        return TransferenciaInternacional::permitida(app(CanalWhatsAppInterface::class))
+            || TransferenciaInternacional::permitida(app(CanalSmsInterface::class));
     }
 
-    public function lembreteSessao(SessaoEstudio $sessao, int $horasAntes): void
+    /**
+     * @return bool true quando o dispatch foi aceite; false quando não há
+     *              destinatário ou canal legal/técnico elegível.
+     */
+    public function enviar(Cliente $cliente, string $assunto, string $mensagem): bool
     {
-        $data = $sessao->inicio_previsto->format('d/m').' às '.$sessao->inicio_previsto->format('H:i');
+        if (! $this->podeEnviar($cliente)) {
+            Log::notice('EstudioMusica: notificação não enfileirada — cliente sem canal elegível.', [
+                'cliente_id' => $cliente->id,
+                'empresa_id' => $cliente->empresa_id,
+                'tem_telefone' => trim((string) $cliente->telefone) !== '',
+                'tem_email' => trim((string) $cliente->email) !== '',
+            ]);
 
-        $this->enviar(
-            $sessao->cliente,
-            'Lembrete de sessão de estúdio',
-            "Olá! A tua sessão de {$sessao->rotuloTipoServico()} está marcada para {$data}, daqui a cerca de {$horasAntes}h. Até já!"
+            return false;
+        }
+
+        $telefone = trim((string) $cliente->telefone);
+        $email = trim((string) $cliente->email);
+
+        EnviarMensagemClienteJob::dispatch(
+            $telefone !== '' ? $telefone : null,
+            $email !== '' ? $email : null,
+            $assunto,
+            $mensagem
         );
+
+        return true;
+    }
+
+    /**
+     * Lembrete de sessão IDEMPOTENTE: repetir o job (ou perder a marcação da
+     * coluna lembrete_*_enviado_em) nunca duplica a mensagem.
+     *
+     *  - Telefone: vai pela Outbox do Core com uma chave determinística por
+     *    sessão, janela, destinatário e conteúdo. Uma segunda chamada recupera
+     *    a mesma notificação em vez de criar outra.
+     *  - E-mail: também vai pela Outbox (canal estudio.email), com a mesma chave
+     *    determinística. Já não depende da cache nem do job legado.
+     *
+     * Já não há fallback WhatsApp -> SMS neste fluxo: um timeout no WhatsApp
+     * mandava também SMS e duplicava a mensagem.
+     *
+     * @return bool true quando pelo menos um destino ficou (ou já estava) enfileirado
+     */
+    public function lembreteSessao(SessaoEstudio $sessao, int $horasAntes): bool
+    {
+        $cliente = $sessao->cliente;
+
+        if ($cliente->trashed()) {
+            return false;
+        }
+
+        $data = $sessao->inicio_previsto->format('d/m').' às '.$sessao->inicio_previsto->format('H:i');
+        $assunto = 'Lembrete de sessão de estúdio';
+        $mensagem = "Olá! A tua sessão de {$sessao->rotuloTipoServico()} está marcada para {$data}, daqui a cerca de {$horasAntes}h. Até já!";
+
+        $enfileirou = false;
+
+        $email = trim((string) $cliente->email);
+        if ($email !== '') {
+            app(NotificationDispatcher::class)->dispatch(
+                channel: 'estudio.email',
+                recipient: $email,
+                payload: ['subject' => $assunto, 'message' => $mensagem],
+                idempotencyKey: $this->chaveLembrete($sessao, $horasAntes, $email, $mensagem),
+                empresaId: (int) $sessao->empresa_id,
+            );
+            $enfileirou = true;
+        }
+
+        $destino = NumeroTelefone::internacional($cliente->telefone);
+        if ($destino !== null) {
+            $canal = $this->canalTelefoneAutorizado();
+
+            if ($canal !== null) {
+                app(NotificationDispatcher::class)->dispatch(
+                    channel: $canal,
+                    recipient: $destino,
+                    payload: ['message' => $mensagem],
+                    idempotencyKey: $this->chaveLembrete($sessao, $horasAntes, $destino, $mensagem),
+                    empresaId: (int) $sessao->empresa_id,
+                );
+                $enfileirou = true;
+            } else {
+                Log::notice('EstudioMusica: lembrete por telefone não enfileirado — falta a autorização da APD.', [
+                    'sessao_id' => $sessao->id,
+                    'empresa_id' => $sessao->empresa_id,
+                ]);
+            }
+        }
+
+        if (! $enfileirou) {
+            Log::notice('EstudioMusica: lembrete não enfileirado — cliente sem canal elegível.', [
+                'sessao_id' => $sessao->id,
+                'empresa_id' => $sessao->empresa_id,
+            ]);
+        }
+
+        return $enfileirou;
+    }
+
+    /** O canal de telefone que a política APD permite, ou null se nenhum. */
+    protected function canalTelefoneAutorizado(): ?string
+    {
+        if (TransferenciaInternacional::permitida(app(CanalWhatsAppInterface::class))) {
+            return 'estudio.whatsapp';
+        }
+
+        if (TransferenciaInternacional::permitida(app(CanalSmsInterface::class))) {
+            return 'estudio.sms';
+        }
+
+        return null;
+    }
+
+    /** Determinística: mesma sessão + janela + destinatário + conteúdo = mesma chave. */
+    protected function chaveLembrete(SessaoEstudio $sessao, int $horasAntes, string $destinatario, string $mensagem): string
+    {
+        return 'estudio-lembrete-sessao-'.$sessao->id.'-'.$horasAntes.'h-'.substr(sha1($destinatario."\n".$mensagem), 0, 16);
     }
 
     public function atualizacaoEstadoProjeto(ProjetoMusical $projeto): void

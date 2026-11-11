@@ -37,7 +37,7 @@ class FaturacaoConcorrenciaTest extends TestCase
         });
     }
 
-    protected function novoPedido(string $nif, float $valor = 1000): Pedido
+    protected function novoPedido(string $nif, string|int $valor = 1000): Pedido
     {
         $empresa = Empresa::create(['nome_comercial' => 'Atelier '.$nif, 'nif' => $nif]);
         app(TenantManager::class)->set($empresa->id);

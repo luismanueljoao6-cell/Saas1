@@ -24,6 +24,7 @@ class Fatura extends Model implements DocumentoFiscalInterface
     protected $fillable = [
         'empresa_id',
         'serie_id',
+        'tipo_documento',
         'cliente_id',
         'numero_sequencial',
         'numero_documento',
@@ -87,7 +88,7 @@ class Fatura extends Model implements DocumentoFiscalInterface
 
     public function tipoDocumentoFiscal(): string
     {
-        return 'FT';
+        return $this->tipo_documento ?: 'FT';
     }
 
     public function getSerieId(): int

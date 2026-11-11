@@ -8,6 +8,8 @@ use Modules\Atelier\Exceptions\NotificacaoException;
 use Modules\Atelier\Notifications\ClienteAtelierNotification;
 use Modules\Atelier\Services\Notificacoes\Contracts\CanalNotificacaoInterface;
 use Modules\Atelier\Support\NumeroTelefone;
+use Modules\Core\Models\NotificationOutbox;
+use Modules\Core\Notifications\NotificationDispatcher;
 use Modules\Faturacao\Models\Cliente;
 use Throwable;
 
@@ -53,6 +55,41 @@ class NotificadorClienteService
     }
 
     /**
+     * Coloca uma mensagem de telefone na Outbox partilhada do Core.
+     *
+     * Este método é opt-in: os fluxos legados e as campanhas não mudam de
+     * semântica até passarem a acompanhar o estado assíncrono da notificação.
+     */
+    public function enfileirarViaOutbox(
+        Cliente $cliente,
+        string $canal,
+        string $mensagem,
+        string $chaveIdempotencia,
+        array $contexto = [],
+    ): NotificationOutbox {
+        if (! in_array($canal, ['whatsapp', 'sms'], true)) {
+            throw NotificacaoException::naoConfigurado($canal);
+        }
+
+        $destino = NumeroTelefone::internacional($cliente->telefone);
+        if ($destino === null) {
+            throw NotificacaoException::contactoEmFalta($canal);
+        }
+
+        if (! $cliente->empresa_id) {
+            throw new \RuntimeException('O cliente não está associado a uma empresa.');
+        }
+
+        return app(NotificationDispatcher::class)->dispatch(
+            channel: 'atelier.'.$canal,
+            recipient: $destino,
+            payload: array_merge($contexto, ['message' => $mensagem]),
+            idempotencyKey: $chaveIdempotencia,
+            empresaId: (int) $cliente->empresa_id,
+        );
+    }
+
+    /**
      * Variante para as Campanhas (requisito D): ao contrário de notificar(),
      * respeita SÓ o canal escolhido pelo administrador ao criar a campanha
      * (nunca dispara nos outros canais configurados) e NÃO engole a exceção
@@ -77,8 +114,14 @@ class NotificadorClienteService
             throw NotificacaoException::contactoEmFalta('mail');
         }
 
-        Notification::route('mail', $cliente->email)
-            ->notify(new ClienteAtelierNotification($assunto, $mensagem));
+        // Campanhas precisam de saber se o transporte de e-mail aceitou
+        // o envio antes de actualizar atelier_campanha_envios. A Notification
+        // implementa ShouldQueue para os restantes fluxos; sendNow evita que
+        // este caminho marque "enviado" apenas por ter colocado outro job na fila.
+        Notification::sendNow(
+            Notification::route('mail', $cliente->email),
+            new ClienteAtelierNotification($assunto, $mensagem),
+        );
     }
 
     protected function enviarOuFalhar(CanalNotificacaoInterface $canal, Cliente $cliente, string $mensagem): void

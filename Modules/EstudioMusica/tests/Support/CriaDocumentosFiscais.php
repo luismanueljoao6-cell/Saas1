@@ -88,7 +88,7 @@ trait CriaDocumentosFiscais
         return $fatura;
     }
 
-    protected function reciboEmitido(Fatura $fatura, float $valor): Recibo
+    protected function reciboEmitido(Fatura $fatura, string|int $valor): Recibo
     {
         $numero = $this->proximoNumeroDocumento('RC');
 

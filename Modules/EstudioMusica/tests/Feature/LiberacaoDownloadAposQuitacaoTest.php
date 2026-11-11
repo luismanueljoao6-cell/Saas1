@@ -57,7 +57,7 @@ class LiberacaoDownloadAposQuitacaoTest extends TestCase
         ]);
     }
 
-    protected function criarFaturaEmitida(float $valor, ?float $semIva = null): Fatura
+    protected function criarFaturaEmitida(string|int $valor, ?float $semIva = null): Fatura
     {
         $serie = Serie::create([
             'empresa_id' => $this->empresa->id,
@@ -82,7 +82,7 @@ class LiberacaoDownloadAposQuitacaoTest extends TestCase
         return $fatura;
     }
 
-    protected function criarReciboEmitido(Fatura $fatura, float $valor): Recibo
+    protected function criarReciboEmitido(Fatura $fatura, string|int $valor): Recibo
     {
         $recibo = new Recibo;
         $recibo->forceFill([

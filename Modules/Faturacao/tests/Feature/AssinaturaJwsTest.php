@@ -149,4 +149,14 @@ class AssinaturaJwsTest extends TestCase
         $this->assertEqualsWithDelta(438.59, $payload['documentTotals']['netTotal'], 0.0001);
         $this->assertSame(500, $payload['documentTotals']['grossTotal']);
     }
+
+    public function test_recibo_rc_e_bloqueado_com_agt_ativa_ate_existir_mapeamento_agt_valido(): void
+    {
+        config(['faturacao.agt.ativo' => true]);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('tipo RG');
+
+        app(ReciboService::class)->emitir(1, 1, '100.00', 'dinheiro');
+    }
 }

@@ -264,6 +264,14 @@ documentos em divisa, recibos sem fatura (recusados logo na emissão com a AGT a
 `agt.codigos_taxa`. Um documento `invalido`/`rejeitado` só se corrige com um documento novo
 (regra E46): `php artisan faturacao:agt-corrigir <id>` (só faturas).
 
+Submissões **sem `requestID`** que ficam paradas — em `erro` técnico ou a aguardar intervenção por
+`PAYLOAD_DIVERGENTE` (o corpo reconstruído já não coincide com o pedido original do UUID) — têm saída
+operacional: `php artisan faturacao:agt-reenviar` lista-as e `php artisan faturacao:agt-reenviar <id>` repõe a
+submissão em `pendente` para o próximo `faturacao:agt-sincronizar`. Em `PAYLOAD_DIVERGENTE` o pedido original
+pode já ter sido aceite pela AGT: o comando pede confirmação (`--confirmo-ausencia-na-agt` dispensa-a, e só deve ser usada depois de confirmar no portal da AGT que o documento não consta) e o reenvio segue com um
+UUID novo, por isso confirma antes no portal da AGT que o documento não está registado. Com `requestID` nunca
+se reenvia: consulta-se o estado original.
+
 
 ## Cliente congelado e QR Code (Fase 3a)
 

@@ -7,11 +7,17 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Modules\Atelier\Console\EliminarDadosClienteCommand;
 use Modules\Atelier\Console\ExportarDadosClienteCommand;
+use Modules\Atelier\Console\ReconciliarCampanhasCommand;
 use Modules\Atelier\Events\PedidoMudouEstado;
 use Modules\Atelier\Jobs\EnviarCampanhasAgendadasJob;
 use Modules\Atelier\Jobs\LembretesProvaJob;
 use Modules\Atelier\Jobs\VerificarAniversariosJob;
 use Modules\Atelier\Listeners\EnviarNotificacaoMudancaEstado;
+use Modules\Atelier\Listeners\SincronizarEstadoCampanhaOutbox;
+use Modules\Atelier\Notifications\Outbox\AtelierSmsOutboxChannel;
+use Modules\Atelier\Notifications\Outbox\AtelierWhatsAppOutboxChannel;
+use Modules\Core\Events\NotificationStateChanged;
+use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Core\Services\MenuRegistry;
 
 class AtelierServiceProvider extends ServiceProvider
@@ -33,9 +39,24 @@ class AtelierServiceProvider extends ServiceProvider
         ], 'atelier-config');
 
         $this->registarMenu();
+        $this->registarCanaisOutbox();
         $this->registarListeners();
         $this->registarComandos();
         $this->agendarTarefas();
+    }
+
+    /**
+     * Regista os canais de telefone do Atelier no pipeline persistente do Core.
+     * O registo é preguiçoso: o canal só é construído quando a Outbox o usa,
+     * para que um erro de configuração não impeça a aplicação de arrancar.
+     * O envio legado continua disponível até cada fluxo adotar explicitamente
+     * uma chave de idempotência e os estados assíncronos da Outbox.
+     */
+    protected function registarCanaisOutbox(): void
+    {
+        $registry = $this->app->make(NotificationChannelRegistry::class);
+        $registry->registerLazy('atelier.whatsapp', fn () => $this->app->make(AtelierWhatsAppOutboxChannel::class));
+        $registry->registerLazy('atelier.sms', fn () => $this->app->make(AtelierSmsOutboxChannel::class));
     }
 
     protected function registarMenu(): void
@@ -52,6 +73,7 @@ class AtelierServiceProvider extends ServiceProvider
     protected function registarListeners(): void
     {
         Event::listen(PedidoMudouEstado::class, EnviarNotificacaoMudancaEstado::class);
+        Event::listen(NotificationStateChanged::class, SincronizarEstadoCampanhaOutbox::class);
     }
 
     /** Direitos do titular dos dados (acesso e eliminação) — ver os comandos. */
@@ -61,6 +83,7 @@ class AtelierServiceProvider extends ServiceProvider
             $this->commands([
                 ExportarDadosClienteCommand::class,
                 EliminarDadosClienteCommand::class,
+                ReconciliarCampanhasCommand::class,
             ]);
         }
     }
@@ -89,6 +112,13 @@ class AtelierServiceProvider extends ServiceProvider
             $schedule->job(new EnviarCampanhasAgendadasJob)
                 ->hourly()
                 ->name('atelier:enviar-campanhas-agendadas')
+                ->withoutOverlapping();
+
+            // Rede de segurança: um evento da Outbox perdido deixaria uma
+            // campanha em 'em_processamento' para sempre (o botão recusa-a).
+            $schedule->command('atelier:campanhas-reconciliar')
+                ->everyTenMinutes()
+                ->name('atelier:campanhas-reconciliar')
                 ->withoutOverlapping();
         });
     }

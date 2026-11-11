@@ -451,7 +451,7 @@ class ProjetoMusical extends Model
     /** O pacote COM IVA, calculado como uma única fatura o calcularia (mesma aritmética do Faturação). */
     public function pacoteComIvaCentimos(): int
     {
-        $linha = Dinheiro::calcularLinha(1, $this->valor_pacote ?? 0, config('faturacao.taxa_iva_geral'));
+        $linha = Dinheiro::calcularLinha(1, (string) ($this->valor_pacote ?? 0), (string) config('faturacao.taxa_iva_geral'));
 
         return Dinheiro::centimos($linha['total']);
     }

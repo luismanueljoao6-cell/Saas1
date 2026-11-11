@@ -4,9 +4,9 @@ Gestão de estúdio de música para o SaaS: artistas, projetos/faixas, agendamen
 cliente com player de demos, notificações automáticas, faturação por hora ou pacote (com sinal),
 marketing automático e landing page pública.
 
-Depende de **Core** (tenancy, menu, `RegistoEmpresaService`) e **Faturacao** (`FaturaService`,
-`NumeracaoService`, `AssinaturaFiscalService`, `Cliente`, `Fatura`, `Recibo`). **Não altera nenhum
-ficheiro desses módulos** — tudo o que precisa deles é feito a partir daqui.
+Depende de **Core** (tenancy, menu, `RegistoEmpresaService`) e **Faturacao** (contrato público
+`FaturacaoGateway`, além dos modelos `Cliente`, `Fatura` e `Recibo`). A numeração, assinatura,
+emissão e validação de pagamentos são responsabilidade exclusiva do módulo Faturação.
 
 > ✅ **Verificação.** O módulo tem testes de feature (`php artisan test --testsuite=Modules --filter=EstudioMusica`)
 > que correm contra o motor real do Faturação (emissão, notas de crédito, recibos), o portal por HTTP e os jobs.
@@ -62,7 +62,7 @@ php artisan test                             # inclui os testes do módulo
 | B. Salas, sessões, sem double booking | `SalaEstudio`, `SessaoEstudio`, `AgendamentoService` (transação + `lockForUpdate` na sala) |
 | C. Portal (token temporário, player, marcadores, aprovação, download só após quitação) | `VerificarTokenPortalCliente`, `PortalClienteController`, `VersaoAudio`, `MarcadorAudio`, view `portal/mostrar` |
 | D. Notificações (WhatsApp/SMS/e-mail) | `NotificacaoEstudioService` → `EnviarMensagemClienteJob`; canais em `Notifications/Channels`; `EnviarLembretesSessaoJob` (24h e 2h) |
-| E. Cobrança por hora/pacote, sinal, faturas/recibos | `FaturacaoEstudioService` (usa `FaturaService`), pivots `projeto_musical_fatura/recibo` |
+| E. Cobrança por hora/pacote, sinal, faturas/recibos | `FaturacaoEstudioService` (usa `FaturacaoGateway`), pivots `projeto_musical_fatura/recibo` |
 | F. Marketing (aniversário + cupão, follow-up 30 dias) | `CampanhaMarketingService`, `EnviarCampanhaAniversarioJob`, `EnviarFollowUpPosLancamentoJob`, `CupomDesconto`, `CampanhaEnviada` |
 | G. Landing pública + formulário | `LandingController`, `SolicitacaoOrcamento`, view `landing/index`; rota `/estudio/{empresa}` |
 | H. Papéis | `EstudioMusicaPermissoesSeeder` + `permission:` nas rotas. **Artista/Cliente não é um `User`** — acede só pelo portal |
@@ -80,7 +80,7 @@ php artisan test                             # inclui os testes do módulo
 3. **Quitação** (`ProjetoMusical::financeiramenteQuitado()`): mede contra o **valor do pacote**, não só
    contra o faturado — pagar apenas o sinal não liberta o download. Projetos por hora: quitado quando
    tudo o que já foi faturado está recebido. A audição é livre; só o **download** é bloqueado.
-4. **Recibos**: `registrarRecibo()` usa o `ReciboService` do Faturação (caminho único de emissão). Não há ecrã
+4. **Recibos**: `registrarRecibo()` usa `FaturacaoGateway`, que encaminha para o serviço fiscal central. Não há ecrã
    que o chame ainda — regista-se hoje por código/tinker.
 5. **Jobs multi-empresa** usam `TenantManager::semTenant()` e passam sempre `empresa_id` explícito nos
    `create()` (o bypass desliga a atribuição automática).
@@ -105,6 +105,8 @@ php artisan test                             # inclui os testes do módulo
   (WhatsApp/SMS/e-mail) — e também mostrado numa mensagem flash à equipa, para reenvio manual se precisar.
 
 ## Limitações conhecidas
+
+- **Adiantamentos/sinais com AGT ativa**: o fluxo de sinal atual emite uma fatura normal (`FT`). A especificação AGT prevê o tipo `FA` para factura de adiantamento. Até existir suporte fiscal explícito para `FA` no núcleo Faturação, não se deve considerar este fluxo pronto para produção com submissão AGT ativa.
 
 - **WhatsApp Cloud API e Twilio** foram reconstruídos da documentação pública, sem teste real. Por
   omissão os dois canais são `log` (só registam). WhatsApp fora da janela de 24h exige *message

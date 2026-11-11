@@ -11,6 +11,7 @@ use Modules\EstudioMusica\Models\SessaoEstudio;
 use Modules\EstudioMusica\Tests\Support\ComEstudioAutenticado;
 use Modules\EstudioMusica\Tests\Support\CriaDocumentosFiscais;
 use Modules\Faturacao\Models\Cliente;
+use Modules\Faturacao\Models\Fatura;
 use Tests\TestCase;
 
 require_once __DIR__.'/../Support/ComEstudioAutenticado.php';
@@ -142,7 +143,7 @@ class SessoesHttpTest extends TestCase
         $this->actingAs($this->admin)->post(route('estudiomusica.sessoes.faturar', $concluida->id))->assertSessionHas('erro');
 
         $this->noTenantDe($this->admin);
-        $this->assertSame(1, \Modules\Faturacao\Models\Fatura::query()->count());
+        $this->assertSame(1, Fatura::query()->count());
     }
 
     public function test_sinal_e_saldo_com_limite_atingido_mostram_um_erro_em_vez_de_rebentar(): void

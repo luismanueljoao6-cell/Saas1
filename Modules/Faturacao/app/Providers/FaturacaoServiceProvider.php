@@ -4,12 +4,18 @@ namespace Modules\Faturacao\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Services\MenuRegistry;
+use Modules\Faturacao\Console\ValidarSafTCommand;
+use Modules\Faturacao\Contracts\FaturacaoGateway;
+use Modules\Faturacao\Services\FaturacaoGatewayService;
 
 class FaturacaoServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../../config/config.php', 'faturacao');
+
+        // Ponto único e estável de integração para Atelier, Estúdio e módulos futuros.
+        $this->app->bind(FaturacaoGateway::class, FaturacaoGatewayService::class);
     }
 
     public function boot(): void
@@ -18,6 +24,8 @@ class FaturacaoServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
 
         $this->app->register(RouteServiceProvider::class);
+
+        $this->commands([ValidarSafTCommand::class]);
 
         $menu = $this->app->make(MenuRegistry::class);
         $menu->adicionar('faturacao.faturas.index', 'Faturas', 20);

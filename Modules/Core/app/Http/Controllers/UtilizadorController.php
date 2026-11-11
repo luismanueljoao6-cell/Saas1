@@ -161,17 +161,24 @@ class UtilizadorController extends Controller
 
     protected function atribuirPapel(User $utilizador, int $empresaId, bool $administrador): void
     {
-        app(PermissionRegistrar::class)->setPermissionsTeamId($empresaId);
+        $registrar = app(PermissionRegistrar::class);
+        $equipaAnterior = $registrar->getPermissionsTeamId();
+        $registrar->setPermissionsTeamId($empresaId);
 
-        // 'empresa_id' explícito: sem ele o firstOrCreate procura o papel
-        // pelo nome em TODAS as empresas e reutilizaria o de outra.
-        $papel = Role::firstOrCreate([
-            'name' => $administrador ? 'Administrador' : 'Utilizador',
-            'guard_name' => 'web',
-            'empresa_id' => $empresaId,
-        ]);
+        try {
+            // 'empresa_id' explícito: sem ele o firstOrCreate procura o papel
+            // pelo nome em TODAS as empresas e reutilizaria o de outra.
+            $papel = Role::firstOrCreate([
+                'name' => $administrador ? 'Administrador' : 'Utilizador',
+                'guard_name' => 'web',
+                'empresa_id' => $empresaId,
+            ]);
 
-        $utilizador->assignRole($papel);
+            $utilizador->assignRole($papel);
+        } finally {
+            // Num worker ou comando persistente a equipa não pode ficar presa.
+            $registrar->setPermissionsTeamId($equipaAnterior);
+        }
     }
 
     protected function garantirAdministrador(User $utilizador): void

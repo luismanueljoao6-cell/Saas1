@@ -16,7 +16,7 @@
             <form method="POST" action="{{ route('atelier.campanhas.enviar-agora', $campanha) }}" onsubmit="return confirm('Enviar esta campanha agora?')">
                 @csrf
                 <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
-                    {{ $campanha->estado === 'enviada' ? 'Reenviar falhados' : 'Enviar agora' }}
+                    {{ in_array($campanha->estado, ['enviada', 'concluida_com_falhas'], true) ? 'Reenviar falhados' : 'Enviar agora' }}
                 </button>
             </form>
         @endif
@@ -44,7 +44,7 @@
                             <td class="px-4 py-3">{{ $envio->cliente?->nome ?? '—' }}</td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium
-                                    {{ $envio->estado === 'enviado' ? 'bg-emerald-50 text-emerald-700' : ($envio->estado === 'falhou' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600') }}">
+                                    {{ in_array($envio->estado, ['enviado', 'aceite'], true) ? 'bg-emerald-50 text-emerald-700' : ($envio->estado === 'falhou' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600') }}">
                                     {{ ucfirst($envio->estado) }}
                                 </span>
                             </td>

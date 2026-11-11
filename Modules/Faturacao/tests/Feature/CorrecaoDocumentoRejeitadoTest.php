@@ -52,7 +52,7 @@ class CorrecaoDocumentoRejeitadoTest extends TestCase
             'faturacao.agt.utilizador' => 'produtor',
             'faturacao.agt.palavra_passe' => 's3nh@',
             'faturacao.agt.software.chave_privada_path' => $privadaSoftware,
-            'faturacao.agt.software.signature_version' => null,
+            'faturacao.agt.software.signature_version' => 1,
             'faturacao.saft_numero_certificado' => 'C_134',
         ]);
 

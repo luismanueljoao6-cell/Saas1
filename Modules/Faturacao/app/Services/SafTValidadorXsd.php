@@ -26,6 +26,34 @@ class SafTValidadorXsd
     }
 
     /**
+     * targetNamespace declarado no XSD oficial (null se não houver XSD ou namespace).
+     * O exportador usa-o como xmlns do ficheiro, em vez de se adivinhar um valor.
+     */
+    public function namespaceAlvo(): ?string
+    {
+        if (! $this->disponivel()) {
+            return null;
+        }
+
+        $anterior = libxml_use_internal_errors(true);
+
+        try {
+            $doc = new DOMDocument;
+
+            if (! $doc->load($this->caminhoXsd()) || $doc->documentElement === null) {
+                return null;
+            }
+
+            $namespace = trim($doc->documentElement->getAttribute('targetNamespace'));
+
+            return $namespace !== '' ? $namespace : null;
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($anterior);
+        }
+    }
+
+    /**
      * @return list<string> erros de validação; vazio quando o XML é conforme ao XSD
      *
      * @throws \RuntimeException se o XSD oficial não estiver disponível

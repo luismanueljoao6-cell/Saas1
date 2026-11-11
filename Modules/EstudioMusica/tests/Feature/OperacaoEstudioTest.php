@@ -6,10 +6,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\EstudioMusica\Jobs\EnviarLembretesSessaoJob;
 use Modules\EstudioMusica\Jobs\EnviarMensagemClienteJob;
+use Modules\EstudioMusica\Models\CampanhaEnviada;
 use Modules\EstudioMusica\Models\CupomDesconto;
 use Modules\EstudioMusica\Models\ProjetoMusical;
 use Modules\EstudioMusica\Models\SalaEstudio;
@@ -237,7 +239,13 @@ class OperacaoEstudioTest extends TestCase
 
         (new EnviarLembretesSessaoJob)->handle(app(TenantManager::class), app(NotificacaoEstudioService::class));
 
-        Queue::assertPushed(EnviarMensagemClienteJob::class, 1);
+        // O e-mail do lembrete vai agora pela Outbox (não pelo job legado).
+        Queue::assertNotPushed(EnviarMensagemClienteJob::class);
+        $this->assertSame(1, NotificationOutbox::withoutGlobalScopes()->where('channel', 'estudio.email')->count());
+        $this->assertSame(
+            (int) $this->admin->empresa_id,
+            (int) NotificationOutbox::withoutGlobalScopes()->where('channel', 'estudio.email')->sole()->empresa_id,
+        );
 
         app(TenantManager::class)->semTenant(function () use ($deles, $dele): void {
             $this->assertNotNull($deles->fresh()->lembrete_24h_enviado_em);
@@ -251,7 +259,8 @@ class OperacaoEstudioTest extends TestCase
         config(['estudiomusica.percentual_desconto_aniversario' => 15]);
 
         $nascimento = now()->subYears(30)->toDateString();
-        $meu = $this->cliente(['data_nascimento' => $nascimento, 'aceita_marketing' => true]);
+        $meu = $this->cliente(['data_nascimento' => $nascimento, 'aceita_marketing' => true, 'email' => 'artista@example.test']);
+        $semContacto = $this->cliente(['data_nascimento' => $nascimento, 'aceita_marketing' => true]);
 
         $exCliente = $this->empresaSemServico('510000303');
         app(TenantManager::class)->semTenant(fn () => (new Cliente)
@@ -268,6 +277,8 @@ class OperacaoEstudioTest extends TestCase
         $this->noTenantDe($this->admin);
         $this->assertSame(1, CupomDesconto::query()->count());
         $this->assertSame($meu->id, CupomDesconto::query()->sole()->cliente_id);
+        $this->assertSame(1, CampanhaEnviada::query()->count());
+        $this->assertDatabaseMissing('cupons_desconto', ['cliente_id' => $semContacto->id, 'motivo' => 'aniversario']);
     }
 
     public function test_excecao_do_whatsapp_nao_impede_o_envio_do_email(): void

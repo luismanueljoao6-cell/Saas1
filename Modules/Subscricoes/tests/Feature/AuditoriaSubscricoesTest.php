@@ -2,11 +2,14 @@
 
 namespace Modules\Subscricoes\Tests\Feature;
 
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Notification;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
+use Modules\Core\Services\TenantManager;
 use Modules\Subscricoes\Exceptions\PedidoEmPreparacaoException;
 use Modules\Subscricoes\Models\Pagamento;
 use Modules\Subscricoes\Models\Plano;
@@ -34,6 +37,7 @@ class AuditoriaSubscricoesTest extends TestCase
         parent::setUp();
 
         $this->withoutVite();
+        Notification::fake();
 
         $this->app->singleton(GatewayPagamentoInterface::class, fn () => new class implements GatewayPagamentoInterface
         {
@@ -111,10 +115,9 @@ class AuditoriaSubscricoesTest extends TestCase
         $this->assertTrue((bool) Subscricao::withoutGlobalScopes()->findOrFail($subscricao->id)->renovacao_automatica);
     }
 
-    public function test_retomar_renovacao_de_subscricao_vencida_mostra_erro_em_vez_de_falhar(): void
+    public function test_servico_recusa_retoma_de_renovacao_de_subscricao_vencida(): void
     {
         $empresa = $this->criarEmpresa('840000002');
-        $admin = $this->criarUtilizador($empresa);
         $pagamento = $this->cobrancaDe($empresa, $this->plano('plano-840000002'));
         app(PagamentoService::class)->confirmar($pagamento, [], null, '9900.00');
 
@@ -125,13 +128,12 @@ class AuditoriaSubscricoesTest extends TestCase
             'termina_em' => now()->subDay(),
         ]);
 
-        $this->actingAs($admin)
-            ->from(route('subscricoes.planos'))
-            ->post(route('subscricoes.renovacao', ['subscricao' => $subscricao->id]))
-            ->assertRedirect(route('subscricoes.planos'))
-            ->assertSessionHas('erro');
+        app(TenantManager::class)->set($empresa->id);
 
-        $this->assertFalse((bool) Subscricao::withoutGlobalScopes()->findOrFail($subscricao->id)->renovacao_automatica);
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Só é possível retomar a renovação automática');
+
+        app(SubscricaoService::class)->retomarRenovacao($subscricao->fresh());
     }
 
     public function test_iniciar_para_outro_plano_com_pagamento_pendente_mostra_a_mensagem_de_negocio(): void
@@ -148,6 +150,7 @@ class AuditoriaSubscricoesTest extends TestCase
             ->assertSessionHas('erro', fn ($mensagem) => str_contains((string) $mensagem, 'outro plano'));
     }
 
+    #[Group('auditoria')]
     public function test_pedido_recente_sem_referencia_continua_a_bloquear_com_excecao_especifica(): void
     {
         $empresa = $this->criarEmpresa('840000004');
@@ -160,6 +163,7 @@ class AuditoriaSubscricoesTest extends TestCase
         app(SubscricaoService::class)->iniciar($empresa, $plano);
     }
 
+    #[Group('auditoria')]
     public function test_pedido_abandonado_sem_referencia_e_descartado_e_a_empresa_pode_tentar_de_novo(): void
     {
         $empresa = $this->criarEmpresa('840000005');
@@ -178,6 +182,7 @@ class AuditoriaSubscricoesTest extends TestCase
         $this->assertSame('cancelada', Subscricao::withoutGlobalScopes()->findOrFail($abandonado->subscricao_id)->estado);
     }
 
+    #[Group('auditoria')]
     public function test_servico_desconhecido_no_plano_nao_impede_a_confirmacao_do_pagamento(): void
     {
         $empresa = $this->criarEmpresa('840000006');
@@ -193,10 +198,12 @@ class AuditoriaSubscricoesTest extends TestCase
         $this->assertSame('ativa', $empresa->fresh()->estado_subscricao);
     }
 
+    #[Group('auditoria')]
     public function test_confirmacao_manual_de_subscricao_cancelada_limpa_cancelada_em(): void
     {
         $empresa = $this->criarEmpresa('840000007');
         $operador = $this->criarUtilizador($empresa);
+        $operador->update(['ativo' => false]); // Não enviar notificações reais durante a reconciliação manual.
         $pagamento = $this->cobrancaDe($empresa, $this->plano('plano-840000007'));
 
         // Estado deixado pela rotina diária: pagamento expirado e subscrição cancelada.
@@ -213,6 +220,7 @@ class AuditoriaSubscricoesTest extends TestCase
         $this->assertNull($subscricao->cancelada_em);
     }
 
+    #[Group('auditoria')]
     public function test_reconciliacao_conta_uma_so_tentativa_por_reprocessamento(): void
     {
         $empresa = $this->criarEmpresa('840000008');
@@ -235,6 +243,7 @@ class AuditoriaSubscricoesTest extends TestCase
         $this->assertSame(1, (int) $evento->tentativas);
     }
 
+    #[Group('auditoria')]
     public function test_reconciliacao_descarta_pagamento_sem_referencia_abandonado(): void
     {
         $empresa = $this->criarEmpresa('840000009');
@@ -251,6 +260,7 @@ class AuditoriaSubscricoesTest extends TestCase
         $this->assertSame('cancelada', Subscricao::withoutGlobalScopes()->findOrFail($pagamento->subscricao_id)->estado);
     }
 
+    #[Group('auditoria')]
     public function test_comando_de_preco_rejeita_valores_que_o_gateway_nao_aceita(): void
     {
         $plano = $this->plano('plano-840000010');

@@ -2,12 +2,13 @@
 
 namespace Modules\EstudioMusica\Providers;
 
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Services\TenantProvisionerRegistry;
 use Modules\EstudioMusica\Console\Commands\EnviarCampanhaGenericaCommand;
@@ -23,6 +24,9 @@ use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterfac
 use Modules\EstudioMusica\Notifications\Channels\LogChannel;
 use Modules\EstudioMusica\Notifications\Channels\TwilioSmsChannel;
 use Modules\EstudioMusica\Notifications\Channels\WhatsAppCloudApiChannel;
+use Modules\EstudioMusica\Notifications\Outbox\EstudioEmailOutboxChannel;
+use Modules\EstudioMusica\Notifications\Outbox\EstudioSmsOutboxChannel;
+use Modules\EstudioMusica\Notifications\Outbox\EstudioWhatsAppOutboxChannel;
 use Modules\EstudioMusica\Support\PapeisEstudio;
 use RuntimeException;
 
@@ -75,6 +79,7 @@ class EstudioMusicaServiceProvider extends ServiceProvider
         $this->registerMenuItems();
         $this->registarLimitadores();
         $this->registarProvisionador();
+        $this->registarCanaisOutbox();
 
         $this->publishes([
             __DIR__.'/../../config/config.php' => config_path('estudiomusica.php'),
@@ -101,6 +106,23 @@ class EstudioMusicaServiceProvider extends ServiceProvider
             'estudio',
             fn (int $empresaId) => PapeisEstudio::provisionar($empresaId),
         );
+    }
+
+    /**
+     * Regista adaptadores do Estúdio no pipeline persistente do Core.
+     * Mantém os bindings existentes (incluindo a seleção de fornecedor por
+     * configuração) e a política de transferência internacional.
+     *
+     * Registo preguiçoso: construir o canal aqui resolveria o fornecedor
+     * configurado, e um erro em ESTUDIOMUSICA_CANAL_WHATSAPP/SMS deitaria
+     * abaixo a aplicação inteira no arranque.
+     */
+    protected function registarCanaisOutbox(): void
+    {
+        $registry = $this->app->make(NotificationChannelRegistry::class);
+        $registry->registerLazy('estudio.whatsapp', fn () => $this->app->make(EstudioWhatsAppOutboxChannel::class));
+        $registry->registerLazy('estudio.sms', fn () => $this->app->make(EstudioSmsOutboxChannel::class));
+        $registry->registerLazy('estudio.email', fn () => $this->app->make(EstudioEmailOutboxChannel::class));
     }
 
     protected function registerMenuItems(): void

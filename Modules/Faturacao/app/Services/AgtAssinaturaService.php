@@ -2,6 +2,7 @@
 
 namespace Modules\Faturacao\Services;
 
+use Modules\Faturacao\Exceptions\AgtException;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Support\Jws;
 use OpenSSLAsymmetricKey;
@@ -24,7 +25,7 @@ class AgtAssinaturaService
      *
      * @return array{softwareInfoDetail: array<string, mixed>, jwsSoftwareSignature: string}
      */
-    public function softwareInfo(): array
+    public function softwareInfo(bool $incluirVersaoAssinatura = true): array
     {
         $detalhe = [
             'productId' => (string) config('faturacao.agt.software.product_id'),
@@ -32,11 +33,16 @@ class AgtAssinaturaService
             'softwareValidationNumber' => (string) config('faturacao.saft_numero_certificado'),
         ];
 
-        // A tabela da AGT lista signatureVersion, mas os exemplos oficiais não o
-        // incluem: só entra se for configurado (confirmar na homologação).
-        $versao = config('faturacao.agt.software.signature_version');
+        // O serviço registarFactura exige signatureVersion; o serviço de criação
+        // de séries documenta apenas os três campos acima. A assinatura JWS deve
+        // cobrir exactamente o objecto que cada endpoint espera.
+        if ($incluirVersaoAssinatura) {
+            $versao = config('faturacao.agt.software.signature_version');
 
-        if ($versao !== null && $versao !== '') {
+            if (! is_numeric($versao) || (int) $versao < 1) {
+                throw AgtException::configuracaoInvalida('FATURACAO_AGT_SIGNATURE_VERSION tem de conter a versão de assinatura activa registada para o software.');
+            }
+
             $detalhe['signatureVersion'] = (int) $versao;
         }
 

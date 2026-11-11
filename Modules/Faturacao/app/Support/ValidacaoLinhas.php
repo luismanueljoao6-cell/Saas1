@@ -11,6 +11,8 @@ use Modules\Faturacao\Models\Produto;
  */
 final class ValidacaoLinhas
 {
+    public const TIPOS_OPERACAO_AGT = ['SE', 'SS', 'STP', 'SR', 'SIF', 'SHS', 'ST', 'SG', 'TB', 'AS', 'QT', 'RD'];
+
     /**
      * @param  array<int, array<string, mixed>>  $linhas
      * @param  bool  $verificarTaxas  false em notas de crédito (espelham a fatura original) e de débito (não liquidam IVA)
@@ -43,11 +45,28 @@ final class ValidacaoLinhas
                 }
             }
 
+            // O preço base não pode ser inferior ao preço final: a diferença
+            // representa o desconto comercial declarado à AGT.
+            if (isset($linha['preco_unitario_base']) && trim((string) $linha['preco_unitario_base']) !== ''
+                && Dinheiro::centimos($linha['preco_unitario_base']) < Dinheiro::centimos($linha['preco_unitario'])) {
+                throw new \DomainException("Linha {$n}: o preço base não pode ser inferior ao preço final.");
+            }
+
+            if (isset($linha['preco_unitario_base']) && trim((string) $linha['preco_unitario_base']) !== '') {
+                Dinheiro::calcularLinha($linha['quantidade'], $linha['preco_unitario_base'], $linha['taxa_iva']);
+            }
+
             // Quantidade, preço e taxa: a própria aritmética rejeita o que é inválido.
             try {
                 Dinheiro::calcularLinha($linha['quantidade'], $linha['preco_unitario'], $linha['taxa_iva']);
             } catch (\InvalidArgumentException $e) {
                 throw new \InvalidArgumentException("Linha {$n}: ".$e->getMessage(), 0, $e);
+            }
+
+            $operacao = $linha['operation_type'] ?? config('faturacao.agt.operation_type_padrao', 'SG');
+
+            if ($operacao !== null && (! is_string($operacao) || ! in_array(strtoupper(trim($operacao)), self::TIPOS_OPERACAO_AGT, true))) {
+                throw new \InvalidArgumentException("Linha {$n}: o tipo de operação AGT '{$operacao}' não é válido.");
             }
 
             if ($verificarTaxas) {

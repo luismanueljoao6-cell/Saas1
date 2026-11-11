@@ -1,0 +1,131 @@
+<?php
+
+namespace Modules\Core\Console\Commands;
+
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Modules\Core\Events\NotificationStateChanged;
+use Modules\Core\Jobs\ProcessNotificationJob;
+use Modules\Core\Models\NotificationAttempt;
+use Modules\Core\Models\NotificationOutbox;
+use Modules\Core\Notifications\NotificationProcessor;
+use Throwable;
+
+class RecoverNotificationOutbox extends Command
+{
+    protected $signature = 'notifications:recover
+        {--limit=500}
+        {--min-age=0 : Só reagenda pendentes/retries parados há pelo menos N segundos (evita duplicar jobs acabados de despachar)}';
+
+    protected $description = 'Reagenda notificações pendentes ou abandonadas na Outbox.';
+
+    public function handle(): int
+    {
+        $limit = max(1, min(5000, (int) $this->option('limit')));
+        $now = now();
+        // Linhas pendentes/retry só contam como «paradas» depois deste instante.
+        // Com o agendador a correr de minuto a minuto, sem isto cada passagem
+        // reagendaria jobs que a fila ainda nem teve tempo de executar.
+        $maduraAte = $now->copy()->subSeconds(max(0, (int) $this->option('min-age')));
+        $staleBefore = $now->copy()->subSeconds(NotificationProcessor::LEASE_SEGUNDOS);
+        $count = 0;
+        $abandonadas = 0;
+
+        DB::transaction(function () use ($limit, $maduraAte, $staleBefore, &$count, &$abandonadas): void {
+            $notifications = NotificationOutbox::withoutGlobalScopes()
+                ->where(function ($query) use ($maduraAte, $staleBefore): void {
+                    $query->where(function ($pending) use ($maduraAte): void {
+                        $pending->whereIn('status', [
+                            NotificationOutbox::STATUS_PENDING,
+                            NotificationOutbox::STATUS_RETRY_SCHEDULED,
+                        ])->where('updated_at', '<=', $maduraAte)
+                            ->where(function ($due): void {
+                                $due->whereNull('available_at')->orWhere('available_at', '<=', now());
+                            });
+                    })->orWhere(function ($stale) use ($staleBefore): void {
+                        $stale->where('status', NotificationOutbox::STATUS_PROCESSING)
+                            ->whereNotNull('locked_at')
+                            ->where('locked_at', '<', $staleBefore);
+                    });
+                })
+                ->orderBy('id')
+                ->limit($limit)
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($notifications as $notification) {
+                // A linha permanece bloqueada até a alteração e o registo do
+                // dispatch afterCommit, evitando que dois recuperadores limpem
+                // simultaneamente o mesmo lease abandonado.
+                if ($notification->status === NotificationOutbox::STATUS_PROCESSING) {
+                    NotificationAttempt::assinalarAbandonadas((int) $notification->empresa_id, (int) $notification->id);
+                    $abandonadas++;
+
+                    $notification->forceFill([
+                        'status' => NotificationOutbox::STATUS_UNKNOWN_RESULT,
+                        'locked_at' => null,
+                        'lock_token' => null,
+                        'last_error' => 'Resultado desconhecido: o worker foi interrompido sem registar a resposta do fornecedor.',
+                    ])->save();
+
+                    $notificacaoId = (int) $notification->id;
+                    $empresaId = (int) $notification->empresa_id;
+
+                    DB::afterCommit(function () use ($notificacaoId, $empresaId): void {
+                        try {
+                            NotificationStateChanged::dispatch($notificacaoId, $empresaId, NotificationOutbox::STATUS_UNKNOWN_RESULT);
+                        } catch (Throwable $exception) {
+                            report($exception);
+                        }
+                    });
+
+                    // Sem reenvio automático: pode já ter sido aceite pelo fornecedor.
+                    continue;
+                } else {
+                    // Marca a passagem: a próxima só volta a reagendar esta linha
+                    // depois de --min-age, em vez de empilhar um job por minuto.
+                    $notification->touch();
+                }
+
+                ProcessNotificationJob::dispatch($notification->id, (int) $notification->empresa_id)
+                    ->afterCommit();
+
+                $count++;
+            }
+        });
+
+        // Monitorização mínima, para um alerta poder apoiar-se nestas linhas de log.
+        if ($abandonadas > 0) {
+            Log::warning('Outbox: leases abandonados; o resultado das tentativas perdidas é desconhecido e as notificações ficaram em unknown_result (sem reenvio automático) até haver reconciliação.', [
+                'abandonadas' => $abandonadas,
+            ]);
+        }
+
+        $deadLetters = NotificationOutbox::withoutGlobalScopes()
+            ->where('status', NotificationOutbox::STATUS_DEAD_LETTER)
+            ->where('failed_at', '>=', $now->copy()->subDay())
+            ->count();
+
+        if ($deadLetters > 0) {
+            Log::warning('Outbox: notificações em dead letter nas últimas 24 horas precisam de atenção.', [
+                'dead_letter_24h' => $deadLetters,
+            ]);
+        }
+
+        $desconhecidas = NotificationOutbox::withoutGlobalScopes()
+            ->where('status', NotificationOutbox::STATUS_UNKNOWN_RESULT)
+            ->where('updated_at', '<=', $now->copy()->subHour())
+            ->count();
+
+        if ($desconhecidas > 0) {
+            Log::warning('Outbox: notificações em resultado desconhecido há mais de 1 h aguardam decisão (notifications:list-unknown / notifications:resolve-unknown).', [
+                'unknown_result_1h' => $desconhecidas,
+            ]);
+        }
+
+        $this->info("Notificações agendadas para processamento: {$count} (abandonadas recuperadas: {$abandonadas}; em dead letter nas últimas 24 h: {$deadLetters})");
+
+        return self::SUCCESS;
+    }
+}

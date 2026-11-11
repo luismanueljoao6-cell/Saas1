@@ -55,6 +55,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Transferência internacional de dados (Lei n.º 22/11)
+    |--------------------------------------------------------------------------
+    | WhatsApp (Meta) e SMS levam o contacto do cliente para fora de Angola.
+    | Sem o número da autorização da APD os canais não enviam, a menos que a
+    | exigência seja desligada de propósito. Ver Support\TransferenciaInternacional.
+    */
+    'exigir_autorizacao_apd' => (bool) env('ATELIER_EXIGIR_AUTORIZACAO_APD', true),
+    'apd_autorizacao_transferencia' => env('ATELIER_APD_AUTORIZACAO'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Lembretes de prova
     |--------------------------------------------------------------------------
     | Quantas horas antes da data/hora agendada o lembrete deve ser

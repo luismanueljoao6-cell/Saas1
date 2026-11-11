@@ -21,9 +21,28 @@ class FaturaService
     ) {}
 
     /**
-     * @param  array<int, array{produto_id?: int, descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float, motivo_isencao?: string|null}>  $linhas
+     * @param  array<int, array{produto_id?: int, descricao: string, quantidade: float, preco_unitario: float, preco_unitario_base?: float, taxa_iva: float, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
      */
     public function criarRascunho(Empresa $empresa, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
+    {
+        return $this->criarRascunhoTipo('FT', $empresa, $cliente, $linhas, $observacoes);
+    }
+
+    /**
+     * Rascunho de FATURA DE ADIANTAMENTO (FA). Emite-se com emitir(), como qualquer fatura,
+     * mas numera numa série FA própria e segue para a AGT com documentType FA.
+     *
+     * @param  array<int, array<string, mixed>>  $linhas  mesmo formato de criarRascunho()
+     */
+    public function criarRascunhoAdiantamento(Empresa $empresa, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
+    {
+        return $this->criarRascunhoTipo('FA', $empresa, $cliente, $linhas, $observacoes);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $linhas
+     */
+    protected function criarRascunhoTipo(string $tipo, Empresa $empresa, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
     {
         if (empty($linhas)) {
             throw new \InvalidArgumentException('Uma fatura precisa de pelo menos uma linha.');
@@ -35,13 +54,14 @@ class FaturaService
 
         ValidacaoLinhas::validar($linhas, (int) $empresa->id);
 
-        return DB::transaction(function () use ($empresa, $cliente, $linhas, $observacoes) {
+        return DB::transaction(function () use ($tipo, $empresa, $cliente, $linhas, $observacoes) {
             $fatura = Fatura::create([
                 'empresa_id' => $empresa->id,
                 'cliente_id' => $cliente->id,
                 // Série do ano corrente, só como referência do tipo: a série
                 // DEFINITIVA (e o número) são atribuídos em emitir().
-                'serie_id' => $this->numeracaoService->obterOuCriarSerie($empresa->id, 'FT')->id,
+                'serie_id' => $this->numeracaoService->obterOuCriarSerie($empresa->id, $tipo)->id,
+                'tipo_documento' => $tipo,
                 'estado' => 'rascunho',
                 'moeda' => 'AOA',
                 'observacoes' => $observacoes,
@@ -87,7 +107,7 @@ class FaturaService
                 // O valor assinado tem de bater exatamente com as linhas.
                 $this->recalcularTotais($fatura);
 
-                $resultado = $this->numeracaoService->proximoNumero($fatura->empresa_id, 'FT');
+                $resultado = $this->numeracaoService->proximoNumero($fatura->empresa_id, $fatura->tipoDocumentoFiscal());
 
                 $hashAnterior = $this->numeracaoService->hashDoDocumentoAnterior(
                     Fatura::class,
@@ -139,7 +159,9 @@ class FaturaService
                 'descricao' => $dadosLinha['descricao'],
                 'quantidade' => $dadosLinha['quantidade'],
                 'preco_unitario' => $dadosLinha['preco_unitario'],
+                'preco_unitario_base' => $dadosLinha['preco_unitario_base'] ?? $dadosLinha['preco_unitario'],
                 'taxa_iva' => $dadosLinha['taxa_iva'],
+                'operation_type' => strtoupper(trim((string) ($dadosLinha['operation_type'] ?? config('faturacao.agt.operation_type_padrao', 'SG')))),
                 'motivo_isencao' => ValidacaoLinhas::normalizarMotivo($dadosLinha['motivo_isencao'] ?? null),
                 'ordem' => $indice,
             ]);
@@ -154,7 +176,7 @@ class FaturaService
      * serializadas e a segunda vê o estado final. Uma fatura emitida nunca
      * se edita — corrige-se por Nota de Crédito.
      *
-     * @param  array<int, array{produto_id?: int|null, descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float, motivo_isencao?: string|null}>  $linhas
+     * @param  array<int, array{produto_id?: int|null, descricao: string, quantidade: float, preco_unitario: float, preco_unitario_base?: float|null, taxa_iva: float, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
      */
     public function atualizarRascunho(Fatura $fatura, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
     {

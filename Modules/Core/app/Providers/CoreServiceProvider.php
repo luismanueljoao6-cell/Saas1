@@ -2,24 +2,31 @@
 
 namespace Modules\Core\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Modules\Core\Console\Commands\ListUnknownNotifications;
+use Modules\Core\Console\Commands\RecoverNotificationOutbox;
+use Modules\Core\Console\Commands\ResolveUnknownNotification;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Http\Middleware\ExigirPapel;
 use Modules\Core\Http\Middleware\ExigirServico;
 use Modules\Core\Http\Middleware\ExigirServicoDaEmpresa;
 use Modules\Core\Http\Middleware\IdentificarTenant;
+use Modules\Core\Http\Middleware\NegarPapeis;
 use Modules\Core\Http\Middleware\VerificarSubscricaoAtiva;
+use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Core\Repositories\Contracts\EmpresaRepositoryInterface;
 use Modules\Core\Repositories\EmpresaRepository;
 use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Services\SemLimites;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantProvisionerRegistry;
+use Spatie\Permission\PermissionRegistrar;
 
 class CoreServiceProvider extends ServiceProvider
 {
@@ -41,6 +48,7 @@ class CoreServiceProvider extends ServiceProvider
         // ser a MESMA instância em toda a aplicação, daí o singleton.
         $this->app->singleton(MenuRegistry::class);
         $this->app->singleton(TenantProvisionerRegistry::class);
+        $this->app->singleton(NotificationChannelRegistry::class);
 
         // Por omissão, sem limites. bindIf: se o módulo Subscrições já
         // registou a sua implementação (por ordem de carregamento), esta
@@ -54,15 +62,39 @@ class CoreServiceProvider extends ServiceProvider
     {
         $this->registerViews();
         $this->registerMigrations();
+        $this->commands([
+            RecoverNotificationOutbox::class,
+            ResolveUnknownNotification::class,
+            ListUnknownNotifications::class,
+        ]);
         $this->registerMiddlewareAliases();
         $this->registerMenuItems();
         $this->limparTenantEntreJobs();
+        $this->agendarRecuperacaoDaOutbox();
 
         $this->app->register(RouteServiceProvider::class);
 
         $this->publishes([
             __DIR__.'/../../config/config.php' => config_path('core.php'),
         ], 'core-config');
+    }
+
+    /**
+     * Sem isto, linhas perdidas da Outbox (job nunca despachado, worker morto
+     * a meio de um envio) ficariam presas para sempre: o recuperador só existia
+     * como comando manual. --min-age evita reagendar jobs que a fila acabou de
+     * receber e ainda não teve tempo de executar. Requer o cron do Laravel
+     * (`php artisan schedule:run`), como as restantes tarefas agendadas.
+     */
+    protected function agendarRecuperacaoDaOutbox(): void
+    {
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            $schedule->command('notifications:recover', ['--min-age=60'])
+                ->everyMinute()
+                ->name('core:notifications-recover')
+                ->withoutOverlapping(10)
+                ->onOneServer();
+        });
     }
 
     protected function registerViews(): void
@@ -83,6 +115,7 @@ class CoreServiceProvider extends ServiceProvider
         $router->aliasMiddleware('tenant', IdentificarTenant::class);
         $router->aliasMiddleware('subscricao.ativa', VerificarSubscricaoAtiva::class);
         $router->aliasMiddleware('papel', ExigirPapel::class);
+        $router->aliasMiddleware('papel.nao', NegarPapeis::class);
         $router->aliasMiddleware('servico', ExigirServico::class);
         $router->aliasMiddleware('servico.empresa', ExigirServicoDaEmpresa::class);
     }
@@ -131,6 +164,13 @@ class CoreServiceProvider extends ServiceProvider
             }
 
             $this->app->make(TenantManager::class)->clear();
+
+            // O team resolver do Spatie é estado separado do TenantManager.
+            // Um worker persistente não pode herdar a empresa definida por
+            // um job anterior, mesmo que esse job tenha terminado com erro.
+            if (class_exists(PermissionRegistrar::class)) {
+                $this->app->make(PermissionRegistrar::class)->setPermissionsTeamId(null);
+            }
         });
     }
 }

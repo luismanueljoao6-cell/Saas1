@@ -55,9 +55,11 @@ return [
     */
     'tipos_documento' => [
         'FT' => 'Fatura',
+        'FA' => 'Fatura de Adiantamento',
         'NC' => 'Nota de Crédito',
         'ND' => 'Nota de Débito',
         'RC' => 'Recibo',
+        'RG' => 'Recibo de Regularização',
     ],
 
     /*
@@ -79,7 +81,7 @@ return [
         'outro' => 'Outro',
     ],
 
-    'taxa_iva_geral' => (float) env('FATURACAO_TAXA_IVA_GERAL', 14.0),
+    'taxa_iva_geral' => (string) env('FATURACAO_TAXA_IVA_GERAL', '14'),
 
     /*
     |--------------------------------------------------------------------------
@@ -100,11 +102,26 @@ return [
     'saft_xsd_path' => env('FATURACAO_SAFT_XSD_PATH') ?: storage_path('app/faturacao/saft/SAF-T-AO.xsd'),
 
     /*
+    | xmlns do elemento raiz do SAF-T (AO). Vazio por omissão: nesse caso usa-se o targetNamespace do
+    | XSD oficial, se estiver presente. Só preenche se o confirmares no XSD/especificação da AGT.
+    */
+    'saft_namespace' => env('FATURACAO_SAFT_NAMESPACE') ?: null,
+
+    /*
     | Nota de débito e IVA. Por omissão a nota de débito NÃO liquida imposto
     | (regime jurídico angolano, segundo a auditoria técnica — confirma com a
     | AGT/contabilista). Só passa a true se a tua análise jurídica disser o contrário.
     */
     'nota_debito_liquida_iva' => (bool) env('FATURACAO_ND_LIQUIDA_IVA', false),
+
+    /*
+    | Abatimento de adiantamentos (FA) em faturas finais (FT). Hoje é contabilidade interna:
+    | não gera documento fiscal nem entra na comunicação AGT/SAF-T. Enquanto a representação
+    | fiscal não estiver definida com a AGT e implementada, em produção a pré-validação do
+    | SAF-T recusa períodos com abatimentos. NÃO ponhas true só para desbloquear a exportação:
+    | true afirma que a representação fiscal existe (ver docs/homologacao-agt.md, ponto H3).
+    */
+    'abatimentos_adiantamento_confirmados' => (bool) env('FATURACAO_ABATIMENTOS_ADIANTAMENTO_CONFIRMADOS', false),
 
     /*
     | Taxas de IVA aceites na emissão (percentagens, separadas por vírgula no .env).
@@ -217,6 +234,7 @@ return [
             'product_id' => env('FATURACAO_AGT_PRODUCT_ID', 'Saas1'),
             'product_version' => env('FATURACAO_AGT_PRODUCT_VERSION', '1.0.0'),
             // O número de certificação é o 'saft_numero_certificado' (acima).
+            // Obrigatória em registarFactura/obterEstado; corresponde à chave do software registada na AGT.
             'signature_version' => env('FATURACAO_AGT_SIGNATURE_VERSION'),
             'chave_privada_path' => env('FATURACAO_AGT_CHAVE_SOFTWARE') ?: storage_path('app/faturacao/chave-software.pem'),
         ],

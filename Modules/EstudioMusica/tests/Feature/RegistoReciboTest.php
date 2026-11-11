@@ -80,7 +80,7 @@ class RegistoReciboTest extends TestCase
 
     public function test_recebimento_parcial_e_depois_o_restante_por_omissao(): void
     {
-        $this->servico()->registrarRecibo($this->projeto, $this->fatura, 'multicaixa', 400.0);
+        $this->servico()->registrarRecibo($this->projeto, $this->fatura, 'multicaixa', '400.0');
 
         $restante = $this->servico()->registrarRecibo($this->projeto, $this->fatura, 'multicaixa');
 
@@ -94,14 +94,14 @@ class RegistoReciboTest extends TestCase
 
         $this->expectException(\DomainException::class);
 
-        $this->servico()->registrarRecibo($this->projeto, $this->fatura, 'multicaixa', 1.0);
+        $this->servico()->registrarRecibo($this->projeto, $this->fatura, 'multicaixa', '1.0');
     }
 
     public function test_valor_zero_ou_negativo_e_rejeitado(): void
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        $this->servico()->registrarRecibo($this->projeto, $this->fatura, 'multicaixa', 0.0);
+        $this->servico()->registrarRecibo($this->projeto, $this->fatura, 'multicaixa', '0.0');
     }
 
     public function test_fatura_que_nao_e_do_projeto_e_rejeitada(): void

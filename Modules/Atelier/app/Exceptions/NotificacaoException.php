@@ -11,6 +11,16 @@ class NotificacaoException extends Exception
         return new self("Falha ao enviar notificação por {$canal}: {$motivo}");
     }
 
+    public static function resultadoIndeterminado(string $canal, string $motivo): NotificacaoResultadoIndeterminadoException
+    {
+        return new NotificacaoResultadoIndeterminadoException("Resultado desconhecido ao enviar por {$canal}: {$motivo}");
+    }
+
+    public static function transferenciaNaoAutorizada(string $canal): self
+    {
+        return new self("Envio por {$canal} bloqueado: falta configurar a autorização da APD para a transferência internacional de dados (ATELIER_APD_AUTORIZACAO).");
+    }
+
     public static function naoConfigurado(string $canal): self
     {
         return new self("O canal \"{$canal}\" não está configurado (faltam credenciais no .env) — ver README do Atelier.");

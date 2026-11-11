@@ -69,4 +69,34 @@ class OrdemMiddlewareTenantTest extends TestCase
             ->get('/_teste/clientes/'.$clienteB->id)
             ->assertNotFound();
     }
+
+    public function test_relacoes_spatie_em_cache_sao_invalidadas_ao_identificar_tenant(): void
+    {
+        Route::middleware(['web', 'auth', 'tenant'])->get('/_teste/tenant-relations', function () {
+            return response()->json([
+                'roles' => auth()->user()->relationLoaded('roles'),
+                'permissions' => auth()->user()->relationLoaded('permissions'),
+            ]);
+        });
+
+        $empresa = Empresa::create(['nome_comercial' => 'Empresa Relações', 'nif' => '420000009']);
+        $utilizador = User::create([
+            'empresa_id' => $empresa->id,
+            'name' => 'Utilizador Relações',
+            'email' => 'relacoes@example.test',
+            'password' => Hash::make('Senha-segura-123'),
+        ]);
+
+        // Simula relações carregadas antes da definição do team ID.
+        $utilizador->setRelation('roles', collect());
+        $utilizador->setRelation('permissions', collect());
+
+        $this->actingAs($utilizador)
+            ->get('/_teste/tenant-relations')
+            ->assertOk()
+            ->assertExactJson(['roles' => false, 'permissions' => false]);
+
+        $this->assertFalse($utilizador->relationLoaded('roles'));
+        $this->assertFalse($utilizador->relationLoaded('permissions'));
+    }
 }

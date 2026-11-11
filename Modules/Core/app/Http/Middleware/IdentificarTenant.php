@@ -43,6 +43,11 @@ class IdentificarTenant
                 throw new TenantNaoEncontradoException;
             }
 
+            // O Spatie mantém as relações roles/permissions em cache no model.
+            // Como o team ID foi limpo no início do middleware, invalida também
+            // relações que possam ter sido carregadas antes desta identificação.
+            $utilizador->unsetRelation('roles')->unsetRelation('permissions');
+
             // Um utilizador desativado deixa de ter acesso IMEDIATAMENTE, mesmo
             // com a sessão já aberta (antes, `ativo` só era verificado no login).
             if (! $utilizador->ativo) {

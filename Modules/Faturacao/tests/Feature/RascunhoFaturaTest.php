@@ -36,7 +36,7 @@ class RascunhoFaturaTest extends TestCase
         return [$empresa, $cliente];
     }
 
-    protected function linha(float $preco, float $taxa = 14): array
+    protected function linha(string|int $preco, string|int $taxa = 14): array
     {
         return [['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => $preco, 'taxa_iva' => $taxa]];
     }
