@@ -2,10 +2,13 @@
 
 namespace Modules\EstudioMusica\Notifications\Channels;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
+use Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException;
+use Modules\Core\Notifications\Support\FalhaDeLigacao;
 use Modules\EstudioMusica\Support\NumeroTelefone;
 use Throwable;
 
@@ -76,6 +79,18 @@ class TwilioSmsChannel implements CanalSmsInterface
             ]);
 
             return false;
+        } catch (ConnectionException $e) {
+            Log::error('Twilio SMS: falha de ligação ao enviar mensagem', [
+                'destino' => NumeroTelefone::mascarar($destino),
+                'erro' => $e->getMessage(),
+            ]);
+
+            if (FalhaDeLigacao::foiAntesDoEnvio($e)) {
+                return false; // o pedido nem saiu: seguro repetir
+            }
+
+            // Timeout ou ligação cortada: o fornecedor pode já ter enviado a mensagem.
+            throw new ResultadoIndeterminadoException('Twilio SMS: ligação interrompida ou tempo esgotado depois do pedido.', 0, $e);
         } catch (Throwable $e) {
             Log::error('Twilio: erro inesperado ao enviar SMS', [
                 'destino' => NumeroTelefone::mascarar($destino),

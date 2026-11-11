@@ -10,6 +10,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalMensagemInterface;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
 use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalWhatsAppInterface;
@@ -102,6 +103,15 @@ class EnviarMensagemClienteJob implements ShouldBeEncrypted, ShouldQueue
     {
         try {
             return $canal->enviar((string) $this->telefone, $this->mensagem);
+        } catch (ResultadoIndeterminadoException $e) {
+            // O fornecedor pode já ter enviado a mensagem: conta como «possivelmente entregue».
+            // Nem fallback para SMS (duplicaria) nem nova tentativa do job.
+            Log::warning('EstudioMusica: resultado indeterminado no canal de mensagens; não se repete nem se usa outro canal.', [
+                'canal' => $canal->identificador(),
+                'erro' => $e->getMessage(),
+            ]);
+
+            return true;
         } catch (Throwable $e) {
             Log::error('EstudioMusica: falha no canal de mensagens', [
                 'canal' => $canal->identificador(),
