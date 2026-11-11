@@ -12,6 +12,7 @@ use Modules\Atelier\Notifications\Outbox\AtelierWhatsAppOutboxChannel;
 use Modules\Atelier\Services\Notificacoes\WhatsAppCanal;
 use Modules\Atelier\Support\FalhaDeLigacao;
 use Modules\Core\Models\NotificationOutbox;
+use Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException;
 use Modules\Core\Services\RegistoEmpresaService;
 use Modules\Core\Services\TenantManager;
 use Tests\TestCase;
@@ -57,7 +58,7 @@ class FalhaDeLigacaoIndeterminadaTest extends TestCase
         foreach ([AtelierWhatsAppOutboxChannel::class, AtelierSmsOutboxChannel::class] as $canal) {
             $erro = $this->erroDe($canal);
 
-            $this->assertInstanceOf(\Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException::class, $erro, $canal);
+            $this->assertInstanceOf(ResultadoIndeterminadoException::class, $erro, $canal);
         }
     }
 
@@ -65,7 +66,7 @@ class FalhaDeLigacaoIndeterminadaTest extends TestCase
     {
         Http::fake(fn () => throw new ConnectionException('Connection reset by peer'));
 
-        $this->assertInstanceOf(\Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException::class, $this->erroDe(AtelierWhatsAppOutboxChannel::class));
+        $this->assertInstanceOf(ResultadoIndeterminadoException::class, $this->erroDe(AtelierWhatsAppOutboxChannel::class));
     }
 
     public function test_falha_antes_do_envio_continua_a_ser_um_erro_comum_com_retry(): void
@@ -77,7 +78,7 @@ class FalhaDeLigacaoIndeterminadaTest extends TestCase
                 $erro = $this->erroDe($canal);
 
                 $this->assertInstanceOf(NotificacaoException::class, $erro, $mensagem);
-                $this->assertNotInstanceOf(\Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException::class, $erro, $mensagem);
+                $this->assertNotInstanceOf(ResultadoIndeterminadoException::class, $erro, $mensagem);
             }
         }
     }
@@ -89,7 +90,7 @@ class FalhaDeLigacaoIndeterminadaTest extends TestCase
         $erro = $this->erroDe(AtelierWhatsAppOutboxChannel::class);
 
         $this->assertInstanceOf(NotificacaoException::class, $erro);
-        $this->assertNotInstanceOf(\Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException::class, $erro);
+        $this->assertNotInstanceOf(ResultadoIndeterminadoException::class, $erro);
     }
 
     public function test_o_canal_legado_continua_a_ver_uma_notificacao_exception(): void

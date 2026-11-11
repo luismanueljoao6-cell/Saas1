@@ -147,7 +147,7 @@ class AbatimentoIdempotenciaConcorrenteTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $servico = new class(app(\Modules\Faturacao\Services\ReciboService::class)) extends \Modules\Faturacao\Services\AbatimentoAdiantamentoService
+        $servico = new class(app(ReciboService::class)) extends AbatimentoAdiantamentoService
         {
             private bool $primeiraConsulta = true;
 

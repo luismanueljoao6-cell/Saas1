@@ -8,10 +8,15 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use LogicException;
+use Modules\Atelier\Models\Perfil;
+use Modules\Atelier\Models\PortfolioItem;
 use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Models\EmpresaServico;
+use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Traits\BelongsToTenant;
+use Modules\Faturacao\Models\AgtSubmissao;
 use Modules\Faturacao\Models\Cliente;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -36,11 +41,11 @@ class IsolamentoMultiempresaTest extends TestCase
      * @var array<class-string, string>
      */
     private const MODELS_SEM_ESCOPO = [
-        \Modules\Atelier\Models\Perfil::class => 'Landing pública lê sem tenant; todas as consultas filtram por empresa_id (LandingController, PerfilController).',
-        \Modules\Atelier\Models\PortfolioItem::class => 'Landing pública lê sem tenant; o PortfolioController filtra por empresa e valida a posse no destruir.',
-        \Modules\Core\Models\EmpresaServico::class => 'Só acedido através de Empresa::servicos(), já filtrado pela empresa.',
-        \Modules\Core\Models\User::class => 'Autenticação sem tenant; consultas por ID filtram por empresa_id ou validam a posse (UtilizadorController, EquipaEstudioController).',
-        \Modules\Faturacao\Models\AgtSubmissao::class => 'Só serviços e comandos de consola entre empresas; nunca exposto por HTTP (verificado em ficheiros PHP).',
+        Perfil::class => 'Landing pública lê sem tenant; todas as consultas filtram por empresa_id (LandingController, PerfilController).',
+        PortfolioItem::class => 'Landing pública lê sem tenant; o PortfolioController filtra por empresa e valida a posse no destruir.',
+        EmpresaServico::class => 'Só acedido através de Empresa::servicos(), já filtrado pela empresa.',
+        User::class => 'Autenticação sem tenant; consultas por ID filtram por empresa_id ou validam a posse (UtilizadorController, EquipaEstudioController).',
+        AgtSubmissao::class => 'Só serviços e comandos de consola entre empresas; nunca exposto por HTTP (verificado em ficheiros PHP).',
     ];
 
     /**

@@ -6,9 +6,9 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
 use Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException;
 use Modules\Core\Notifications\Support\FalhaDeLigacao;
+use Modules\EstudioMusica\Notifications\Channels\Contracts\CanalSmsInterface;
 use Modules\EstudioMusica\Support\NumeroTelefone;
 use Throwable;
 

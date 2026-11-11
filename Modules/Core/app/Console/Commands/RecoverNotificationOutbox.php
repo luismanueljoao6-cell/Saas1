@@ -32,7 +32,7 @@ class RecoverNotificationOutbox extends Command
         $count = 0;
         $abandonadas = 0;
 
-        DB::transaction(function () use ($limit, $now, $maduraAte, $staleBefore, &$count, &$abandonadas): void {
+        DB::transaction(function () use ($limit, $maduraAte, $staleBefore, &$count, &$abandonadas): void {
             $notifications = NotificationOutbox::withoutGlobalScopes()
                 ->where(function ($query) use ($maduraAte, $staleBefore): void {
                     $query->where(function ($pending) use ($maduraAte): void {

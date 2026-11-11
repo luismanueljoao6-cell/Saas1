@@ -5,13 +5,13 @@ namespace Modules\Core\Notifications;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Modules\Core\Events\NotificationStateChanged;
 use Modules\Core\Jobs\ProcessNotificationJob;
 use Modules\Core\Models\NotificationAttempt;
 use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException;
 use Modules\Core\Services\TenantManager;
-use InvalidArgumentException;
 use Throwable;
 
 class NotificationProcessor

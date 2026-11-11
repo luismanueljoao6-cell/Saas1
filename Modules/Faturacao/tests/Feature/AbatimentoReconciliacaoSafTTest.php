@@ -2,6 +2,7 @@
 
 namespace Modules\Faturacao\Tests\Feature;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
@@ -187,7 +188,7 @@ class AbatimentoReconciliacaoSafTTest extends TestCase
         $fa = $this->adiantamentoRecebido();
         $ftB = $this->faturaFinal($empresaB, $clienteB);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         $this->abatimentoDireto($this->empresa->id, $fa->id, $ftB->id, 10000, 'chave-rec-0007');
     }

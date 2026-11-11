@@ -4,8 +4,8 @@ namespace Modules\Atelier\Notifications\Outbox;
 
 use InvalidArgumentException;
 use Modules\Atelier\Exceptions\NotificacaoResultadoIndeterminadoException;
-use Modules\Atelier\Support\TransferenciaInternacional;
 use Modules\Atelier\Services\Notificacoes\WhatsAppCanal;
+use Modules\Atelier\Support\TransferenciaInternacional;
 use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Notifications\Contracts\NotificationChannel;
 use Modules\Core\Notifications\DTO\NotificationSendResult;
