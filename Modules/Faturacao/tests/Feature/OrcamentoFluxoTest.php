@@ -4,6 +4,7 @@ namespace Modules\Faturacao\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Core\Support\Servico;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Services\FaturaService;
@@ -26,6 +27,8 @@ class OrcamentoFluxoTest extends TestCase
     public function test_orcamento_e_comercial_nao_fiscal_e_so_converte_uma_vez(): void
     {
         [$empresa, $cliente] = $this->criarContexto('630000201');
+        app(TenantManager::class)->set((int) $empresa->id);
+
         $service = app(OrcamentoService::class);
         $orcamento = $service->criar($empresa, $cliente, [[
             'descricao' => 'Serviço contratado',
@@ -69,5 +72,21 @@ class OrcamentoFluxoTest extends TestCase
             'taxa_iva' => '14',
             'operation_type' => 'SG',
         ]], null, null);
+    }
+
+    public function test_orcamento_rejeita_quantidade_de_linhas_fora_do_limite(): void
+    {
+        [$empresa, $cliente] = $this->criarContexto('630000204');
+        $service = app(OrcamentoService::class);
+
+        try {
+            $service->criar($empresa, $cliente, [], null, null);
+            $this->fail('Um orçamento vazio deve ser rejeitado.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame('O orçamento deve conter entre 1 e 100 linhas.', $e->getMessage());
+        }
+
+        $this->expectException(\InvalidArgumentException::class);
+        $service->criar($empresa, $cliente, array_fill(0, 101, []), null, null);
     }
 }

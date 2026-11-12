@@ -19,6 +19,10 @@ class OrcamentoService
             throw new \DomainException('O cliente não pertence a esta empresa.');
         }
 
+        if (count($linhas) < 1 || count($linhas) > 100) {
+            throw new \InvalidArgumentException('O orçamento deve conter entre 1 e 100 linhas.');
+        }
+
         ValidacaoLinhas::validar($linhas, (int) $empresa->id);
         $totais = $this->totais($linhas);
 
