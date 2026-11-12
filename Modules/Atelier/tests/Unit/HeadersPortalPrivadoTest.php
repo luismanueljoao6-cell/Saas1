@@ -20,7 +20,7 @@ class HeadersPortalPrivadoTest extends TestCase
         );
 
         self::assertSame('no-referrer', $response->headers->get('Referrer-Policy'));
-        self::assertSame('private, no-store, max-age=0', $response->headers->get('Cache-Control'));
+        self::assertSame('max-age=0, no-store, private', $response->headers->get('Cache-Control'));
         self::assertSame('no-cache', $response->headers->get('Pragma'));
         self::assertSame('noindex, nofollow, noarchive', $response->headers->get('X-Robots-Tag'));
         self::assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
