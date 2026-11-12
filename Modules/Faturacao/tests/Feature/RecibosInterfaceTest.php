@@ -331,5 +331,4 @@ class RecibosInterfaceTest extends TestCase
             ->get(route('faturacao.clientes.conta-corrente', $clienteAlheio->id))
             ->assertNotFound();
     }
-
 }
