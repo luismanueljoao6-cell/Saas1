@@ -30,6 +30,7 @@ class FaturacaoServiceProvider extends ServiceProvider
         $menu = $this->app->make(MenuRegistry::class);
         $menu->adicionar('faturacao.painel', 'Visão geral', 10);
         $menu->adicionar('faturacao.faturas.index', 'Faturas', 20);
+        $menu->adicionar('faturacao.orcamentos.index', 'Orçamentos', 22);
         $menu->adicionar('faturacao.notas.index', 'Notas de crédito e débito', 25);
         $menu->adicionar('faturacao.recibos.index', 'Recibos', 27);
         $menu->adicionar('faturacao.clientes.index', 'Clientes', 30);
