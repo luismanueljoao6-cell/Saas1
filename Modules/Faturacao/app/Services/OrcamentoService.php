@@ -16,11 +16,11 @@ class OrcamentoService
     public function criar(Empresa $empresa, Cliente $cliente, array $linhas, ?string $validade, ?string $observacoes): Orcamento
     {
         if ((int) $cliente->empresa_id !== (int) $empresa->id) {
-            throw new \DomainException('O cliente não pertence a esta empresa.');
+            throw new \\DomainException('O cliente não pertence a esta empresa.');
         }
 
         if (count($linhas) < 1 || count($linhas) > 100) {
-            throw new \InvalidArgumentException('O orçamento deve conter entre 1 e 100 linhas.');
+            throw new \\InvalidArgumentException('O orçamento deve conter entre 1 e 100 linhas.');
         }
 
         ValidacaoLinhas::validar($linhas, (int) $empresa->id);
@@ -41,18 +41,27 @@ class OrcamentoService
     public function alterarEstado(Orcamento $orcamento, string $estado): Orcamento
     {
         if (! in_array($estado, ['enviado', 'aceite', 'recusado'], true)) {
-            throw new \InvalidArgumentException('Estado de orçamento inválido.');
+            throw new \\InvalidArgumentException('Estado de orçamento inválido.');
         }
 
         return DB::transaction(function () use ($orcamento, $estado) {
             $atual = Orcamento::query()->lockForUpdate()->findOrFail($orcamento->id);
 
             if ($atual->estado === 'convertido' || $atual->fatura_id !== null) {
-                throw new \DomainException('Um orçamento convertido não pode mudar de estado.');
+                throw new \\DomainException('Um orçamento convertido não pode mudar de estado.');
             }
 
             if ($atual->data_validade && $atual->data_validade->isBefore(today())) {
-                throw new \DomainException('Este orçamento expirou e já não pode ser alterado.');
+                throw new \\DomainException('Este orçamento expirou e já não pode ser alterado.');
+            }
+
+            $transicoesPermitidas = [
+                'rascunho' => ['enviado', 'aceite'],
+                'enviado' => ['aceite', 'recusado'],
+            ];
+
+            if (! in_array($estado, $transicoesPermitidas[$atual->estado] ?? [], true)) {
+                throw new \\DomainException('Transição de estado do orçamento não permitida.');
             }
 
             $atual->update(['estado' => $estado]);
@@ -67,15 +76,15 @@ class OrcamentoService
             $atual = Orcamento::query()->lockForUpdate()->findOrFail($orcamento->id);
 
             if ((int) $atual->empresa_id !== (int) $empresa->id) {
-                throw new \DomainException('Orçamento de outra empresa.');
+                throw new \\DomainException('Orçamento de outra empresa.');
             }
 
             if ($atual->estado !== 'aceite' || $atual->fatura_id !== null) {
-                throw new \DomainException('Só é possível converter um orçamento aceite e ainda não convertido.');
+                throw new \\DomainException('Só é possível converter um orçamento aceite e ainda não convertido.');
             }
 
             if ($atual->data_validade && $atual->data_validade->isBefore(today())) {
-                throw new \DomainException('O orçamento expirou.');
+                throw new \\DomainException('O orçamento expirou.');
             }
 
             $cliente = Cliente::query()->findOrFail($atual->cliente_id);
