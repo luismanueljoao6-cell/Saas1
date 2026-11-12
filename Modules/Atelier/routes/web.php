@@ -13,6 +13,7 @@ use Modules\Atelier\Http\Controllers\Admin\PortfolioController;
 use Modules\Atelier\Http\Controllers\Admin\ProvaController;
 use Modules\Atelier\Http\Controllers\Publico\LandingController;
 use Modules\Atelier\Http\Controllers\Publico\PortalController;
+use Modules\Atelier\Http\Middleware\HeadersPortalPrivado;
 
 /*
 |--------------------------------------------------------------------------
@@ -78,7 +79,7 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:atelier'])
 | 'throttle' limita tentativas de adivinhar/abusar dos links.
 |--------------------------------------------------------------------------
 */
-Route::middleware(['throttle:30,1', 'signed'])
+Route::middleware(['throttle:30,1', 'signed', HeadersPortalPrivado::class])
     ->prefix('portal/atelier')
     ->name('atelier.portal.')
     ->group(function () {
