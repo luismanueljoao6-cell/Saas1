@@ -173,9 +173,9 @@ class ReciboService
             throw new \DomainException('O cliente do recibo tem de ser o da fatura.');
         }
 
-        [$jaRecebido, $creditado, $abatido] = $this->recebidoECreditado($empresaId, $faturaId);
+        [$jaRecebido, $creditado, $debitado, $abatido] = $this->recebidoECreditado($empresaId, $faturaId);
 
-        if ($jaRecebido + $centimos > Dinheiro::centimos($fatura->valor_total) - $creditado - $abatido) {
+        if ($jaRecebido + $centimos > Dinheiro::centimos($fatura->valor_total) + $debitado - $creditado - $abatido) {
             throw new \DomainException('O total recebido excede o valor em dívida da fatura (já deduzidas as notas de crédito).');
         }
     }
@@ -189,20 +189,21 @@ class ReciboService
         return $this->resumoDaFatura($fatura)['saldo'];
     }
 
-    /** @return array{recebido: int, creditado: int, abatido: int, saldo: int} em cêntimos */
+    /** @return array{recebido: int, creditado: int, debitado: int, abatido: int, saldo: int} em cêntimos */
     public function resumoDaFatura(Fatura $fatura): array
     {
-        [$recebido, $creditado, $abatido] = $this->recebidoECreditado((int) $fatura->empresa_id, (int) $fatura->id);
+        [$recebido, $creditado, $debitado, $abatido] = $this->recebidoECreditado((int) $fatura->empresa_id, (int) $fatura->id);
 
         return [
             'recebido' => $recebido,
             'creditado' => $creditado,
+            'debitado' => $debitado,
             'abatido' => $abatido,
-            'saldo' => Dinheiro::centimos($fatura->valor_total) - $recebido - $creditado - $abatido,
+            'saldo' => Dinheiro::centimos($fatura->valor_total) + $debitado - $recebido - $creditado - $abatido,
         ];
     }
 
-    /** @return array{0: int, 1: int, 2: int} [recebido, creditado, abatido por adiantamentos] em cêntimos */
+    /** @return array{0: int, 1: int, 2: int, 3: int} [recebido, creditado, debitado, abatido por adiantamentos] em cêntimos */
     protected function recebidoECreditado(int $empresaId, int $faturaId): array
     {
         $recebido = Recibo::withoutGlobalScopes()
@@ -220,11 +221,19 @@ class ReciboService
             ->get(['valor_total'])
             ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_total));
 
+        $debitado = NotaCreditoDebito::withoutGlobalScopes()
+            ->where('empresa_id', $empresaId)
+            ->where('fatura_id', $faturaId)
+            ->where('tipo', 'debito')
+            ->where('estado', 'emitida')
+            ->get(['valor_total'])
+            ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_total));
+
         $abatido = (int) DB::table('adiantamento_abatimentos')
             ->where('empresa_id', $empresaId)
             ->where('fatura_final_id', $faturaId)
             ->sum('valor_centimos');
 
-        return [(int) $recebido, (int) $creditado, $abatido];
+        return [(int) $recebido, (int) $creditado, (int) $debitado, $abatido];
     }
 }
