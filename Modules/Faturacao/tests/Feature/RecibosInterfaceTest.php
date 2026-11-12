@@ -2,6 +2,7 @@
 
 namespace Modules\Faturacao\Tests\Feature;
 
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
@@ -9,6 +10,7 @@ use Modules\Core\Support\Servico;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\Recibo;
+use Modules\Faturacao\Services\AbatimentoAdiantamentoService;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Modules\Faturacao\Services\ReciboService;
@@ -243,4 +245,91 @@ class RecibosInterfaceTest extends TestCase
         $this->actingAs($this->admin)->get(route('faturacao.recibos.index'))
             ->assertOk()->assertSee('Cliente Recibos')->assertSee('Multicaixa');
     }
+
+    public function test_conta_corrente_calcula_saldo_de_abertura_e_saldo_acumulado(): void
+    {
+        Carbon::setTestNow('2026-11-10 10:00:00');
+
+        try {
+            $faturaAnterior = $this->faturaEmitida();
+
+            app(ReciboService::class)->emitir(
+                (int) $this->empresa->id,
+                (int) $this->cliente->id,
+                '200.00',
+                'dinheiro',
+                (int) $faturaAnterior->id,
+            );
+
+            Carbon::setTestNow('2026-11-12 10:00:00');
+            $faturaAtual = $this->faturaEmitida();
+
+            $this->actingAs($this->admin)
+                ->get(route('faturacao.clientes.conta-corrente', [
+                    'cliente' => $this->cliente->id,
+                    'inicio' => '2026-11-11',
+                    'fim' => '2026-11-12',
+                ]))
+                ->assertOk()
+                ->assertSee('Saldo de abertura')
+                ->assertSee('940,00 Kz')
+                ->assertSee($faturaAtual->numero_documento)
+                ->assertSee('2.080,00 Kz');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_conta_corrente_nao_duplica_recebimento_ao_abater_adiantamento(): void
+    {
+        $faturas = app(FaturaService::class);
+        $adiantamento = $faturas->emitir($faturas->criarRascunhoAdiantamento(
+            $this->empresa,
+            $this->cliente,
+            [['descricao' => 'Adiantamento', 'quantidade' => 1, 'preco_unitario' => '1000.00', 'taxa_iva' => 14]],
+        ));
+        $faturaFinal = $this->faturaEmitida();
+
+        app(ReciboService::class)->emitir(
+            (int) $this->empresa->id,
+            (int) $this->cliente->id,
+            '500.00',
+            'dinheiro',
+            (int) $adiantamento->id,
+        );
+
+        app(AbatimentoAdiantamentoService::class)->abater(
+            (int) $this->empresa->id,
+            (int) $adiantamento->id,
+            (int) $faturaFinal->id,
+            '200.00',
+            'teste-abatimento-001',
+        );
+
+        $this->actingAs($this->admin)
+            ->get(route('faturacao.clientes.conta-corrente', [
+                'cliente' => $this->cliente->id,
+                'inicio' => today()->toDateString(),
+                'fim' => today()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertSee('2.280,00 Kz')
+            ->assertSee('700,00 Kz')
+            ->assertSee('1.580,00 Kz');
+    }
+
+    public function test_cliente_de_outra_empresa_nao_pode_ser_aberto_na_conta_corrente(): void
+    {
+        $outra = $this->criarEmpresa('Outra Loja Conta', '5001636865');
+        $clienteAlheio = Cliente::create([
+            'empresa_id' => $outra->id,
+            'nome' => 'Cliente de outra empresa',
+            'nif' => null,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('faturacao.clientes.conta-corrente', $clienteAlheio->id))
+            ->assertNotFound();
+    }
+
 }
