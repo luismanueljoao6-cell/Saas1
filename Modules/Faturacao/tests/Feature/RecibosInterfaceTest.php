@@ -11,6 +11,7 @@ use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
+use Modules\Faturacao\Services\ReciboService;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -145,6 +146,29 @@ class RecibosInterfaceTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame(1, Recibo::withoutGlobalScopes()->count());
+    }
+
+    public function test_notas_de_debito_emitidas_aumentam_o_saldo_a_receber(): void
+    {
+        $fatura = $this->faturaEmitida();
+        $notas = app(NotaCreditoDebitoService::class);
+        $nota = $notas->emitir($notas->criarRascunho(
+            $this->empresa->id,
+            $this->cliente->id,
+            'debito',
+            'Acerto adicional',
+            [['descricao' => 'Serviço adicional', 'quantidade' => 1, 'preco_unitario' => '100.00', 'taxa_iva' => 0]],
+            $fatura->id,
+        ));
+
+        $this->assertSame('emitida', $nota->estado);
+        $this->assertSame(124000, app(ReciboService::class)->saldoEmCentimos($fatura));
+
+        $this->actingAs($this->admin)->post(route('faturacao.recibos.guardar'), $this->pedido($fatura, '1240.00'))
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($this->admin)->post(route('faturacao.recibos.guardar'), $this->pedido($fatura, '0.01'))
+            ->assertSessionHasErrors(['recibo']);
     }
 
     public function test_fatura_liquidada_nao_aceita_novo_recibo(): void
