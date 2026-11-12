@@ -6,6 +6,7 @@ use Illuminate\Support\ServiceProvider;
 use Modules\Core\Services\MenuRegistry;
 use Modules\Faturacao\Console\ValidarSafTCommand;
 use Modules\Faturacao\Contracts\FaturacaoGateway;
+
 use Modules\Faturacao\Services\FaturacaoGatewayService;
 
 class FaturacaoServiceProvider extends ServiceProvider
@@ -28,6 +29,7 @@ class FaturacaoServiceProvider extends ServiceProvider
         $this->commands([ValidarSafTCommand::class]);
 
         $menu = $this->app->make(MenuRegistry::class);
+        $menu->adicionar('faturacao.painel', 'Visão geral', 10);
         $menu->adicionar('faturacao.faturas.index', 'Faturas', 20);
         $menu->adicionar('faturacao.notas.index', 'Notas de crédito e débito', 25);
         $menu->adicionar('faturacao.recibos.index', 'Recibos', 27);

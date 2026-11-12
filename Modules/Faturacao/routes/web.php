@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Faturacao\Http\Controllers\ClienteController;
 use Modules\Faturacao\Http\Controllers\FaturaController;
 use Modules\Faturacao\Http\Controllers\NotaController;
+use Modules\Faturacao\Http\Controllers\PainelFaturacaoController;
 use Modules\Faturacao\Http\Controllers\ProdutoController;
 use Modules\Faturacao\Http\Controllers\ReciboController;
 use Modules\Faturacao\Http\Controllers\SafTExportController;
@@ -17,6 +18,7 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao', 'p
     ->prefix('faturacao')
     ->name('faturacao.')
     ->group(function () {
+        Route::get('/', PainelFaturacaoController::class)->name('painel');
         Route::get('/clientes', [ClienteController::class, 'index'])->name('clientes.index');
         Route::post('/clientes', [ClienteController::class, 'store'])->name('clientes.store');
 
