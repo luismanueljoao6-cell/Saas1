@@ -1,10 +1,10 @@
 <?php
 
-namespace Modules\\Faturacao\\Models;
+namespace Modules\Faturacao\Models;
 
-use Illuminate\\Database\\Eloquent\\Model;
-use Illuminate\\Database\\Eloquent\\Relations\\HasMany;
-use Modules\\Core\\Traits\\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Core\Traits\BelongsToTenant;
 
 class CategoriaProduto extends Model
 {

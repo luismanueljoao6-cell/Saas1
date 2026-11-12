@@ -1,14 +1,14 @@
 <?php
 
-namespace Modules\\Faturacao\\Http\\Controllers;
+namespace Modules\Faturacao\Http\Controllers;
 
-use Illuminate\\Http\\RedirectResponse;
-use Illuminate\\Http\\Request;
-use Illuminate\\Routing\\Controller;
-use Illuminate\\Validation\\Rule;
-use Illuminate\\View\\View;
-use Modules\\Faturacao\\Models\\CategoriaProduto;
-use Modules\\Faturacao\\Models\\Produto;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+use Illuminate\Validation\Rule;
+use Illuminate\View\View;
+use Modules\Faturacao\Models\CategoriaProduto;
+use Modules\Faturacao\Models\Produto;
 
 class ProdutoController extends Controller
 {
