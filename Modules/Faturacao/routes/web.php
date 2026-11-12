@@ -27,6 +27,7 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao', 'p
         Route::post('/orcamentos/{orcamento}/converter', [OrcamentoController::class, 'converter'])->whereNumber('orcamento')->middleware('throttle:10,1')->name('orcamentos.converter');
 
         Route::get('/clientes', [ClienteController::class, 'index'])->name('clientes.index');
+        Route::get('/clientes/{cliente}/conta-corrente', [ClienteController::class, 'contaCorrente'])->whereNumber('cliente')->name('clientes.conta-corrente');
         Route::post('/clientes', [ClienteController::class, 'store'])->name('clientes.store');
 
         Route::get('/produtos', [ProdutoController::class, 'index'])->name('produtos.index');
