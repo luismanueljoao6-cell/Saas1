@@ -181,15 +181,14 @@ class ReciboService
     }
 
     /**
-     * Valor ainda em dívida de uma fatura, em cêntimos: total − recibos emitidos − notas de
-     * crédito emitidas. É a mesma conta que recusa recibos a mais.
+     * Valor em dívida: total + notas de débito − recibos − notas de crédito − abatimentos.
      */
     public function saldoEmCentimos(Fatura $fatura): int
     {
         return $this->resumoDaFatura($fatura)['saldo'];
     }
 
-    /** @return array{recebido: int, creditado: int, debitado: int, abatido: int, saldo: int} em cêntimos */
+    /** @return array{recebido: int, creditado: int, abatido: int, saldo: int} em cêntimos */
     public function resumoDaFatura(Fatura $fatura): array
     {
         [$recebido, $creditado, $debitado, $abatido] = $this->recebidoECreditado((int) $fatura->empresa_id, (int) $fatura->id);
@@ -197,8 +196,7 @@ class ReciboService
         return [
             'recebido' => $recebido,
             'creditado' => $creditado,
-            'debitado' => $debitado,
-            'abatido' => $abatido,
+                        'abatido' => $abatido,
             'saldo' => Dinheiro::centimos($fatura->valor_total) + $debitado - $recebido - $creditado - $abatido,
         ];
     }
