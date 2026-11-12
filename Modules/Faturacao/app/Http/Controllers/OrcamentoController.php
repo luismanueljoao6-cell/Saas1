@@ -69,6 +69,7 @@ class OrcamentoController extends Controller
     public function estado(Request $request, int $orcamento, OrcamentoService $service): RedirectResponse
     {
         $dados = $request->validate(['estado' => ['required', Rule::in(['enviado', 'aceite', 'recusado'])]]);
+
         try {
             $service->alterarEstado(Orcamento::query()->findOrFail($orcamento), $dados['estado']);
         } catch (\DomainException|\InvalidArgumentException $e) {

@@ -6,7 +6,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Support\Servico;
 use Modules\Faturacao\Models\Cliente;
-use Modules\Faturacao\Models\Orcamento;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\OrcamentoService;
 use Tests\TestCase;
