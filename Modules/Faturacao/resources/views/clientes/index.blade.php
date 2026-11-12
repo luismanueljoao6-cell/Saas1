@@ -39,6 +39,10 @@
                         <p class="text-sm font-medium text-slate-900">{{ $cliente->nome }}</p>
                         <p class="text-xs text-slate-500">{{ $cliente->nif ?? 'Consumidor final' }}</p>
                     </div>
+                    <a href="{{ route('faturacao.clientes.conta-corrente', $cliente) }}"
+                       class="text-xs font-medium text-indigo-600 hover:text-indigo-500">
+                        Conta corrente →
+                    </a>
                 </div>
             @empty
                 <p class="px-4 py-6 text-center text-sm text-slate-500">Ainda não tens clientes.</p>
