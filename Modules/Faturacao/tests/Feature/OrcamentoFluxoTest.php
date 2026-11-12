@@ -54,7 +54,7 @@ class OrcamentoFluxoTest extends TestCase
         try {
             $service->converter($orcamento->fresh(), $empresa, app(FaturaService::class));
             $this->fail('O orçamento não pode ser convertido duas vezes.');
-        } catch (\\DomainException) {
+        } catch (\DomainException) {
             $this->assertSame('convertido', $orcamento->fresh()->estado);
         }
     }
@@ -64,7 +64,7 @@ class OrcamentoFluxoTest extends TestCase
         [$empresaA, $clienteA] = $this->criarContexto('630000202');
         [$empresaB] = $this->criarContexto('630000203');
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         app(OrcamentoService::class)->criar($empresaB, $clienteA, [[
             'descricao' => 'Serviço',
             'quantidade' => '1',
@@ -82,11 +82,11 @@ class OrcamentoFluxoTest extends TestCase
         try {
             $service->criar($empresa, $cliente, [], null, null);
             $this->fail('Um orçamento vazio deve ser rejeitado.');
-        } catch (\\InvalidArgumentException $e) {
+        } catch (\InvalidArgumentException $e) {
             $this->assertSame('O orçamento deve conter entre 1 e 100 linhas.', $e->getMessage());
         }
 
-        $this->expectException(\\InvalidArgumentException::class);
+        $this->expectException(\InvalidArgumentException::class);
         $service->criar($empresa, $cliente, array_fill(0, 101, []), null, null);
     }
 
@@ -105,7 +105,7 @@ class OrcamentoFluxoTest extends TestCase
         $service->alterarEstado($orcamento, 'enviado');
         $service->alterarEstado($orcamento, 'recusado');
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         $service->alterarEstado($orcamento->fresh(), 'aceite');
     }
 
@@ -123,7 +123,7 @@ class OrcamentoFluxoTest extends TestCase
 
         $service->alterarEstado($orcamento, 'aceite');
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         $service->alterarEstado($orcamento->fresh(), 'enviado');
     }
 }
