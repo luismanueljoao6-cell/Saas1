@@ -8,6 +8,8 @@ use Modules\Core\Models\User;
 use Modules\Core\Support\Servico;
 use Modules\Faturacao\Models\CategoriaProduto;
 use Modules\Faturacao\Models\Produto;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 class ProdutoCatalogoTest extends TestCase
@@ -36,6 +38,16 @@ class ProdutoCatalogoTest extends TestCase
             'email' => 'catalogo@empresa.ao',
             'password' => 'Senha-Forte-123!',
         ]);
+
+        $registrar = app(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId($this->empresa->id);
+        $papel = Role::firstOrCreate([
+            'name' => 'Administrador',
+            'guard_name' => 'web',
+            'empresa_id' => $this->empresa->id,
+        ]);
+        $this->utilizador->assignRole($papel);
+        $registrar->setPermissionsTeamId(null);
     }
 
     public function test_cria_categoria_e_produto_com_codigo_de_barras(): void
