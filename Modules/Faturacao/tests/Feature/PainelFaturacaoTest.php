@@ -14,6 +14,12 @@ class PainelFaturacaoTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withoutVite();
+    }
+
     protected function criarEmpresaComUtilizador(string $nif, string $email): array
     {
         $empresa = Empresa::create(['nome_comercial' => 'Empresa '.$nif, 'nif' => $nif]);
