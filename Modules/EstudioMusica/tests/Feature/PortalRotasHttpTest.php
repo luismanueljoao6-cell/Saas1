@@ -109,6 +109,13 @@ class PortalRotasHttpTest extends TestCase
         $this->get($this->rota('versoes.reproduzir'))->assertStatus(503);
     }
 
+    public function test_contexto_tenant_do_portal_e_limpo_apos_a_resposta(): void
+    {
+        $this->get($this->paginaDoPortal())->assertOk();
+
+        $this->assertFalse(app(TenantManager::class)->has());
+    }
+
     public function test_comentar_cria_o_marcador_e_volta_ao_portal(): void
     {
         $this->post($this->rota('versoes.comentar'), ['tempo_segundos' => 83.45, 'comentario' => 'Mais graves aqui'])
