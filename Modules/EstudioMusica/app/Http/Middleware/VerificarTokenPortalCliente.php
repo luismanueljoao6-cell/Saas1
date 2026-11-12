@@ -52,13 +52,20 @@ class VerificarTokenPortalCliente
         $this->tenantManager->set($cliente->empresa_id);
         $request->attributes->set('cliente_portal', $cliente);
 
-        $resposta = $next($request);
+        try {
+            $resposta = $next($request);
 
-        // O token vive no URL: não pode vazar por Referer, cache nem motores de busca.
-        $resposta->headers->set('Referrer-Policy', 'no-referrer');
-        $resposta->headers->set('Cache-Control', 'private, no-store');
-        $resposta->headers->set('X-Robots-Tag', 'noindex, nofollow');
+            // O token vive no URL: não pode vazar por Referer, cache nem motores de busca.
+            $resposta->headers->set('Referrer-Policy', 'no-referrer');
+            $resposta->headers->set('Cache-Control', 'private, no-store');
+            $resposta->headers->set('X-Robots-Tag', 'noindex, nofollow');
 
-        return $resposta;
+            return $resposta;
+        } finally {
+            // O portal não usa a sessão de staff: o tenant e a identidade temporária
+            // só podem existir durante este pedido, inclusive quando há exceções.
+            $request->attributes->remove('cliente_portal');
+            $this->tenantManager->clear();
+        }
     }
 }
