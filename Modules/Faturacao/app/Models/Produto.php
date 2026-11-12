@@ -1,10 +1,11 @@
 <?php
 
-namespace Modules\Faturacao\Models;
+namespace Modules\\Faturacao\\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Modules\Core\Traits\BelongsToTenant;
+use Illuminate\\Database\\Eloquent\\Model;
+use Illuminate\\Database\\Eloquent\\Relations\\BelongsTo;
+use Illuminate\\Database\\Eloquent\\SoftDeletes;
+use Modules\\Core\\Traits\\BelongsToTenant;
 
 class Produto extends Model
 {
@@ -13,7 +14,9 @@ class Produto extends Model
 
     protected $fillable = [
         'empresa_id',
+        'categoria_id',
         'codigo',
+        'codigo_barras',
         'nome',
         'unidade',
         'preco_unitario',
@@ -28,6 +31,11 @@ class Produto extends Model
             'taxa_iva' => 'decimal:2',
             'ativo' => 'boolean',
         ];
+    }
+
+    public function categoria(): BelongsTo
+    {
+        return $this->belongsTo(CategoriaProduto::class, 'categoria_id');
     }
 
     public function taxaIvaEfetiva(): float

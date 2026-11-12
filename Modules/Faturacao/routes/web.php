@@ -32,6 +32,7 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao', 'p
 
         Route::get('/produtos', [ProdutoController::class, 'index'])->name('produtos.index');
         Route::post('/produtos', [ProdutoController::class, 'store'])->name('produtos.store');
+        Route::post('/produtos/categorias', [ProdutoController::class, 'storeCategoria'])->name('produtos.categorias.store');
 
         Route::get('/faturas', [FaturaController::class, 'index'])->name('faturas.index');
         Route::get('/faturas/criar', [FaturaController::class, 'criar'])->name('faturas.criar');
