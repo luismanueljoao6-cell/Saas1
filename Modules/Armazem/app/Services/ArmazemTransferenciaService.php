@@ -60,7 +60,7 @@ class ArmazemTransferenciaService
             $origemValidada = $armazens->get($origem->id);
             $destinoValidado = $armazens->get($destino->id);
 
-            if (! $origemValidada || ! $destinoValidado) {
+            if (!$origemValidada || ! $destinoValidado) {
                 throw new DomainException('Os dois armazéns devem pertencer à mesma empresa.');
             }
 
@@ -121,7 +121,7 @@ class ArmazemTransferenciaService
                 ]);
             }
 
-            return $transferencia->load(['origem', 'destino', 'linhas.produto']);
+            return $transferencia\n                ->setRelation('linhas', $this->obterLinhas($empresa, $transferencia, false))\n                ->load(['origem', 'destino']);
         }, attempts: 3);
     }
 
@@ -138,7 +138,7 @@ class ArmazemTransferenciaService
                 ->firstOrFail();
 
             if ($alvo->estado === 'em_transito') {
-                return $alvo->load('linhas');
+                return $alvo->setRelation('linhas', $this->obterLinhas($empresa, $alvo, false));
             }
 
             if ($alvo->estado !== 'rascunho') {
@@ -146,7 +146,7 @@ class ArmazemTransferenciaService
             }
 
             $this->validarUtilizador($empresa, $utilizadorId);
-            $linhas = $alvo->linhas()->orderBy('id')->lockForUpdate()->get();
+            $linhas = $this->obterLinhas($empresa, $alvo);
 
             if ($linhas->isEmpty()) {
                 throw new DomainException('Não é possível expedir uma transferência sem linhas.');
@@ -170,7 +170,7 @@ class ArmazemTransferenciaService
                 'expedido_em' => now(),
             ])->save();
 
-            return $alvo->load(['origem', 'destino', 'linhas.produto']);
+            return $alvo\n                ->setRelation('linhas', $linhas->load('produto'))\n                ->load(['origem', 'destino']);
         }, attempts: 3);
     }
 
