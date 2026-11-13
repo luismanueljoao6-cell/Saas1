@@ -111,7 +111,11 @@ class FormularioFaturaIsencaoTest extends TestCase
         $this->actingAs($this->admin)->get(route('faturacao.faturas.criar'))
             ->assertOk()
             ->assertSee('Motivo de isenção...')
-            ->assertSee('M13');
+            ->assertSee('M13')
+            ->assertSee('M24')
+            ->assertSee('alínea o) do artigo 12.º')
+            ->assertDontSee('M00')
+            ->assertDontSee('M94');
 
         config(['faturacao.taxas_iva_permitidas' => [14.0]]);
 
