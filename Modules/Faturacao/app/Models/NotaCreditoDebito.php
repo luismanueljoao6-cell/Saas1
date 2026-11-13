@@ -41,6 +41,7 @@ class NotaCreditoDebito extends Model implements DocumentoFiscalInterface
         'hash',
         'hash_anterior',
         'chave_versao',
+        'snapshot_fiscal',
     ];
 
     protected function casts(): array
@@ -51,6 +52,7 @@ class NotaCreditoDebito extends Model implements DocumentoFiscalInterface
             'valor_sem_iva' => 'decimal:2',
             'valor_iva' => 'decimal:2',
             'valor_total' => 'decimal:2',
+            'snapshot_fiscal' => 'array',
         ];
     }
 
