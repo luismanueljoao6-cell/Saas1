@@ -47,15 +47,15 @@ class OrcamentoService
     public function atualizarRascunho(Orcamento $orcamento, Cliente $cliente, array $linhas, ?string $validade, ?string $observacoes): Orcamento
     {
         if ((int) $cliente->empresa_id !== (int) $orcamento->empresa_id) {
-            throw new \\DomainException('O cliente não pertence a esta empresa.');
+            throw new \DomainException('O cliente não pertence a esta empresa.');
         }
 
         if (count($linhas) < 1 || count($linhas) > 100) {
-            throw new \\InvalidArgumentException('O orçamento deve conter entre 1 e 100 linhas.');
+            throw new \InvalidArgumentException('O orçamento deve conter entre 1 e 100 linhas.');
         }
 
-        if ($validade !== null && \\Illuminate\\Support\\Carbon::parse($validade)->startOfDay()->isBefore(today())) {
-            throw new \\DomainException('A data de validade não pode estar no passado.');
+        if ($validade !== null && \Illuminate\Support\Carbon::parse($validade)->startOfDay()->isBefore(today())) {
+            throw new \DomainException('A data de validade não pode estar no passado.');
         }
 
         ValidacaoLinhas::validar($linhas, (int) $orcamento->empresa_id);
@@ -68,7 +68,7 @@ class OrcamentoService
                 ->findOrFail($orcamento->id);
 
             if ($atual->estado !== 'rascunho' || $atual->fatura_id !== null) {
-                throw new \\DomainException('Só é possível editar orçamentos em rascunho.');
+                throw new \DomainException('Só é possível editar orçamentos em rascunho.');
             }
 
             $atual->update([
