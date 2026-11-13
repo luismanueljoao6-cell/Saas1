@@ -1,0 +1,105 @@
+<?php
+
+namespace Modules\Faturacao\Http\Controllers;
+
+use DomainException;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+use Illuminate\View\View;
+use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Models\Compra;
+use Modules\Faturacao\Models\Fornecedor;
+use Modules\Faturacao\Services\CompraService;
+
+class CompraController extends Controller
+{
+    public function index(Request $request): View
+    {
+        $dados = $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
+            'estado' => ['nullable', 'in:rascunho,recebida,cancelada'],
+        ]);
+
+        $compras = Compra::query()
+            ->with('fornecedor')
+            ->when($dados['q'] ?? null, function ($query, string $termo): void {
+                $query->where(function ($subquery) use ($termo): void {
+                    $subquery->where('numero', 'like', '%'.$termo.'%')
+                        ->orWhere('referencia_fornecedor', 'like', '%'.$termo.'%')
+                        ->orWhereHas('fornecedor', fn ($fornecedor) => $fornecedor->where('nome', 'like', '%'.$termo.'%'));
+                });
+            })
+            ->when($dados['estado'] ?? null, fn ($query, string $estado) => $query->where('estado', $estado))
+            ->latest('id')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('faturacao::compras.index', compact('compras'));
+    }
+
+    public function criar(): View
+    {
+        return view('faturacao::compras.criar', [
+            'fornecedores' => Fornecedor::query()->where('ativo', true)->orderBy('nome')->get(),
+            'produtos' => \Modules\Faturacao\Models\Produto::query()
+                ->where('ativo', true)->where('controla_stock', true)->orderBy('nome')->get(),
+        ]);
+    }
+
+    public function guardar(Request $request, CompraService $compras): RedirectResponse
+    {
+        $empresa = Empresa::query()->findOrFail($request->user()->empresa_id);
+        $empresaId = (int) $empresa->id;
+        $dados = $request->validate([
+            'fornecedor_id' => ['required', 'integer', 'exists:fornecedores,id'],
+            'data_documento' => ['required', 'date'],
+            'data_vencimento' => ['nullable', 'date', 'after_or_equal:data_documento'],
+            'referencia_fornecedor' => ['nullable', 'string', 'max:80'],
+            'observacoes' => ['nullable', 'string', 'max:2000'],
+            'linhas' => ['required', 'array', 'min:1', 'max:100'],
+            'linhas.*.produto_id' => ['required', 'integer', 'exists:produtos,id'],
+            'linhas.*.quantidade' => ['required', 'numeric', 'gt:0', 'max:99999999999.999'],
+            'linhas.*.preco_unitario' => ['required', 'numeric', 'min:0', 'max:999999999999.99'],
+            'linhas.*.taxa_iva' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        abort_unless(
+            Fornecedor::query()->where('empresa_id', $empresaId)->whereKey($dados['fornecedor_id'])->exists(),
+            404
+        );
+
+        foreach ($dados['linhas'] as $linha) {
+            abort_unless(
+                \Modules\Faturacao\Models\Produto::query()
+                    ->where('empresa_id', $empresaId)->where('controla_stock', true)
+                    ->whereKey($linha['produto_id'])->exists(),
+                404
+            );
+        }
+
+        $compra = $compras->criarRascunho($empresa, $dados, (int) $request->user()->id);
+
+        return to_route('faturacao.compras.mostrar', $compra)->with('sucesso', 'Compra registada como rascunho.');
+    }
+
+    public function mostrar(Compra $compra): View
+    {
+        return view('faturacao::compras.mostrar', [
+            'compra' => $compra->load('fornecedor', 'linhas.produto'),
+        ]);
+    }
+
+    public function receber(Request $request, Compra $compra, CompraService $compras): RedirectResponse
+    {
+        $empresa = Empresa::query()->findOrFail($request->user()->empresa_id);
+
+        try {
+            $compras->receber($empresa, $compra, (int) $request->user()->id);
+        } catch (DomainException $exception) {
+            return back()->withErrors(['compra' => $exception->getMessage()]);
+        }
+
+        return back()->with('sucesso', 'Compra recebida e stock atualizado.');
+    }
+}
