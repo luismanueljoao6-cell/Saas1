@@ -346,4 +346,69 @@ class CompraFornecedorTest extends TestCase
         ]);
     }
 
+
+    public function test_nao_permite_receber_compra_de_outra_empresa(): void
+    {
+        $outraEmpresa = Empresa::create([
+            'nome_comercial' => 'Empresa Receção Isolada',
+            'nif' => '630000323',
+        ]);
+        $fornecedor = Fornecedor::create([
+            'empresa_id' => $outraEmpresa->id,
+            'nome' => 'Fornecedor Externo para Receção',
+            'pais' => 'AO',
+            'ativo' => true,
+        ]);
+        $produto = Produto::create([
+            'empresa_id' => $outraEmpresa->id,
+            'nome' => 'Produto da Empresa Externa',
+            'unidade' => 'un',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '0',
+            'ativo' => true,
+            'controla_stock' => true,
+        ]);
+        $compra = Compra::withoutGlobalScopes()->create([
+            'empresa_id' => $outraEmpresa->id,
+            'fornecedor_id' => $fornecedor->id,
+            'numero' => 'CMP-OUTRA-EMPRESA-002',
+            'data_documento' => today()->toDateString(),
+            'estado' => 'rascunho',
+            'subtotal' => '200.00',
+            'total_iva' => '0.00',
+            'total' => '200.00',
+            'total_pago' => '0.00',
+            'estado_pagamento' => 'pendente',
+        ]);
+        $compra->linhas()->create([
+            'empresa_id' => $outraEmpresa->id,
+            'produto_id' => $produto->id,
+            'descricao' => $produto->nome,
+            'quantidade' => '2.000',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '0.00',
+            'subtotal' => '200.00',
+            'valor_iva' => '0.00',
+            'total' => '200.00',
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.receber', $compra))
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('compras', [
+            'id' => $compra->id,
+            'empresa_id' => $outraEmpresa->id,
+            'estado' => 'rascunho',
+        ]);
+        $this->assertDatabaseMissing('stock_saldos', [
+            'empresa_id' => $outraEmpresa->id,
+            'produto_id' => $produto->id,
+        ]);
+        $this->assertDatabaseMissing('stock_movimentos', [
+            'empresa_id' => $outraEmpresa->id,
+            'produto_id' => $produto->id,
+        ]);
+    }
+
 }
