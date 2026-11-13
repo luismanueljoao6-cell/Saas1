@@ -111,6 +111,26 @@
                                     <td colspan="6" class="px-4 py-4">
                                         <details class="group">
                                             <summary class="cursor-pointer text-sm font-semibold text-indigo-700 dark:text-indigo-300">Registar receção parcial ou finalizar · {{ $transferencia->linhas->count() }} linha(s)</summary>
+                                            @if ($transferencia->rececoes->isNotEmpty())
+                                                <div class="mt-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                                                    <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">Histórico de receções</h4>
+                                                    <div class="mt-2 space-y-2">
+                                                        @foreach ($transferencia->rececoes->sortByDesc('created_at') as $rececao)
+                                                            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2 text-xs last:border-0 last:pb-0 dark:border-zinc-800">
+                                                                <div><strong class="text-slate-800 dark:text-zinc-200">TRC-{{ $rececao->id }}</strong><span class="ml-2 text-slate-500">{{ $rececao->created_at?->format('d/m/Y H:i') }} · {{ $rececao->utilizador?->name ?? 'Utilizador removido' }}</span></div>
+                                                                <span class="rounded-full px-2 py-1 {{ $rececao->finalizada ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' }}">{{ $rececao->finalizada ? 'Finalizada' : 'Parcial' }}</span>
+                                                            </div>
+                                                            @if ($rececao->linhas->isNotEmpty())
+                                                                <div class="ml-2 text-[11px] text-slate-500 dark:text-zinc-400">
+                                                                    @foreach ($rececao->linhas as $rececaoLinha)
+                                                                        <span class="mr-3">{{ $rececaoLinha->linhaTransferencia?->produto?->nome ?? 'Produto' }}: +{{ number_format((float) $rececaoLinha->quantidade_recebida, 3, ',', '.') }} recebido · {{ number_format((float) $rececaoLinha->quantidade_em_falta, 3, ',', '.') }} falta · {{ number_format((float) $rececaoLinha->quantidade_danificada, 3, ',', '.') }} danificado</span>
+                                                                    @endforeach
+                                                                </div>
+                                                            @endif
+                                                        @endforeach
+                                                    </div>
+                                                </div>
+                                            @endif
                                             <form method="POST" action="{{ route('armazem.transferencias.recepcao-parcial', $transferencia) }}" class="mt-4 space-y-3">
                                                 @csrf
                                                 <input type="hidden" name="chave_idempotencia" value="{{ $chavesRececao[$transferencia->id] }}">
