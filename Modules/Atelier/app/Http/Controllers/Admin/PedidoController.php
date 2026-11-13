@@ -56,6 +56,7 @@ class PedidoController extends Controller
 
         return view('atelier::pedidos.index', [
             'pedidos' => $query->paginate(20)->withQueryString(),
+            'podeGerir' => $this->podeGerir(),
         ]);
     }
 
