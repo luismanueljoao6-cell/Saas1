@@ -280,15 +280,17 @@ class ArmazemTransferenciaService
         }
 
         $normalizadas = [];
+        $vistos = [];
         foreach ($linhas as $linha) {
             $linhaId = (int) ($linha['linha_id'] ?? 0);
             $recebida = $this->normalizarQuantidade((string) ($linha['quantidade_recebida'] ?? '0'));
             $falta = $this->normalizarQuantidade((string) ($linha['quantidade_em_falta'] ?? '0'));
             $danificada = $this->normalizarQuantidade((string) ($linha['quantidade_danificada'] ?? '0'));
 
-            if ($linhaId <= 0 || isset($normalizadas[$linhaId])) {
+            if ($linhaId <= 0 || isset($vistos[$linhaId])) {
                 throw new InvalidArgumentException('As linhas da receção devem ser válidas e não repetidas.');
             }
+            $vistos[$linhaId] = true;
 
             if (($recebida + $falta + $danificada) <= 0) {
                 continue;
