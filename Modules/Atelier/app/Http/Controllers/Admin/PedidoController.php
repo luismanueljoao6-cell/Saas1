@@ -4,6 +4,7 @@ namespace Modules\Atelier\Http\Controllers\Admin;
 
 use DomainException;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -34,17 +35,27 @@ class PedidoController extends Controller
         protected PortalLinkService $portalLinkService,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $query = Pedido::with(['cliente', 'responsavel'])->latest('id');
+        $dados = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $query = Pedido::with(['cliente', 'responsavel'])
+            ->when($dados['q'] ?? null, function ($subquery, string $termo): void {
+                $termo = trim($termo);
+                $subquery->where(function ($filtro) use ($termo): void {
+                    $filtro->where('descricao', 'like', "%{$termo}%")
+                        ->orWhere('status', 'like', "%{$termo}%")
+                        ->orWhereHas('cliente', fn ($cliente) => $cliente->where('nome', 'like', "%{$termo}%"));
+                });
+            })
+            ->latest('id');
 
         // A Costureira só vê os pedidos que lhe estão atribuídos.
         if (! $this->podeGerir()) {
-            $query->where('responsavel_id', request()->user()->id);
+            $query->where('responsavel_id', $request->user()->id);
         }
 
         return view('atelier::pedidos.index', [
-            'pedidos' => $query->paginate(20),
+            'pedidos' => $query->paginate(20)->withQueryString(),
         ]);
     }
 
