@@ -6,10 +6,16 @@
     <div class="w-full max-w-7xl">
         <div class="flex items-center justify-between">
             <h1 class="text-xl font-semibold text-slate-900 dark:text-zinc-100">Faturas</h1>
-            <a href="{{ route('faturacao.faturas.criar') }}"
-               class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
-                Nova fatura
-            </a>
+            @if ($podeCriarFaturas)
+                <a href="{{ route('faturacao.faturas.criar') }}"
+                   class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+                    Nova fatura
+                </a>
+            @else
+                <span class="rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200" role="status">
+                    Emissão suspensa — regulariza a subscrição
+                </span>
+            @endif
         </div>
 
         <form method="GET" action="{{ route('faturacao.faturas.index') }}" role="search" class="mt-4 flex flex-col gap-2 sm:flex-row">
