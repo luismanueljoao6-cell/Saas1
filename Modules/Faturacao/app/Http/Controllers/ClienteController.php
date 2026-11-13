@@ -2,9 +2,11 @@
 
 namespace Modules\Faturacao\Http\Controllers;
 
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\View\View;
+use Modules\Faturacao\Http\Requests\GuardarClienteRequest;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Services\ContaCorrenteClienteService;
 
@@ -47,7 +49,7 @@ class ClienteController extends Controller
         ]);
     }
 
-    public function store(\Modules\Faturacao\Http\Requests\GuardarClienteRequest $request): \Illuminate\Http\RedirectResponse
+    public function store(GuardarClienteRequest $request): RedirectResponse
     {
         Cliente::create([
             ...$request->validated(),
