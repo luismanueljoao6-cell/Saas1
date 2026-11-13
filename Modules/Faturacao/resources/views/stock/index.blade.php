@@ -9,6 +9,25 @@
             <p class="mt-1 text-sm text-slate-500 dark:text-zinc-400">Regista entradas, saídas e contagens físicas dos produtos que controlam stock.</p>
         </div>
 
+        <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <article class="rounded-lg border border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <p class="text-xs text-slate-500 dark:text-zinc-400">Produtos com stock</p>
+                <p class="mt-1 text-2xl font-semibold text-slate-900 dark:text-zinc-100">{{ $indicadores['produtos'] }}</p>
+            </article>
+            <article class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
+                <p class="text-xs text-amber-700 dark:text-amber-300">Abaixo do mínimo</p>
+                <p class="mt-1 text-2xl font-semibold text-amber-800 dark:text-amber-200">{{ $indicadores['stock_baixo'] }}</p>
+            </article>
+            <article class="rounded-lg border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950/30">
+                <p class="text-xs text-rose-700 dark:text-rose-300">Sem stock</p>
+                <p class="mt-1 text-2xl font-semibold text-rose-800 dark:text-rose-200">{{ $indicadores['sem_stock'] }}</p>
+            </article>
+            <article class="rounded-lg border border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <p class="text-xs text-slate-500 dark:text-zinc-400">Movimentos hoje</p>
+                <p class="mt-1 text-2xl font-semibold text-slate-900 dark:text-zinc-100">{{ $indicadores['movimentos_hoje'] }}</p>
+            </article>
+        </div>
+
         @if (session('sucesso'))
             <div class="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ session('sucesso') }}</div>
         @endif
@@ -79,13 +98,27 @@
 
         <section class="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:bg-zinc-900 dark:border-zinc-800">
             <h2 class="px-4 py-3 font-semibold text-slate-900 dark:text-zinc-100">Histórico de movimentos</h2>
-            <form method="GET" action="{{ route('faturacao.stock.index') }}" role="search" class="flex flex-col gap-2 px-4 pb-3 sm:flex-row">
+            <form method="GET" action="{{ route('faturacao.stock.index') }}" role="search" class="grid grid-cols-1 gap-2 px-4 pb-3 sm:grid-cols-2 lg:grid-cols-5">
                 <label for="pesquisa-stock" class="sr-only">Pesquisar movimentos de stock</label>
                 <input id="pesquisa-stock" type="search" name="q" value="{{ request('q') }}" maxlength="100" placeholder="Produto ou motivo do movimento" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:max-w-md">
-                <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">Pesquisar</button>
-                @if (request()->filled('q'))
-                    <a href="{{ route('faturacao.stock.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-center text-sm dark:border-zinc-700 dark:text-zinc-300">Limpar</a>
-                @endif
+                <select name="tipo" aria-label="Tipo de movimento" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
+                    <option value="">Todos os tipos</option>
+                    <option value="entrada" @selected(request('tipo') === 'entrada')>Entradas</option>
+                    <option value="saida" @selected(request('tipo') === 'saida')>Saídas</option>
+                    <option value="ajuste" @selected(request('tipo') === 'ajuste')>Ajustes</option>
+                </select>
+                <label class="grid gap-1 text-xs text-slate-500">Desde
+                    <input type="date" name="data_inicio" value="{{ request('data_inicio') }}" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
+                </label>
+                <label class="grid gap-1 text-xs text-slate-500">Até
+                    <input type="date" name="data_fim" value="{{ request('data_fim') }}" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
+                </label>
+                <div class="flex gap-2">
+                    <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">Filtrar</button>
+                    @if (request()->anyFilled(['q', 'tipo', 'data_inicio', 'data_fim']))
+                        <a href="{{ route('faturacao.stock.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-center text-sm dark:border-zinc-700 dark:text-zinc-300">Limpar</a>
+                    @endif
+                </div>
             </form>
             <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-800">
                 <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-zinc-950 dark:text-zinc-400"><tr><th class="px-4 py-3">Data</th><th class="px-4 py-3">Produto</th><th class="px-4 py-3">Tipo</th><th class="px-4 py-3">Variação</th><th class="px-4 py-3">Saldo final</th><th class="px-4 py-3">Motivo</th></tr></thead>
