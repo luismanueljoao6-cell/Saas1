@@ -6,6 +6,8 @@ use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Illuminate\View\View;
 use Modules\Armazem\Models\Armazem;
 use Modules\Armazem\Models\ArmazemTransferencia;
@@ -122,7 +124,7 @@ class ArmazemTransferenciaController extends Controller
                 $dados['chave_idempotencia'],
                 (int) $request->user()->id
             );
-        } catch (DomainException | \\InvalidArgumentException $exception) {
+        } catch (DomainException | InvalidArgumentException $exception) {
             return back()->with('erro', $exception->getMessage());
         }
 
