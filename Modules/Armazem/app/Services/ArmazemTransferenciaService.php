@@ -301,7 +301,7 @@ class ArmazemTransferenciaService
             ];
         }
 
-        if ($normalizadas === []) {
+        if ($normalizadas === [] && ! $finalizar) {
             throw new InvalidArgumentException('Regista uma quantidade recebida, em falta ou danificada.');
         }
 
