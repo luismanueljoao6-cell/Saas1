@@ -128,7 +128,7 @@ class ArmazemTransferenciaController extends Controller
             return back()->with('erro', $exception->getMessage());
         }
 
-        if (empty($dados['finalizar']) === false) {
+        if ((bool) ($dados['finalizar'] ?? false)) {
             return back()->with('sucesso', 'Receção finalizada. As divergências ficaram registadas e não foram adicionadas ao stock.');
         }
 
