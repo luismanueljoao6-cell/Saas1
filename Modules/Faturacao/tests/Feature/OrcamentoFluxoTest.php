@@ -168,7 +168,7 @@ class OrcamentoFluxoTest extends TestCase
         ]], null, null);
         $service->alterarEstado($orcamento, 'aceite');
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         $service->atualizarRascunho($orcamento->fresh(), $cliente, [[
             'descricao' => 'Tentativa de alteração',
             'quantidade' => '1',
@@ -190,7 +190,7 @@ class OrcamentoFluxoTest extends TestCase
             'operation_type' => 'SG',
         ]], null, null);
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         app(OrcamentoService::class)->atualizarRascunho($orcamento, $clienteB, [[
             'descricao' => 'Serviço',
             'quantidade' => '1',
