@@ -92,6 +92,9 @@ class CompraFornecedorTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame('rascunho', $compra->estado);
+        $this->assertSame('9200.00', (string) $compra->subtotal);
+        $this->assertSame('1288.00', (string) $compra->total_iva);
+        $this->assertSame('10488.00', (string) $compra->total);
         $this->assertSame('0.000', (string) ($produto->stockSaldo()->value('quantidade') ?? '0.000'));
 
         $this->actingAs($this->utilizador)
