@@ -112,7 +112,7 @@ O PR #39 não altera ainda o stock legado. A primeira entrega multi-armazém dev
 
 ## Fase de transferências — implementação inicial
 
-Foi acrescentada a primeira implementação do ciclo de vida de transferências, ainda sem ativação na interface operacional:
+Foi acrescentada a primeira implementação do ciclo de vida de transferências, incluindo uma interface web operacional inicial:
 
 - Tabelas `armazem_transferencias` e `armazem_transferencia_linhas`, com origem/destino, empresa, responsáveis, estado, datas e quantidades.
 - Estados: `rascunho`, `em_transito`, `recebida` e `cancelada`.
@@ -126,8 +126,8 @@ Foi acrescentada a primeira implementação do ciclo de vida de transferências,
 ### Limitações ainda abertas
 
 - A receção é integral; não existe receção parcial nem registo de divergências nesta fase.
-- Ainda falta interface web para criar, listar, expedir e receber transferências.
-- Ainda falta impedir a inativação de um armazém com transferências em trânsito.
+- A interface web inicial já permite criar transferências com várias linhas, consultar histórico, expedir, receber e cancelar rascunhos; ainda precisa de revisão visual e de usabilidade em telemóvel.
+- A inativação de armazéns de origem/destino está bloqueada enquanto existir transferência em trânsito associada.
 - Ainda falta política para devolução/compensação depois da expedição.
 - O saldo legado da Faturação continua separado e não foi alterado.
 - Esta implementação só deve ser ativada após CI verde e revisão visual/funcional.
