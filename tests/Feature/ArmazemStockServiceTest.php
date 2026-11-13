@@ -137,12 +137,12 @@ class ArmazemStockServiceTest extends TestCase
             $this->assertSame('Não é possível movimentar stock num armazém inativo.', $exception->getMessage());
         }
 
-        [$outraEmpresa, $outroArmazem, $outroProduto] = $this->preparar('630100108');
-        $armazemAtivo = app(ArmazemService::class)->obterPrincipal($outraEmpresa);
+        $armazemAtivo = app(ArmazemService::class)->criar($empresa, 'ATIVO-02', 'Armazém ativo');
+        [, , $outroProduto] = $this->preparar('630100108');
 
-        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+        $this->expectException(ModelNotFoundException::class);
         app(ArmazemStockService::class)->entrada(
-            $empresa, $armazem, $outroProduto, '1.000', 'Produto de outra empresa'
+            $empresa, $armazemAtivo, $outroProduto, '1.000', 'Produto de outra empresa'
         );
     }
 
