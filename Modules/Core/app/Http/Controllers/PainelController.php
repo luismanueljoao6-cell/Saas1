@@ -120,7 +120,7 @@ class PainelController extends Controller
                 'valor' => $temLimiteUtilizadores && $limiteUtilizadores !== null
                     ? $utilizadoresAtivos.' / '.(int) $limiteUtilizadores
                     : ($temLimiteUtilizadores ? $utilizadoresAtivos.' / ∞' : number_format($utilizadoresAtivos, 0, ',', ' ')),
-                'nota' => ! $temLimiteUtilizadores
+                'nota' => !$temLimiteUtilizadores
                     ? 'Limite não definido no snapshot da subscrição'
                     : ($limiteUtilizadores === null ? 'Plano sem limite de utilizadores' : 'Utilizadores ativos'),
                 'icone' => 'medidor',
