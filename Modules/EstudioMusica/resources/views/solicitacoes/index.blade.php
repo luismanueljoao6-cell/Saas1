@@ -5,11 +5,11 @@
 @section('conteudo')
 @include('estudiomusica::partials.erros')
 <div class="space-y-6">
-    <h1 class="text-lg font-semibold text-slate-900">Pedidos de Orçamento (landing page)</h1>
+    <h1 class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Pedidos de Orçamento (landing page)</h1>
 
-    <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table class="min-w-full divide-y divide-slate-200 text-sm">
-            <thead class="bg-slate-50 text-left text-xs font-medium uppercase text-slate-500">
+    <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:bg-zinc-900 dark:border-zinc-800">
+        <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-800">
+            <thead class="bg-slate-50 text-left text-xs font-medium uppercase text-slate-500 dark:bg-zinc-950 dark:text-zinc-400">
                 <tr>
                     <th class="px-4 py-2">Nome</th>
                     <th class="px-4 py-2">Contacto</th>
@@ -21,20 +21,20 @@
                     <th class="px-4 py-2"></th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-zinc-800">
                 @forelse ($solicitacoes as $solicitacao)
                     <tr>
-                        <td class="px-4 py-2 font-medium text-slate-900">{{ $solicitacao->nome }}</td>
-                        <td class="px-4 py-2 text-slate-600">{{ $solicitacao->email }} {{ $solicitacao->telefone }}</td>
-                        <td class="px-4 py-2 text-slate-600">{{ config('estudiomusica.tipos_servico.'.$solicitacao->tipo_servico_desejado, '—') }}</td>
-                        <td class="px-4 py-2 text-slate-600">{{ \Illuminate\Support\Str::limit($solicitacao->mensagem, 60) }}</td>
+                        <td class="px-4 py-2 font-medium text-slate-900 dark:text-zinc-100">{{ $solicitacao->nome }}</td>
+                        <td class="px-4 py-2 text-slate-600 dark:text-zinc-300">{{ $solicitacao->email }} {{ $solicitacao->telefone }}</td>
+                        <td class="px-4 py-2 text-slate-600 dark:text-zinc-300">{{ config('estudiomusica.tipos_servico.'.$solicitacao->tipo_servico_desejado, '—') }}</td>
+                        <td class="px-4 py-2 text-slate-600 dark:text-zinc-300">{{ \Illuminate\Support\Str::limit($solicitacao->mensagem, 60) }}</td>
                         <td class="px-4 py-2 text-xs {{ $solicitacao->aceita_marketing ? 'text-emerald-700' : 'text-slate-400' }}">{{ $solicitacao->aceita_marketing ? 'Aceitou' : 'Não' }}</td>
-                        <td class="px-4 py-2 text-xs text-slate-500">{{ $solicitacao->created_at->format('d/m/Y H:i') }}</td>
+                        <td class="px-4 py-2 text-xs text-slate-500 dark:text-zinc-400">{{ $solicitacao->created_at->format('d/m/Y H:i') }}</td>
                         <td class="px-4 py-2">
                             <form method="POST" action="{{ route('estudiomusica.solicitacoes.estado', $solicitacao) }}">
                                 @csrf
                                 @method('PUT')
-                                <select name="estado" onchange="this.form.submit()" class="rounded-md border-slate-300 text-xs">
+                                <select name="estado" onchange="this.form.submit()" class="rounded-md border-slate-300 text-xs dark:border-zinc-700">
                                     @foreach (['pendente', 'contactado', 'convertido', 'descartado'] as $estado)
                                         <option value="{{ $estado }}" @selected($solicitacao->estado === $estado)>{{ ucfirst($estado) }}</option>
                                     @endforeach
@@ -45,13 +45,13 @@
                             @if ($solicitacao->estado !== 'convertido')
                                 <form method="POST" action="{{ route('estudiomusica.solicitacoes.converter', $solicitacao) }}">
                                     @csrf
-                                    <button type="submit" class="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Converter em cliente</button>
+                                    <button type="submit" class="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-zinc-700">Converter em cliente</button>
                                 </form>
                             @endif
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="8" class="px-4 py-6 text-center text-slate-500">Ainda sem pedidos recebidos.</td></tr>
+                    <tr><td colspan="8" class="px-4 py-6 text-center text-slate-500 dark:text-zinc-400">Ainda sem pedidos recebidos.</td></tr>
                 @endforelse
             </tbody>
         </table>
