@@ -144,6 +144,7 @@ class NotaCreditoDebitoService
             // Uma NC herda o fundamento histórico da fatura; não pode ser bloqueada
             // porque a empresa desativou entretanto esse motivo nos novos documentos.
             verificarMotivoAtivo: $tipo !== 'credito',
+            verificarMotivoConfirmado: $tipo !== 'credito',
         );
 
         if ($debitoSemIva) {
