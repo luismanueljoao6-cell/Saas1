@@ -60,7 +60,7 @@
                         [$inteira, $decimal] = explode('.', $total);
                     @endphp
                     <td class="px-4 py-3 text-right font-medium">{{ number_format((int) $inteira, 0, ',', ' ') }},{{ $decimal }} AOA</td>
-                    <td class="px-4 py-3"><span class="rounded-full px-2 py-1 text-xs font-semibold {{ $estadoClasses[$orcamento->estado] ?? 'bg-slate-100 text-slate-700' }}">{{ ucfirst($orcamento->estado) }}</span></td>
+                    <td class="px-4 py-3"><span class="rounded-full px-2 py-1 text-xs font-semibold {{ $expirado ? 'bg-orange-100 text-orange-800' : ($estadoClasses[$orcamento->estado] ?? 'bg-slate-100 text-slate-700') }}">{{ $expirado ? 'Expirado' : ucfirst($orcamento->estado) }}</span></td>
                     <td class="px-4 py-3">
                         <div class="flex min-w-44 flex-wrap gap-x-3 gap-y-2">
                             <a href="{{ route('faturacao.orcamentos.mostrar', $orcamento->id) }}" class="text-indigo-600">Ver</a>
