@@ -155,7 +155,7 @@ class IsencaoIvaTest extends TestCase
 
     public function test_codigo_m00_de_regime_nao_pode_ser_usado_como_isencao_de_linha(): void
     {
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('enquadramento de regime');
 
         app(FaturaService::class)->criarRascunho(
