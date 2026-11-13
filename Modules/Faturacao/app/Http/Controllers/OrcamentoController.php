@@ -32,6 +32,22 @@ class OrcamentoController extends Controller
         ]);
     }
 
+    public function mostrar(Request $request, int $orcamento): View
+    {
+        $empresa = $request->user()->empresa;
+        abort_if($empresa === null, 403);
+
+        $documento = Orcamento::query()
+            ->with('cliente')
+            ->where('empresa_id', $empresa->id)
+            ->findOrFail($orcamento);
+
+        return view('faturacao::orcamentos.mostrar', [
+            'orcamento' => $documento,
+            'empresa' => $empresa,
+        ]);
+    }
+
     public function guardar(Request $request, OrcamentoService $service): RedirectResponse
     {
         $empresa = $request->user()->empresa;
