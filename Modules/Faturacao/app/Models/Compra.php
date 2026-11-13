@@ -14,7 +14,7 @@ class Compra extends Model
     protected $fillable = [
         'empresa_id', 'fornecedor_id', 'numero', 'data_documento',
         'data_vencimento', 'referencia_fornecedor', 'estado', 'subtotal',
-        'total_iva', 'total', 'observacoes', 'criado_por', 'recebida_em',
+        'total_iva', 'total', 'total_pago', 'estado_pagamento', 'observacoes', 'criado_por', 'recebida_em',
     ];
 
     protected function casts(): array
@@ -26,6 +26,7 @@ class Compra extends Model
             'subtotal' => 'decimal:2',
             'total_iva' => 'decimal:2',
             'total' => 'decimal:2',
+            'total_pago' => 'decimal:2',
         ];
     }
 
@@ -37,5 +38,10 @@ class Compra extends Model
     public function linhas(): HasMany
     {
         return $this->hasMany(CompraLinha::class);
+    }
+
+    public function pagamentos(): HasMany
+    {
+        return $this->hasMany(CompraPagamento::class)->orderBy('data_pagamento')->orderBy('id');
     }
 }
