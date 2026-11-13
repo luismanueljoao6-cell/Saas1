@@ -28,7 +28,7 @@
                 <option value="emitida" @selected(request('estado') === 'emitida')>Emitida</option>
             </select>
             <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-900">Pesquisar</button>
-            @if (request()->filled('q'))
+            @if (request()->anyFilled(['q', 'estado']))
                 <a href="{{ route('faturacao.faturas.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-600 dark:border-zinc-700 dark:text-zinc-300">Limpar</a>
             @endif
         </form>
