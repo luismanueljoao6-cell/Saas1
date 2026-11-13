@@ -242,7 +242,7 @@ class OrcamentoFluxoTest extends TestCase
         [$empresaB, $clienteB] = $this->criarContexto('630000213');
         app(TenantManager::class)->set((int) $empresaB->id);
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         app(OrcamentoService::class)->duplicar($origem, $empresaA, $clienteB);
     }
 
