@@ -144,6 +144,7 @@ class RascunhoFaturaTest extends TestCase
 
         $this->assertDatabaseCount('notas_credito_debito', 0);
     }
+
     public function test_emissao_de_ft_baixa_stock_apenas_uma_vez(): void
     {
         [$empresa, $cliente] = $this->cenario('630000009');
