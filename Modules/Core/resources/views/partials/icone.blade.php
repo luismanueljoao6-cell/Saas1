@@ -2,6 +2,7 @@
     $nome = $nome ?? 'circulo';
     $classe = $classe ?? 'size-5';
     $paths = [
+        'painel' => 'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z',
         'fechar' => 'M6 6l12 12M18 6L6 18',
         'mais' => 'M12 5v14M5 12h14',
         'dinheiro' => 'M12 8c-2 0-3 1-3 2s1 2 3 2 3 1 3 2-1 2-3 2m0-10v12M21 12a9 9 0 11-18 0 9 9 0 0118 0',
