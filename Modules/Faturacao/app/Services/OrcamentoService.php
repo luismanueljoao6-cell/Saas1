@@ -83,6 +83,44 @@ class OrcamentoService
         }, attempts: 3);
     }
 
+    /**
+     * Cria uma nova proposta comercial a partir de outra, sem reutilizar
+     * número, estado, fatura associada ou identidade do documento original.
+     */
+    public function duplicar(Orcamento $origem, Empresa $empresa, ?Cliente $cliente = null, ?string $validade = null): Orcamento
+    {
+        return DB::transaction(function () use ($origem, $empresa, $cliente, $validade) {
+            $atual = Orcamento::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->lockForUpdate()
+                ->findOrFail($origem->id);
+
+            if ($cliente !== null && (int) $cliente->empresa_id !== (int) $empresa->id) {
+                throw new \\DomainException('O cliente selecionado não pertence a esta empresa.');
+            }
+
+            $clienteFinal = $cliente ?? Cliente::query()
+                ->where('empresa_id', $empresa->id)
+                ->findOrFail($atual->cliente_id);
+
+            $linhas = array_values($atual->linhas ?? []);
+            ValidacaoLinhas::validar($linhas, (int) $empresa->id);
+            $totais = $this->totais($linhas);
+
+            return Orcamento::create([
+                'empresa_id' => $empresa->id,
+                'cliente_id' => $clienteFinal->id,
+                'numero' => 'ORC-'.now()->format('Ymd').'-'.Str::upper(Str::random(8)),
+                'estado' => 'rascunho',
+                'data_validade' => $validade,
+                'linhas' => $linhas,
+                ...$totais,
+                'observacoes' => $atual->observacoes,
+                'fatura_id' => null,
+            ]);
+        }, attempts: 3);
+    }
+
     public function alterarEstado(Orcamento $orcamento, string $estado): Orcamento
     {
         if (! in_array($estado, ['enviado', 'aceite', 'recusado'], true)) {
