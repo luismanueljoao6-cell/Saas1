@@ -9,6 +9,8 @@ use InvalidArgumentException;
 use Modules\Armazem\Models\Armazem;
 use Modules\Armazem\Models\ArmazemTransferencia;
 use Modules\Armazem\Models\ArmazemTransferenciaLinha;
+use Modules\Armazem\Models\ArmazemTransferenciaRececao;
+use Modules\Armazem\Models\ArmazemTransferenciaRececaoLinha;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
@@ -326,7 +328,7 @@ class ArmazemTransferenciaService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $rececaoExistente = \Modules\Armazem\Models\ArmazemTransferenciaRececao::withoutGlobalScopes()
+            $rececaoExistente = ArmazemTransferenciaRececao::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
                 ->where('chave_idempotencia', $chaveIdempotencia)
                 ->first();
@@ -397,7 +399,7 @@ class ArmazemTransferenciaService
             foreach ($normalizadas as $linhaId => $quantidades) {
                 $linha = $porId->get($linhaId);
 
-                \Modules\Armazem\Models\ArmazemTransferenciaRececaoLinha::create([
+                ArmazemTransferenciaRececaoLinha::create([
                     'empresa_id' => $empresa->id,
                     'rececao_id' => $rececao->id,
                     'transferencia_linha_id' => $linha->id,
