@@ -120,7 +120,6 @@ class CompraService
         }, attempts: 3);
     }
 
-
     public function registarPagamento(Empresa $empresa, Compra $compra, array $dados, int $utilizadorId): CompraPagamento
     {
         return DB::transaction(function () use ($empresa, $compra, $dados, $utilizadorId): CompraPagamento {
