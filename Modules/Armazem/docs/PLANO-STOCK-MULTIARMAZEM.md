@@ -123,9 +123,23 @@ Foi acrescentada a primeira implementação do ciclo de vida de transferências,
 - As operações são transacionais e bloqueiam a empresa, transferência e linhas para serializar alterações concorrentes.
 - Testes acrescentados para fluxo completo, stock insuficiente com rollback, repetição idempotente, cancelamento, tenant e validação de armazéns/quantidades.
 
+### Receção parcial e divergências — fase implementada em desenvolvimento
+
+A transferência passa a admitir várias sessões de receção, com histórico imutável por evento:
+
+- Cada evento tem chave de idempotência única por empresa e hash do payload; repetir a mesma chave com os mesmos dados não duplica movimentos, e reutilizá-la com outros dados é recusado.
+- Cada linha acumula quantidades recebidas, em falta e danificadas, sem ultrapassar a quantidade expedida.
+- Apenas a quantidade efetivamente recebida gera entrada no stock do destino.
+- Quantidades em falta e danificadas ficam registadas no histórico e nunca são creditadas no destino.
+- Uma receção pode ficar parcialmente recebida e continuar em trânsito.
+- A finalização exige que toda a quantidade expedida esteja classificada como recebida, em falta ou danificada.
+- O estado final distingue receção sem divergências de receção com divergências.
+- O botão de receção integral existente passa a receber apenas o remanescente ainda não classificado.
+- Armazéns associados a transferências parcialmente recebidas continuam protegidos contra inativação.
+
 ### Limitações ainda abertas
 
-- A receção é integral; não existe receção parcial nem registo de divergências nesta fase.
+- Não existe ainda um fluxo formal de investigação e resolução posterior de faltas/danos, nem compensação ou devolução após a expedição.
 - A interface web inicial já permite criar transferências com várias linhas, consultar histórico, expedir, receber e cancelar rascunhos; ainda precisa de revisão visual e de usabilidade em telemóvel.
 - A inativação de armazéns de origem/destino está bloqueada enquanto existir transferência em trânsito associada.
 - Ainda falta política para devolução/compensação depois da expedição.
