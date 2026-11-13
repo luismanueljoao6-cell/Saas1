@@ -2,6 +2,7 @@
 
 namespace Modules\Faturacao\Support;
 
+use Illuminate\Support\Facades\Schema;
 use Modules\Core\Models\Empresa;
 
 /**
@@ -14,13 +15,23 @@ final class ConfiguracaoFiscalEmpresa
     /** @return array<string, mixed> */
     public static function obter(int $empresaId): array
     {
-        $empresa = Empresa::withoutGlobalScopes()->find($empresaId);
+        $catalogo = (array) config('faturacao.motivos_isencao', []);
+        $codigosElegiveis = array_keys(array_filter(
+            $catalogo,
+            fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true),
+        ));
+
+        // Alguns testes isolados do módulo Faturação não carregam as migrações do Core.
+        // Nesse cenário, usa-se apenas o catálogo global; em produção a tabela existe.
+        $empresa = Schema::hasTable('empresas')
+            ? Empresa::withoutGlobalScopes()->find($empresaId)
+            : null;
         $configuracao = (array) data_get($empresa?->configuracoes, 'faturacao', []);
 
         return [
             'regime_iva' => $configuracao['regime_iva'] ?? 'geral',
             'taxa_iva_padrao' => (string) ($configuracao['taxa_iva_padrao'] ?? config('faturacao.taxa_iva_geral')),
-            'motivos_isencao_ativos' => array_values($configuracao['motivos_isencao_ativos'] ?? array_keys((array) config('faturacao.motivos_isencao', []))),
+            'motivos_isencao_ativos' => array_values($configuracao['motivos_isencao_ativos'] ?? $codigosElegiveis),
         ];
     }
 
