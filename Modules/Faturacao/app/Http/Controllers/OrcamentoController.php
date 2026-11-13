@@ -82,7 +82,7 @@ class OrcamentoController extends Controller
                 $dados['data_validade'] ?? null,
                 $dados['observacoes'] ?? null,
             );
-        } catch (\\DomainException|\\InvalidArgumentException $e) {
+        } catch (\DomainException|\InvalidArgumentException $e) {
             return back()->withInput()->withErrors(['orcamento' => $e->getMessage()]);
         }
 
