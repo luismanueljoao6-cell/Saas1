@@ -110,7 +110,7 @@ class FormularioFaturaIsencaoTest extends TestCase
     {
         $this->actingAs($this->admin)->get(route('faturacao.faturas.criar'))
             ->assertOk()
-            ->assertSee('Motivo de isenção...')
+            ->assertSee('Motivo de isenção (Anexo 6.4 AGT)')
             ->assertSee('M13')
             ->assertSee('M24')
             ->assertSee('alínea o) do artigo 12.º')
