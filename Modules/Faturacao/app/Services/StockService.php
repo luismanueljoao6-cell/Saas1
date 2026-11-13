@@ -6,6 +6,7 @@ use DomainException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Models\StockMovimento;
 use Modules\Faturacao\Models\StockSaldo;
@@ -58,6 +59,11 @@ class StockService
 
     protected function saldoBloqueado(Empresa $empresa, Produto $produto): StockSaldo
     {
+        $tenant = app(TenantManager::class);
+        if ($tenant->has() && ! $tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
+            throw new DomainException('O contexto atual não corresponde à empresa do movimento.');
+        }
+
         if ((int) $produto->empresa_id !== (int) $empresa->id || ! $produto->controla_stock) {
             throw new DomainException('O produto não pertence à empresa ou não controla stock.');
         }
@@ -86,6 +92,10 @@ class StockService
         }
 
         if ($chaveIdempotencia !== null) {
+            if (trim($chaveIdempotencia) === '' || mb_strlen($chaveIdempotencia) > 100) {
+                throw new InvalidArgumentException('A chave de idempotência deve ter entre 1 e 100 caracteres.');
+            }
+
             $existente = StockMovimento::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
                 ->where('chave_idempotencia', $chaveIdempotencia)
