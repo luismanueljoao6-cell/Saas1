@@ -73,7 +73,7 @@ class CompraController extends Controller
 
         foreach ($dados['linhas'] as $linha) {
             abort_unless(
-                \Modules\Faturacao\Models\Produto::query()
+                Produto::query()
                     ->where('empresa_id', $empresaId)->where('controla_stock', true)->where('ativo', true)
                     ->whereKey($linha['produto_id'])->exists(),
                 404
