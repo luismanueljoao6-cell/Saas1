@@ -95,3 +95,20 @@ As alterações acima são de apresentação, navegação e honestidade dos dado
 ## Critérios de conclusão
 
 A auditoria só pode ser considerada concluída quando cada rota de negócio tiver destino de interface ou justificação explícita de ser API/webhook/ação interna; cada ação da UI estiver ligada a uma rota autorizada; os testes e build estiverem verdes; e a validação visual for feita num ambiente executável.
+
+## Fase seguinte — dashboard ligado a dados reais
+
+Na atualização da branch, o painel principal deixou de ser servido diretamente por uma rota de vista e passou a usar `Modules\\Core\\Http\\Controllers\\PainelController`.
+
+- Receita do mês: soma apenas documentos de faturação no estado `emitida`, filtrados pelo mês corrente e pelo tenant ativo.
+- Pedidos do Atelier: conta apenas estados não finais; a configuração do módulo define `entregue` e `cancelado` como finais.
+- Sessões do Estúdio: conta sessões agendadas, confirmadas ou em curso cujo início previsto ocorre nos próximos sete dias.
+- Plano: apresenta utilizadores ativos da empresa e, quando o snapshot da subscrição contém `max_utilizadores` ou `utilizadores`, a utilização face ao limite.
+- As consultas dos módulos só são executadas quando a empresa tem o serviço correspondente ativo. Contas sem empresa não agregam dados de tenants.
+- As listas recentes do painel passam a receber registos reais de faturas e pedidos, com dados mínimos para apresentação.
+
+### Limites e validações pendentes
+- O indicador de faturação representa valor faturado em documentos emitidos, não dinheiro efetivamente recebido; recebimentos devem continuar a ser apresentados separadamente no painel específico de faturação.
+- A chave do limite de utilizadores é lida de forma compatível com `max_utilizadores` ou `utilizadores`; outros nomes de limite ainda não são interpretados.
+- A execução da CI desta atualização está em curso. É necessário confirmar testes MySQL/SQLite e Pint antes de considerar a alteração validada.
+- A validação visual e a criação de testes específicos de regressão para estes indicadores continuam pendentes.
