@@ -387,7 +387,7 @@ class ArmazemTransferenciaService
                 }
             }
 
-            $rececao = \Modules\Armazem\Models\ArmazemTransferenciaRececao::create([
+            $rececao = ArmazemTransferenciaRececao::create([
                 'empresa_id' => $empresa->id,
                 'transferencia_id' => $alvo->id,
                 'chave_idempotencia' => $chaveIdempotencia,
