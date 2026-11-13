@@ -4,6 +4,7 @@ namespace Modules\Faturacao\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Core\Traits\BelongsToTenant;
 
@@ -22,6 +23,8 @@ class Produto extends Model
         'preco_unitario',
         'taxa_iva',
         'ativo',
+        'controla_stock',
+        'stock_minimo',
     ];
 
     protected function casts(): array
@@ -30,12 +33,19 @@ class Produto extends Model
             'preco_unitario' => 'decimal:2',
             'taxa_iva' => 'decimal:2',
             'ativo' => 'boolean',
+            'controla_stock' => 'boolean',
+            'stock_minimo' => 'decimal:3',
         ];
     }
 
     public function categoria(): BelongsTo
     {
         return $this->belongsTo(CategoriaProduto::class, 'categoria_id');
+    }
+
+    public function stockSaldo(): HasOne
+    {
+        return $this->hasOne(StockSaldo::class, 'produto_id');
     }
 
     public function taxaIvaEfetiva(): float

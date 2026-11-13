@@ -15,7 +15,7 @@ class ProdutoController extends Controller
     public function index(): View
     {
         return view('faturacao::produtos.index', [
-            'produtos' => Produto::with('categoria')->ativos()->orderBy('nome')->paginate(20),
+            'produtos' => Produto::with(['categoria', 'stockSaldo'])->ativos()->orderBy('nome')->paginate(20),
             'categorias' => CategoriaProduto::query()->where('ativo', true)->orderBy('nome')->get(),
         ]);
     }
@@ -40,12 +40,16 @@ class ProdutoController extends Controller
             'unidade' => ['nullable', 'string', 'max:20'],
             'preco_unitario' => ['required', 'numeric', 'min:0', 'max:999999999999.99'],
             'taxa_iva' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'controla_stock' => ['sometimes', 'boolean'],
+            'stock_minimo' => ['nullable', 'numeric', 'min:0', 'max:99999999999.999'],
         ]);
 
         Produto::create([
             ...$dados,
             'empresa_id' => $empresaId,
             'unidade' => $dados['unidade'] ?? 'un',
+            'controla_stock' => (bool) ($dados['controla_stock'] ?? false),
+            'stock_minimo' => $dados['stock_minimo'] ?? '0.000',
         ]);
 
         return back()->with('sucesso', 'Produto adicionado.');
