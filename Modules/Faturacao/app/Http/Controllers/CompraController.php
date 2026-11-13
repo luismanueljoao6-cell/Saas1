@@ -58,6 +58,11 @@ class CompraController extends Controller
             'data_vencimento' => ['nullable', 'date', 'after_or_equal:data_documento'],
             'referencia_fornecedor' => ['nullable', 'string', 'max:80'],
             'observacoes' => ['nullable', 'string', 'max:2000'],
+            'valor' => ['required', 'numeric', 'gt:0', 'decimal:0,2', 'max:999999999999.99'],
+            'data_pagamento' => ['required', 'date'],
+            'metodo' => ['required', 'in:dinheiro,transferencia,referencia,multicaixa,outro'],
+            'referencia' => ['nullable', 'string', 'max:100'],
+            'observacoes_pagamento' => ['nullable', 'string', 'max:1000'],
             'linhas' => ['required', 'array', 'min:1', 'max:100'],
             'linhas.*.selecionado' => ['nullable', 'in:1'],
             'linhas.*.produto_id' => ['required', 'integer', 'exists:produtos,id'],
@@ -102,8 +107,30 @@ class CompraController extends Controller
     public function mostrar(Compra $compra): View
     {
         return view('faturacao::compras.mostrar', [
-            'compra' => $compra->load('fornecedor', 'linhas.produto'),
+            'compra' => $compra->load('fornecedor', 'linhas.produto', 'pagamentos'),
         ]);
+    }
+
+    public function pagar(Request $request, Compra $compra, CompraService $compras): RedirectResponse
+    {
+        $empresa = Empresa::query()->findOrFail($request->user()->empresa_id);
+        $dados = $request->validate([
+            'valor' => ['required', 'numeric', 'gt:0', 'decimal:0,2', 'max:999999999999.99'],
+            'data_pagamento' => ['required', 'date'],
+            'metodo' => ['required', 'in:dinheiro,transferencia,referencia,multicaixa,outro'],
+            'referencia' => ['nullable', 'string', 'max:100'],
+            'observacoes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $dados['observacoes'] = $dados['observacoes'] ?? null;
+
+        try {
+            $compras->registarPagamento($empresa, $compra, $dados, (int) $request->user()->id);
+        } catch (DomainException $exception) {
+            return back()->withErrors(['pagamento' => $exception->getMessage()]);
+        }
+
+        return back()->with('sucesso', 'Pagamento registado.');
     }
 
     public function receber(Request $request, Compra $compra, CompraService $compras): RedirectResponse
