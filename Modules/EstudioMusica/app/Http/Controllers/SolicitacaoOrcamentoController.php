@@ -20,11 +20,25 @@ use Modules\Faturacao\Models\Cliente;
  */
 class SolicitacaoOrcamentoController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        return view('estudiomusica::solicitacoes.index', [
-            'solicitacoes' => SolicitacaoOrcamento::latest()->paginate(20),
-        ]);
+        $dados = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $solicitacoes = SolicitacaoOrcamento::query()
+            ->when($dados['q'] ?? null, function ($query, string $termo): void {
+                $termo = trim($termo);
+                $query->where(function ($filtro) use ($termo): void {
+                    $filtro->where('nome', 'like', "%{$termo}%")
+                        ->orWhere('email', 'like', "%{$termo}%")
+                        ->orWhere('telefone', 'like', "%{$termo}%")
+                        ->orWhere('mensagem', 'like', "%{$termo}%")
+                        ->orWhere('tipo_servico_desejado', 'like', "%{$termo}%");
+                });
+            })
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('estudiomusica::solicitacoes.index', compact('solicitacoes'));
     }
 
     public function atualizarEstado(Request $request, int $solicitacao): RedirectResponse
