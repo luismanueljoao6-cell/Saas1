@@ -14,7 +14,7 @@
         @endif
         </div><p class="mt-2 text-xs text-slate-500">Seleciona apenas os artigos que constam no documento do fornecedor.</p></div>
         <label class="grid gap-1 text-sm">Observações<textarea name="observacoes" maxlength="2000" class="rounded-md border px-3 py-2"></textarea></label>
-        <div class="flex flex-wrap gap-2"><button class="rounded-md bg-slate-900 px-5 py-2 font-semibold text-white">Guardar rascunho</button><a href="{{ route('faturacao.compras.index') }}" class="rounded-md border px-5 py-2">Cancelar</a></div>
+        <div class="flex flex-wrap gap-2"><button @disabled($fornecedores->isEmpty() || $produtos->isEmpty()) class="rounded-md bg-slate-900 px-5 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Guardar rascunho</button><a href="{{ route('faturacao.compras.index') }}" class="rounded-md border px-5 py-2">Cancelar</a></div>
     </form>
 </div>
 <script>
