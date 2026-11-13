@@ -18,6 +18,7 @@ use Modules\Faturacao\Services\AgtCorrecaoService;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Modules\Faturacao\Services\ReciboService;
+use Modules\Faturacao\Support\ConfiguracaoFiscalEmpresa;
 use Throwable;
 
 /**
@@ -45,8 +46,8 @@ class FaturaController extends Controller
         return view('faturacao::faturas.criar', [
             'clientes' => Cliente::orderBy('nome')->get(),
             'produtos' => Produto::ativos()->orderBy('nome')->get(),
-            'taxaIvaGeral' => (float) config('faturacao.taxa_iva_geral'),
-            ...$this->dadosDeIsencao(),
+            'taxaIvaGeral' => (float) ConfiguracaoFiscalEmpresa::taxaPadrao((int) auth()->user()->empresa_id),
+            ...$this->dadosDeIsencao((int) auth()->user()->empresa_id),
             // Depois de um erro, o formulário volta com as linhas que o utilizador tinha escrito.
             'linhasIniciais' => collect((array) old('linhas', []))->map(fn ($linha) => [
                 'produto_id' => $linha['produto_id'] ?? null,
@@ -54,7 +55,7 @@ class FaturaController extends Controller
                 'quantidade' => $linha['quantidade'] ?? 1,
                 'preco_unitario' => $linha['preco_unitario'] ?? 0,
                 'preco_unitario_base' => $linha['preco_unitario_base'] ?? null,
-                'taxa_iva' => $linha['taxa_iva'] ?? config('faturacao.taxa_iva_geral'),
+                'taxa_iva' => $linha['taxa_iva'] ?? ConfiguracaoFiscalEmpresa::taxaPadrao((int) auth()->user()->empresa_id),
                 'operation_type' => $linha['operation_type'] ?? config('faturacao.agt.operation_type_padrao', 'SG'),
                 'motivo_isencao' => $linha['motivo_isencao'] ?? '',
             ])->values()->all(),
@@ -66,11 +67,10 @@ class FaturaController extends Controller
      *
      * @return array{motivosIsencao: array<string, string>, aceitaIsencao: bool, tiposOperacao: array<string, string>}
      */
-    protected function dadosDeIsencao(): array
+    protected function dadosDeIsencao(int $empresaId): array
     {
         return [
-            'motivosIsencao' => collect((array) config('faturacao.motivos_isencao', []))
-                ->filter(fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true))
+            'motivosIsencao' => collect(ConfiguracaoFiscalEmpresa::motivosDisponiveis($empresaId))
                 ->map(fn (array $motivo, string $codigo) => "{$codigo} — {$motivo['mencao']}")
                 ->all(),
             'aceitaIsencao' => in_array(0.0, array_map('floatval', (array) config('faturacao.taxas_iva_permitidas', [])), true),
@@ -154,8 +154,8 @@ class FaturaController extends Controller
             'fatura' => $modelo,
             'clientes' => Cliente::orderBy('nome')->get(),
             'produtos' => Produto::ativos()->orderBy('nome')->get(),
-            'taxaIvaGeral' => (float) config('faturacao.taxa_iva_geral'),
-            ...$this->dadosDeIsencao(),
+            'taxaIvaGeral' => (float) ConfiguracaoFiscalEmpresa::taxaPadrao((int) $modelo->empresa_id),
+            ...$this->dadosDeIsencao((int) $modelo->empresa_id),
             'linhasIniciais' => $modelo->linhas->map(fn ($linha) => [
                 'produto_id' => $linha->produto_id,
                 'descricao' => $linha->descricao,
