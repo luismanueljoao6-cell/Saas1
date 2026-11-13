@@ -12,6 +12,14 @@
         </a>
     </div>
 
+    <form method="GET" action="{{ route('estudiomusica.projetos.index') }}" role="search" class="mb-4 flex flex-col gap-2 sm:flex-row">
+        <label for="pesquisa-modulo" class="sr-only">Pesquisar projetos</label>
+        <input id="pesquisa-modulo" type="search" name="q" value="{{ request('q') }}" maxlength="100" placeholder="Nome do projeto ou artista" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:max-w-md">
+        <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">Pesquisar</button>
+        @if (request()->filled('q'))
+            <a href="{{ route('estudiomusica.projetos.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-center text-sm dark:border-zinc-700 dark:text-zinc-300">Limpar</a>
+        @endif
+    </form>
     <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-800">
             <thead class="bg-slate-50 text-left text-xs font-medium uppercase text-slate-500 dark:bg-zinc-950 dark:text-zinc-400">
