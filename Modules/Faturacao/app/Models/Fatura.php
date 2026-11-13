@@ -38,6 +38,7 @@ class Fatura extends Model implements DocumentoFiscalInterface
         'hash',
         'hash_anterior',
         'chave_versao',
+        'snapshot_fiscal',
         'observacoes',
         'rejeitado_documento_no',
     ];
@@ -50,6 +51,7 @@ class Fatura extends Model implements DocumentoFiscalInterface
             'valor_sem_iva' => 'decimal:2',
             'valor_iva' => 'decimal:2',
             'valor_total' => 'decimal:2',
+            'snapshot_fiscal' => 'array',
         ];
     }
 
