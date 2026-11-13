@@ -301,4 +301,49 @@ class CompraFornecedorTest extends TestCase
             'nome' => 'Fornecedor Alheio',
         ]);
     }
+
+    public function test_nao_permite_registar_pagamento_numa_compra_de_outra_empresa(): void
+    {
+        $outraEmpresa = Empresa::create([
+            'nome_comercial' => 'Empresa Compra Isolada',
+            'nif' => '630000322',
+        ]);
+        $fornecedor = Fornecedor::create([
+            'empresa_id' => $outraEmpresa->id,
+            'nome' => 'Fornecedor da Outra Empresa',
+            'pais' => 'AO',
+            'ativo' => true,
+        ]);
+        $compra = Compra::withoutGlobalScopes()->create([
+            'empresa_id' => $outraEmpresa->id,
+            'fornecedor_id' => $fornecedor->id,
+            'numero' => 'CMP-OUTRA-EMPRESA-001',
+            'data_documento' => today()->toDateString(),
+            'estado' => 'recebida',
+            'subtotal' => '100.00',
+            'total_iva' => '0.00',
+            'total' => '100.00',
+            'total_pago' => '0.00',
+            'estado_pagamento' => 'pendente',
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'valor' => '50.00',
+                'data_pagamento' => today()->toDateString(),
+                'metodo' => 'transferencia',
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('compras', [
+            'id' => $compra->id,
+            'empresa_id' => $outraEmpresa->id,
+            'total_pago' => '0.00',
+            'estado_pagamento' => 'pendente',
+        ]);
+        $this->assertDatabaseMissing('compra_pagamentos', [
+            'compra_id' => $compra->id,
+        ]);
+    }
+
 }
