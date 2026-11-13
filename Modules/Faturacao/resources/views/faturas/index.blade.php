@@ -12,6 +12,15 @@
             </a>
         </div>
 
+        <form method="GET" action="{{ route('faturacao.faturas.index') }}" role="search" class="mt-4 flex flex-col gap-2 sm:flex-row">
+            <label for="pesquisa-registos" class="sr-only">Pesquisar faturas</label>
+            <input id="pesquisa-registos" type="search" name="q" value="{{ request('q') }}" maxlength="100" placeholder="Número do documento ou nome do cliente" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:max-w-md">
+            <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-900">Pesquisar</button>
+            @if (request()->filled('q'))
+                <a href="{{ route('faturacao.faturas.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-600 dark:border-zinc-700 dark:text-zinc-300">Limpar</a>
+            @endif
+        </form>
+
         @if (session('erro'))
             <div class="mt-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{{ session('erro') }}</div>
         @endif
