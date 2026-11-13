@@ -3,7 +3,7 @@
 @section('titulo', 'Produtos e serviços')
 
 @section('conteudo')
-    <div class="w-full max-w-4xl space-y-5">
+    <div class="w-full max-w-7xl space-y-5">
         <div>
             <h1 class="text-xl font-semibold text-slate-900">Produtos e serviços</h1>
             <p class="mt-1 text-sm text-slate-500">Organiza o catálogo por categoria e identifica artigos através do código de barras.</p>
