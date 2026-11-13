@@ -48,7 +48,13 @@
             <tbody>
                 @foreach ($fatura->linhas as $linha)
                     <tr class="border-b border-slate-100">
-                        <td class="py-2">{{ $linha->descricao }}</td>
+                        <td class="py-2">
+                            {{ $linha->descricao }}
+                            @if($linha->motivo_isencao)
+                                @php $motivoFiscal = config('faturacao.motivos_isencao.'.$linha->motivo_isencao); @endphp
+                                <span class="block text-xs text-slate-500">{{ $linha->motivo_isencao }} — {{ $motivoFiscal['mencao'] ?? 'Motivo de isenção' }}</span>
+                            @endif
+                        </td>
                         <td class="py-2 text-right">{{ rtrim(rtrim($linha->quantidade, '0'), '.') }}</td>
                         <td class="py-2 text-right">{{ number_format((float) $linha->preco_unitario, 2, ',', ' ') }}</td>
                         <td class="py-2 text-right">{{ rtrim(rtrim($linha->taxa_iva, '0'), '.') }}%</td>
