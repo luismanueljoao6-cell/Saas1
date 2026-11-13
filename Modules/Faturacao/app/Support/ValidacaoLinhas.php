@@ -21,7 +21,7 @@ final class ValidacaoLinhas
      * @throws \InvalidArgumentException dados malformados
      * @throws \DomainException regra de negócio (taxa, isenção, produto)
      */
-    public static function validar(array $linhas, int $empresaId, bool $verificarTaxas = true, bool $exigirMotivoIsencao = true): void
+    public static function validar(array $linhas, int $empresaId, bool $verificarTaxas = true, bool $exigirMotivoIsencao = true, bool $verificarMotivoAtivo = true): void
     {
         foreach (array_values($linhas) as $indice => $linha) {
             $n = $indice + 1;
@@ -74,7 +74,7 @@ final class ValidacaoLinhas
             }
 
             if ($exigirMotivoIsencao) {
-                self::validarMotivoIsencao((float) $linha['taxa_iva'], $linha['motivo_isencao'] ?? null, $n, $empresaId);
+                self::validarMotivoIsencao((float) $linha['taxa_iva'], $linha['motivo_isencao'] ?? null, $n, $empresaId, $verificarMotivoAtivo);
             }
 
             $produtoId = $linha['produto_id'] ?? null;
@@ -126,7 +126,7 @@ final class ValidacaoLinhas
     }
 
     /** Linhas a 0% exigem motivo de isenção da tabela; linhas com imposto não levam motivo. */
-    protected static function validarMotivoIsencao(float $taxa, mixed $bruto, int $n, int $empresaId): void
+    protected static function validarMotivoIsencao(float $taxa, mixed $bruto, int $n, int $empresaId, bool $verificarMotivoAtivo = true): void
     {
         if ($bruto !== null && ! is_string($bruto)) {
             throw new \InvalidArgumentException("Linha {$n}: o motivo de isenção tem de ser um código (ex.: M10).");
@@ -157,7 +157,7 @@ final class ValidacaoLinhas
             throw new \DomainException("Linha {$n}: o código '{$motivo}' é de enquadramento de regime e não pode ser usado como motivo de isenção de uma linha.");
         }
 
-        if (! isset(ConfiguracaoFiscalEmpresa::motivosDisponiveis($empresaId)[$motivo])) {
+        if ($verificarMotivoAtivo && ! isset(ConfiguracaoFiscalEmpresa::motivosDisponiveis($empresaId)[$motivo])) {
             throw new \DomainException("Linha {$n}: o motivo de isenção '{$motivo}' não está ativo nas definições fiscais desta empresa.");
         }
 
