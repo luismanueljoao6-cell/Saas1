@@ -17,7 +17,7 @@
             'receita' => ['rotulo' => 'Receita do mês', 'valor' => '—', 'icone' => 'dinheiro', 'nota' => 'A ligar a dados reais'],
             'pedidos' => ['rotulo' => 'Pedidos em curso', 'valor' => '—', 'icone' => 'pedidos', 'nota' => 'A ligar a dados reais'],
             'sessoes' => ['rotulo' => 'Sessões agendadas', 'valor' => '—', 'icone' => 'calendario', 'nota' => 'A ligar a dados reais'],
-            'plano' => ['rotulo' => 'Utilização do plano', 'valor' => '—', 'icone' => 'medidor', 'limite' => 'Dados indisponíveis'],
+            'plano' => ['rotulo' => 'Utilização do plano', 'valor' => '—', 'icone' => 'medidor', 'nota' => 'Dados indisponíveis'],
         ];
 
         $faturasRecentes = $faturasRecentes ?? collect();
