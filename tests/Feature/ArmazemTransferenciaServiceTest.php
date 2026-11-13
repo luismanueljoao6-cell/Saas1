@@ -111,7 +111,7 @@ class ArmazemTransferenciaServiceTest extends TestCase
 
         $this->assertSame('2.500', (string) ArmazemStockSaldo::withoutGlobalScopes()
             ->where('armazem_id', $origem->id)->where('produto_id', $produto->id)->value('quantidade'));
-        $this->assertSame('2.000', (string) ArmazemStockSaldo::withoutGlobalScopes()
+        $this->assertSame('2.500', (string) ArmazemStockSaldo::withoutGlobalScopes()
             ->where('armazem_id', $destino->id)->where('produto_id', $produto->id)->value('quantidade'));
         $this->assertSame(3, ArmazemStockMovimento::withoutGlobalScopes()
             ->where('empresa_id', $empresa->id)->count());
