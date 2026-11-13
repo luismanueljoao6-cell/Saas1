@@ -14,6 +14,7 @@ use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
+use Modules\Faturacao\Support\ConfiguracaoFiscalEmpresa;
 use Throwable;
 
 /**
@@ -75,8 +76,7 @@ class NotaController extends Controller
             'clientes' => $fatura ? collect() : Cliente::orderBy('nome')->get(['id', 'nome', 'nif']),
             'linhasIniciais' => $linhasAntigas !== [] ? $linhasAntigas : $linhasDaFatura,
             'taxaNaInterface' => $tipo === 'credito' || (bool) config('faturacao.nota_debito_liquida_iva', false),
-            'motivosIsencao' => collect((array) config('faturacao.motivos_isencao', []))
-                ->filter(fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true))
+            'motivosIsencao' => collect(ConfiguracaoFiscalEmpresa::motivosDisponiveis((int) $request->user()->empresa_id))
                 ->map(fn (array $motivo, string $codigo) => "{$codigo} — {$motivo['mencao']}")
                 ->all(),
         ]);
