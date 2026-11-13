@@ -409,4 +409,116 @@ class CompraFornecedorTest extends TestCase
             'produto_id' => $produto->id,
         ]);
     }
+
+    public function test_pode_cancelar_rascunho_sem_alterar_stock(): void
+    {
+        $fornecedor = Fornecedor::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Fornecedor para cancelamento',
+            'pais' => 'AO',
+            'ativo' => true,
+        ]);
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Produto não recebido',
+            'unidade' => 'un',
+            'preco_unitario' => '150.00',
+            'taxa_iva' => '0',
+            'ativo' => true,
+            'controla_stock' => true,
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.guardar'), [
+                'fornecedor_id' => $fornecedor->id,
+                'data_documento' => today()->toDateString(),
+                'linhas' => [[
+                    'selecionado' => '1',
+                    'produto_id' => $produto->id,
+                    'quantidade' => '3.000',
+                    'preco_unitario' => '150.00',
+                    'taxa_iva' => '0',
+                ]],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $compra = Compra::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa->id)
+            ->firstOrFail();
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.cancelar', $compra))
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('sucesso', 'Compra cancelada. O stock não foi alterado.');
+
+        $this->assertDatabaseHas('compras', [
+            'id' => $compra->id,
+            'empresa_id' => $this->empresa->id,
+            'estado' => 'cancelada',
+        ]);
+        $this->assertDatabaseMissing('stock_movimentos', [
+            'empresa_id' => $this->empresa->id,
+            'produto_id' => $produto->id,
+        ]);
+        $this->assertDatabaseMissing('stock_saldos', [
+            'empresa_id' => $this->empresa->id,
+            'produto_id' => $produto->id,
+        ]);
+    }
+
+    public function test_nao_permite_cancelar_compra_ja_recebida(): void
+    {
+        $fornecedor = Fornecedor::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Fornecedor compra recebida',
+            'pais' => 'AO',
+            'ativo' => true,
+        ]);
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Produto recebido',
+            'unidade' => 'un',
+            'preco_unitario' => '200.00',
+            'taxa_iva' => '0',
+            'ativo' => true,
+            'controla_stock' => true,
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.guardar'), [
+                'fornecedor_id' => $fornecedor->id,
+                'data_documento' => today()->toDateString(),
+                'linhas' => [[
+                    'selecionado' => '1',
+                    'produto_id' => $produto->id,
+                    'quantidade' => '2.000',
+                    'preco_unitario' => '200.00',
+                    'taxa_iva' => '0',
+                ]],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $compra = Compra::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa->id)
+            ->firstOrFail();
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.receber', $compra))
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.cancelar', $compra))
+            ->assertSessionHasErrors(['compra']);
+
+        $this->assertDatabaseHas('compras', [
+            'id' => $compra->id,
+            'estado' => 'recebida',
+        ]);
+        $this->assertDatabaseHas('stock_saldos', [
+            'empresa_id' => $this->empresa->id,
+            'produto_id' => $produto->id,
+            'quantidade' => '2.000',
+        ]);
+    }
+
 }
