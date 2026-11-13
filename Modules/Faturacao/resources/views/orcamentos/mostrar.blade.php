@@ -34,7 +34,13 @@
                 <tbody>
                 @foreach($linhas as $linha)
                     @php $taxa = (float) ($linha['taxa_iva'] ?? 0); @endphp
-                    <tr class="border-b"><td class="py-3 pr-3">{{ $linha['descricao'] ?? '' }}</td><td class="px-2 py-3 text-right">{{ number_format((float)($linha['quantidade'] ?? 0), 3, ',', ' ') }}</td><td class="px-2 py-3 text-right">{{ number_format((float)($linha['preco_unitario'] ?? 0), 2, ',', ' ') }}</td><td class="px-2 py-3 text-right">{{ number_format($taxa, 2, ',', ' ') }}%</td><td class="py-3 pl-2 text-right">{{ number_format((float) ($linha['total_linha'] ?? 0), 2, ',', ' ') }} AOA</td></tr>
+                    <tr class="border-b"><td class="py-3 pr-3">
+                        {{ $linha['descricao'] ?? '' }}
+                        @if(!empty($linha['motivo_isencao']))
+                            @php $motivoFiscal = config('faturacao.motivos_isencao.'.$linha['motivo_isencao']); @endphp
+                            <span class="block text-xs text-slate-500">{{ $linha['motivo_isencao'] }} — {{ $motivoFiscal['mencao'] ?? 'Motivo de isenção' }}</span>
+                        @endif
+                    </td><td class="px-2 py-3 text-right">{{ number_format((float)($linha['quantidade'] ?? 0), 3, ',', ' ') }}</td><td class="px-2 py-3 text-right">{{ number_format((float)($linha['preco_unitario'] ?? 0), 2, ',', ' ') }}</td><td class="px-2 py-3 text-right">{{ number_format($taxa, 2, ',', ' ') }}%</td><td class="py-3 pl-2 text-right">{{ number_format((float) ($linha['total_linha'] ?? 0), 2, ',', ' ') }} AOA</td></tr>
                 @endforeach
                 </tbody>
             </table>
