@@ -15,7 +15,7 @@
         </a>
     </div>
 
-    <div class="overflow-hidden rounded-md border border-slate-200 bg-white">
+    <div class="overflow-x-auto rounded-md border border-slate-200 bg-white">
         <table class="w-full text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
