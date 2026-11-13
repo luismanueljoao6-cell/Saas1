@@ -42,9 +42,25 @@ class OrcamentoController extends Controller
             ->where('empresa_id', $empresa->id)
             ->findOrFail($orcamento);
 
+        $linhas = collect($documento->linhas ?? [])->map(function (array $linha): array {
+            $valores = \Modules\Faturacao\Support\Dinheiro::calcularLinha(
+                $linha['quantidade'] ?? 0,
+                $linha['preco_unitario'] ?? 0,
+                $linha['taxa_iva'] ?? 0,
+            );
+
+            $linha['total_linha'] = \Modules\Faturacao\Support\Dinheiro::formatar(
+                \Modules\Faturacao\Support\Dinheiro::centimos($valores['sem_iva'])
+                + \Modules\Faturacao\Support\Dinheiro::centimos($valores['iva'])
+            );
+
+            return $linha;
+        })->all();
+
         return view('faturacao::orcamentos.mostrar', [
             'orcamento' => $documento,
             'empresa' => $empresa,
+            'linhas' => $linhas,
         ]);
     }
 

@@ -29,13 +29,9 @@
             <table class="w-full text-sm">
                 <thead><tr class="border-y text-left"><th class="py-3 pr-3">Descrição</th><th class="px-2 py-3 text-right">Qtd.</th><th class="px-2 py-3 text-right">Preço unit.</th><th class="px-2 py-3 text-right">IVA</th><th class="py-3 pl-2 text-right">Total</th></tr></thead>
                 <tbody>
-                @foreach($orcamento->linhas ?? [] as $linha)
-                    @php
-                        $base = round((float)($linha['quantidade'] ?? 0) * (float)($linha['preco_unitario'] ?? 0), 2);
-                        $taxa = (float)($linha['taxa_iva'] ?? 0);
-                        $total = round($base + ($base * $taxa / 100), 2);
-                    @endphp
-                    <tr class="border-b"><td class="py-3 pr-3">{{ $linha['descricao'] ?? '' }}</td><td class="px-2 py-3 text-right">{{ number_format((float)($linha['quantidade'] ?? 0), 3, ',', ' ') }}</td><td class="px-2 py-3 text-right">{{ number_format((float)($linha['preco_unitario'] ?? 0), 2, ',', ' ') }}</td><td class="px-2 py-3 text-right">{{ number_format($taxa, 2, ',', ' ') }}%</td><td class="py-3 pl-2 text-right">{{ number_format($total, 2, ',', ' ') }} AOA</td></tr>
+                @foreach($linhas as $linha)
+                    @php $taxa = (float) ($linha['taxa_iva'] ?? 0); @endphp
+                    <tr class="border-b"><td class="py-3 pr-3">{{ $linha['descricao'] ?? '' }}</td><td class="px-2 py-3 text-right">{{ number_format((float)($linha['quantidade'] ?? 0), 3, ',', ' ') }}</td><td class="px-2 py-3 text-right">{{ number_format((float)($linha['preco_unitario'] ?? 0), 2, ',', ' ') }}</td><td class="px-2 py-3 text-right">{{ number_format($taxa, 2, ',', ' ') }}%</td><td class="py-3 pl-2 text-right">{{ number_format((float) ($linha['total_linha'] ?? 0), 2, ',', ' ') }} AOA</td></tr>
                 @endforeach
                 </tbody>
             </table>
