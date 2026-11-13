@@ -65,4 +65,9 @@ class ArmazemTransferencia extends Model
     {
         return $this->hasMany(ArmazemTransferenciaLinha::class, 'transferencia_id');
     }
+
+    public function rececoes(): HasMany
+    {
+        return $this->hasMany(ArmazemTransferenciaRececao::class, 'transferencia_id');
+    }
 }
