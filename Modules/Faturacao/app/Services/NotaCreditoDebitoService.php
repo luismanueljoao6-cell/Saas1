@@ -11,6 +11,7 @@ use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
 use Modules\Faturacao\Support\Dinheiro;
 use Modules\Faturacao\Support\GuardaEmissao;
+use Modules\Faturacao\Support\SnapshotFiscalDocumento;
 use Modules\Faturacao\Support\ValidacaoLinhas;
 use Throwable;
 
@@ -235,6 +236,8 @@ class NotaCreditoDebitoService
                 );
 
                 $nota->serie_id = $resultado['serie']->id;
+                // Preserva também o snapshot da fatura original quando a nota a corrige.
+                $nota->snapshot_fiscal = SnapshotFiscalDocumento::capturar($nota);
 
                 $this->assinaturaFiscalService->assinarEEmitir(
                     $nota,
