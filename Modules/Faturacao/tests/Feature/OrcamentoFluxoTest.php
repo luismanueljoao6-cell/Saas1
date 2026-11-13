@@ -240,7 +240,7 @@ class OrcamentoFluxoTest extends TestCase
             'operation_type' => 'SG',
         ]], null, null);
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         app(OrcamentoService::class)->duplicar($origem, $empresaA, $clienteB);
     }
 
@@ -256,7 +256,7 @@ class OrcamentoFluxoTest extends TestCase
         ]], null, null);
         $orcamento->update(['estado' => 'expirado']);
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         app(OrcamentoService::class)->alterarEstado($orcamento->fresh(), 'aceite');
     }
 }
