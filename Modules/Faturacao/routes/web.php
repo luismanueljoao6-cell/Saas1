@@ -35,6 +35,8 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao', 'p
         Route::middleware('papel:Administrador')->group(function () {
             Route::get('/fornecedores', [FornecedorController::class, 'index'])->name('fornecedores.index');
             Route::post('/fornecedores', [FornecedorController::class, 'guardar'])->middleware('throttle:20,1')->name('fornecedores.store');
+            Route::put('/fornecedores/{fornecedor}', [FornecedorController::class, 'atualizar'])->whereNumber('fornecedor')->middleware('throttle:20,1')->name('fornecedores.update');
+            Route::patch('/fornecedores/{fornecedor}/estado', [FornecedorController::class, 'alternarEstado'])->whereNumber('fornecedor')->middleware('throttle:20,1')->name('fornecedores.estado');
             Route::get('/compras', [CompraController::class, 'index'])->name('compras.index');
             Route::get('/compras/criar', [CompraController::class, 'criar'])->name('compras.criar');
             Route::post('/compras', [CompraController::class, 'guardar'])->middleware('throttle:20,1')->name('compras.guardar');
