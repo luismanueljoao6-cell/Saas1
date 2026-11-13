@@ -37,7 +37,13 @@ class CompraController extends Controller
             ->when($dados['estado'] ?? null, fn ($query, string $estado) => $query->where('estado', $estado))
             ->when($dados['pagamento'] ?? null, fn ($query, string $estado) => $query->where('estado_pagamento', $estado))
             ->when(($dados['vencimento'] ?? null) === 'vencidas', fn ($query) => $query->where('estado', 'recebida')->whereColumn('total_pago', '<', 'total')->whereNotNull('data_vencimento')->whereDate('data_vencimento', '<', today()))
-            ->when(($dados['vencimento'] ?? null) === 'em_dia', fn ($query) => $query->where(function ($subquery) { $subquery->whereNull('data_vencimento')->orWhereDate('data_vencimento', '>=', today()); }))
+            ->when(($dados['vencimento'] ?? null) === 'em_dia', fn ($query) => $query
+                ->where('estado', 'recebida')
+                ->whereColumn('total_pago', '<', 'total')
+                ->where(function ($subquery) {
+                    $subquery->whereNull('data_vencimento')
+                        ->orWhereDate('data_vencimento', '>=', today());
+                }))
             ->latest('id')
             ->paginate(20)
             ->withQueryString();
