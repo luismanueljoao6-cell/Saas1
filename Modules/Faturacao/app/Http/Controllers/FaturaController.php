@@ -55,7 +55,10 @@ class FaturaController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        return view('faturacao::faturas.index', compact('faturas'));
+        return view('faturacao::faturas.index', [
+            'faturas' => $faturas,
+            'podeCriarFaturas' => (bool) $request->user()->empresa?->podeEmitirFaturas(),
+        ]);
     }
 
     public function criar(): View
