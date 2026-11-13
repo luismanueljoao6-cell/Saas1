@@ -16,13 +16,13 @@ class RegistoSessaoSeguraTest extends TestCase
     {
         $empresa = Empresa::create([
             'nome_comercial' => 'Empresa de Teste',
-            'nif' => '450000001',
+            'nif' => '450000002',
         ]);
 
         $utilizador = User::create([
             'empresa_id' => $empresa->id,
             'name' => 'Administrador',
-            'email' => 'admin-registo@example.test',
+            'email' => 'admin-registo-2@example.test',
             'password' => 'password-segura',
         ]);
 
@@ -35,9 +35,9 @@ class RegistoSessaoSeguraTest extends TestCase
 
         $resposta = $this->post('/registo', [
             'nome_comercial' => 'Empresa de Teste',
-            'nif' => '450000001',
+            'nif' => '450000002',
             'name' => 'Administrador',
-            'email' => 'admin-registo@example.test',
+            'email' => 'admin-registo-2@example.test',
             'password' => 'password-segura',
             'password_confirmation' => 'password-segura',
             'aceita_termos' => '1',
