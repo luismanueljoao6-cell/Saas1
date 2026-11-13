@@ -108,3 +108,26 @@ Origem e destino têm de ser diferentes e pertencer à mesma empresa. A operaç�
 ## Decisão nesta fase
 
 O PR #39 não altera ainda o stock legado. A primeira entrega multi-armazém deve começar por tabelas novas, serviço de domínio e testes, e só depois integrar compras e vendas por adaptadores. Esta separação é intencional para preservar os saldos e documentos existentes.
+
+
+## Fase de transferências — implementação inicial
+
+Foi acrescentada a primeira implementação do ciclo de vida de transferências, ainda sem ativação na interface operacional:
+
+- Tabelas `armazem_transferencias` e `armazem_transferencia_linhas`, com origem/destino, empresa, responsáveis, estado, datas e quantidades.
+- Estados: `rascunho`, `em_transito`, `recebida` e `cancelada`.
+- Criação de rascunho com validação de empresa, armazéns ativos e distintos, produtos controlados por stock e quantidades positivas.
+- Expedição debita o armazém de origem através do serviço de stock e usa chave idempotente por transferência/linha/etapa.
+- Receção credita o destino com chave idempotente independente e regista a quantidade recebida.
+- Repetição de expedição/receção não duplica movimentos; apenas rascunhos podem ser cancelados.
+- As operações são transacionais e bloqueiam a empresa, transferência e linhas para serializar alterações concorrentes.
+- Testes acrescentados para fluxo completo, stock insuficiente com rollback, repetição idempotente, cancelamento, tenant e validação de armazéns/quantidades.
+
+### Limitações ainda abertas
+
+- A receção é integral; não existe receção parcial nem registo de divergências nesta fase.
+- Ainda falta interface web para criar, listar, expedir e receber transferências.
+- Ainda falta impedir a inativação de um armazém com transferências em trânsito.
+- Ainda falta política para devolução/compensação depois da expedição.
+- O saldo legado da Faturação continua separado e não foi alterado.
+- Esta implementação só deve ser ativada após CI verde e revisão visual/funcional.
