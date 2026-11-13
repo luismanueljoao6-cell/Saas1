@@ -42,6 +42,7 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao', 'p
             Route::post('/compras', [CompraController::class, 'guardar'])->middleware('throttle:20,1')->name('compras.guardar');
             Route::get('/compras/{compra}', [CompraController::class, 'mostrar'])->whereNumber('compra')->name('compras.mostrar');
             Route::post('/compras/{compra}/receber', [CompraController::class, 'receber'])->whereNumber('compra')->middleware('throttle:10,1')->name('compras.receber');
+            Route::post('/compras/{compra}/cancelar', [CompraController::class, 'cancelar'])->whereNumber('compra')->middleware('throttle:10,1')->name('compras.cancelar');
             Route::post('/compras/{compra}/pagamentos', [CompraController::class, 'pagar'])->whereNumber('compra')->middleware('throttle:20,1')->name('compras.pagamentos.store');
         });
 
