@@ -249,7 +249,13 @@ class AgtDocumentoBuilder
             throw AgtException::configuracaoInvalida("a linha isenta do documento {$numeroDocumento} não tem um motivo de isenção válido (config faturacao.motivos_isencao).");
         }
 
-        return [($entrada['tipo'] ?? 'ISE') === 'NS' ? 'NS' : 'ISE', $codigo];
+        $tipo = $entrada['tipo'] ?? null;
+
+        if (! in_array($tipo, ['ISE', 'NS'], true)) {
+            throw AgtException::configuracaoInvalida("o código {$codigo} não pode ser usado como motivo de isenção numa linha do documento {$numeroDocumento}.");
+        }
+
+        return [$tipo, $codigo];
     }
 
     protected function codigoNaoSujeicaoDebito(string $codigo): string
