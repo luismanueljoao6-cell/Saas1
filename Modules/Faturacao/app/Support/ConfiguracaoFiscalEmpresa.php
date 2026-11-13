@@ -32,7 +32,7 @@ final class ConfiguracaoFiscalEmpresa
 
         return collect($permitidas)->contains(fn (float $permitida) => abs($permitida - $taxa) < 0.0001)
             ? number_format($taxa, 2, '.', '')
-            : (string) config('faturacao.taxa_iva_geral');
+            : number_format((float) config('faturacao.taxa_iva_geral'), 2, '.', '');
     }
 
     /** @return array<string, array<string, mixed>> */
