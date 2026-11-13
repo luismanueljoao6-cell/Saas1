@@ -240,6 +240,8 @@ class OrcamentoFluxoTest extends TestCase
         ]], null, null);
 
         [$empresaB, $clienteB] = $this->criarContexto('630000213');
+        $this->assertNotSame((int) $empresaA->id, (int) $empresaB->id);
+        $this->assertNotSame((int) $empresaA->id, (int) $clienteB->empresa_id);
         app(TenantManager::class)->set((int) $empresaB->id);
 
         $this->expectException(\DomainException::class);
