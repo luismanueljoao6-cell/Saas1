@@ -67,7 +67,6 @@ class Navegacao
                 'id' => 'atelier', 'rotulo' => 'Atelier', 'servico' => 'atelier',
                 'itens' => [
                     ['rota' => 'atelier.pedidos.index', 'rotulo' => 'Pedidos', 'icone' => 'pedidos', 'ativo' => 'atelier.pedidos.*'],
-                    ['rota' => 'atelier.orcamentos.index', 'rotulo' => 'Orçamentos', 'icone' => 'orcamento', 'ativo' => 'atelier.orcamentos.*'],
                     ['rota' => 'atelier.orcamentos.index', 'rotulo' => 'Orçamentos recebidos', 'icone' => 'orcamento', 'ativo' => 'atelier.orcamentos.*', 'papeis' => ['Administrador', 'Secretária']],
                     ['rota' => 'atelier.campanhas.index', 'rotulo' => 'Campanhas', 'icone' => 'campanha', 'ativo' => 'atelier.campanhas.*', 'admin' => true],
                     ['rota' => 'atelier.equipa.index', 'rotulo' => 'Equipa', 'icone' => 'utilizadores', 'ativo' => 'atelier.equipa.*', 'admin' => true],
