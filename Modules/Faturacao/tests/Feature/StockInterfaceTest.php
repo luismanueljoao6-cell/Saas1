@@ -111,4 +111,54 @@ class StockInterfaceTest extends TestCase
 
         $this->assertSame(0, StockMovimento::withoutGlobalScopes()->count());
     }
+
+    public function test_historico_respeita_filtros_de_tipo_e_intervalo_de_datas(): void
+    {
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Produto filtrável',
+            'unidade' => 'un',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'ativo' => true,
+            'controla_stock' => true,
+            'stock_minimo' => '1.000',
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.stock.store'), [
+                'produto_id' => $produto->id,
+                'tipo' => 'entrada',
+                'quantidade' => '4.000',
+                'motivo' => 'Entrada para filtro',
+                'chave_idempotencia' => (string) Str::uuid(),
+            ])
+            ->assertRedirect(route('faturacao.stock.index'))
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($this->utilizador)
+            ->get(route('faturacao.stock.index', [
+                'tipo' => 'entrada',
+                'data_inicio' => today()->toDateString(),
+                'data_fim' => today()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertSee('Entrada para filtro');
+
+        $this->actingAs($this->utilizador)
+            ->get(route('faturacao.stock.index', ['tipo' => 'saida']))
+            ->assertOk()
+            ->assertDontSee('Entrada para filtro');
+    }
+
+    public function test_intervalo_de_datas_invertido_e_rejeitado(): void
+    {
+        $this->actingAs($this->utilizador)
+            ->get(route('faturacao.stock.index', [
+                'data_inicio' => today()->addDay()->toDateString(),
+                'data_fim' => today()->toDateString(),
+            ]))
+            ->assertSessionHasErrors(['data_fim']);
+    }
+
 }
