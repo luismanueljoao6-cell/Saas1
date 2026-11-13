@@ -118,16 +118,20 @@ class CompraController extends Controller
         return to_route('faturacao.compras.mostrar', $compra)->with('sucesso', 'Compra registada como rascunho.');
     }
 
-    public function mostrar(Compra $compra): View
+    public function mostrar(int $compraId): View
     {
+        // Resolver o ID só depois do middleware tenant identificar a empresa.
+        $compra = Compra::query()->findOrFail($compraId);
+
         return view('faturacao::compras.mostrar', [
             'compra' => $compra->load('fornecedor', 'linhas.produto', 'pagamentos'),
         ]);
     }
 
-    public function pagar(Request $request, Compra $compra, CompraService $compras): RedirectResponse
+    public function pagar(Request $request, int $compraId, CompraService $compras): RedirectResponse
     {
         $empresa = Empresa::query()->findOrFail($request->user()->empresa_id);
+        $compra = Compra::query()->findOrFail($compraId);
         $dados = $request->validate([
             'valor' => ['required', 'numeric', 'gt:0', 'decimal:0,2', 'max:999999999999.99'],
             'data_pagamento' => ['required', 'date'],
@@ -147,9 +151,10 @@ class CompraController extends Controller
         return back()->with('sucesso', 'Pagamento registado.');
     }
 
-    public function receber(Request $request, Compra $compra, CompraService $compras): RedirectResponse
+    public function receber(Request $request, int $compraId, CompraService $compras): RedirectResponse
     {
         $empresa = Empresa::query()->findOrFail($request->user()->empresa_id);
+        $compra = Compra::query()->findOrFail($compraId);
 
         try {
             $compras->receber($empresa, $compra, (int) $request->user()->id);
