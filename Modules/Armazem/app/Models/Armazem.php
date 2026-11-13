@@ -4,6 +4,7 @@ namespace Modules\Armazem\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Traits\BelongsToTenant;
 
