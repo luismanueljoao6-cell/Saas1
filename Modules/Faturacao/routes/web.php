@@ -28,7 +28,7 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao', 'p
         Route::get('/orcamentos/{orcamento}', [OrcamentoController::class, 'mostrar'])->whereNumber('orcamento')->name('orcamentos.mostrar');
         Route::post('/orcamentos', [OrcamentoController::class, 'guardar'])->middleware('throttle:30,1')->name('orcamentos.guardar');
         Route::post('/orcamentos/{orcamento}/duplicar', [OrcamentoController::class, 'duplicar'])->whereNumber('orcamento')->middleware('throttle:20,1')->name('orcamentos.duplicar');
-        Route::patch('/orcamentos/{orcamento}/estado', [OrcamentoController::class, 'estado'])->whereNumber('orcamento')->name('orcamentos.estado');
+        Route::patch('/orcamentos/{orcamento}/estado', [OrcamentoController::class, 'estado'])->whereNumber('orcamento')->middleware('throttle:30,1')->name('orcamentos.estado');
         Route::post('/orcamentos/{orcamento}/converter', [OrcamentoController::class, 'converter'])->whereNumber('orcamento')->middleware('throttle:10,1')->name('orcamentos.converter');
 
         Route::get('/clientes', [ClienteController::class, 'index'])->name('clientes.index');
