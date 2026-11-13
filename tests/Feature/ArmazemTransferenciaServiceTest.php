@@ -340,7 +340,6 @@ class ArmazemTransferenciaServiceTest extends TestCase
         ]], false, 'teste-chave-reutilizada-213');
     }
 
-
     public function test_inativacao_fica_bloqueada_ate_finalizar_rececao_parcial(): void
     {
         [$empresa, $origem, $destino, $produto] = $this->preparar('630100214');
@@ -361,5 +360,4 @@ class ArmazemTransferenciaServiceTest extends TestCase
         $this->expectExceptionMessage('Não é possível inativar este armazém enquanto existir uma transferência em trânsito associada.');
         app(ArmazemService::class)->alternarEstado($empresa, $destino);
     }
-
 }
