@@ -32,6 +32,11 @@ class ConfiguracaoFiscalEmpresaTest extends TestCase
         $empresaB = Empresa::create([
             'nome_comercial' => 'Empresa B',
             'nif' => '5001636871',
+            'configuracoes' => [
+                'faturacao' => [
+                    'motivos_isencao_ativos' => [],
+                ],
+            ],
         ]);
 
         $this->assertSame('7.00', ConfiguracaoFiscalEmpresa::taxaPadrao((int) $empresaA->id));
