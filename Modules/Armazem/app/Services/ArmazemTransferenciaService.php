@@ -342,7 +342,7 @@ class ArmazemTransferenciaService
                 return $alvo->setRelation('linhas', $this->obterLinhas($empresa, $alvo, false));
             }
 
-            if (! in_array($alvo->estado, ['em_transito', 'parcialmente_recebida'], true)) {
+            if (in_array($alvo->estado, ['em_transito', 'parcialmente_recebida'], true) === false) {
                 throw new DomainException('A transferência não está disponível para receção.');
             }
 
