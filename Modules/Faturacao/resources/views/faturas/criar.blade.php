@@ -70,7 +70,7 @@
                                 <select :name="`linhas[${indice}][motivo_isencao]`" x-model="linha.motivo_isencao"
                                         x-show="Number(linha.taxa_iva) === 0" :disabled="Number(linha.taxa_iva) !== 0" :required="Number(linha.taxa_iva) === 0"
                                         class="col-span-12 rounded-md border border-slate-300 px-2 py-1.5 text-sm">
-                                    <option value="">Motivo de isenção...</option>
+                                    <option value="">Motivo de isenção (Anexo 6.4 AGT)...</option>
                                     @foreach ($motivosIsencao as $codigo => $rotulo)
                                         <option value="{{ $codigo }}">{{ $rotulo }}</option>
                                     @endforeach
