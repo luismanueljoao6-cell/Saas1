@@ -3,7 +3,7 @@
 @section('titulo', 'Faturas')
 
 @section('conteudo')
-    <div class="w-full max-w-3xl">
+    <div class="w-full max-w-7xl">
         <div class="flex items-center justify-between">
             <h1 class="text-xl font-semibold text-slate-900">Faturas</h1>
             <a href="{{ route('faturacao.faturas.criar') }}"
