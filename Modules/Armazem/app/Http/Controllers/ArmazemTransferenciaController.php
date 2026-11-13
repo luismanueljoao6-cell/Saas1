@@ -1,17 +1,17 @@
 <?php
 
-namespace Modules\\Armazem\\Http\\Controllers;
+namespace Modules\Armazem\Http\Controllers;
 
 use DomainException;
-use Illuminate\\Http\\RedirectResponse;
-use Illuminate\\Http\\Request;
-use Illuminate\\Routing\\Controller;
-use Illuminate\\View\\View;
-use Modules\\Armazem\\Models\\Armazem;
-use Modules\\Armazem\\Models\\ArmazemTransferencia;
-use Modules\\Armazem\\Services\\ArmazemTransferenciaService;
-use Modules\\Core\\Models\\Empresa;
-use Modules\\Faturacao\\Models\\Produto;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+use Illuminate\View\View;
+use Modules\Armazem\Models\Armazem;
+use Modules\Armazem\Models\ArmazemTransferencia;
+use Modules\Armazem\Services\ArmazemTransferenciaService;
+use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Models\Produto;
 
 class ArmazemTransferenciaController extends Controller
 {
