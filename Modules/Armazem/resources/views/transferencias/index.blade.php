@@ -89,7 +89,7 @@
                                 <td class="min-w-48 px-4 py-4 text-slate-700 dark:text-zinc-300"><span>{{ $transferencia->origem?->nome ?? '—' }}</span><span class="mx-1 text-slate-400">→</span><span>{{ $transferencia->destino?->nome ?? '—' }}</span></td>
                                 <td class="px-4 py-4 text-slate-600 dark:text-zinc-300">{{ $transferencia->linhas->count() }} {{ $transferencia->linhas->count() === 1 ? 'produto' : 'produtos' }}</td>
                                 <td class="px-4 py-4">
-                                    @php($estado = ['rascunho' => 'Rascunho', 'em_transito' => 'Em trânsito', 'recebida' => 'Recebida', 'cancelada' => 'Cancelada'][$transferencia->estado] ?? $transferencia->estado)
+                                    @php($estado = ['rascunho' => 'Rascunho', 'em_transito' => 'Em trânsito', 'parcialmente_recebida' => 'Parcialmente recebida', 'recebida' => 'Recebida', 'recebida_com_divergencia' => 'Recebida com divergência', 'cancelada' => 'Cancelada'][$transferencia->estado] ?? $transferencia->estado)
                                     <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{ $transferencia->estado === 'recebida' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : ($transferencia->estado === 'em_transito' ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' : 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300') }}">{{ $estado }}</span>
                                 </td>
                                 <td class="whitespace-nowrap px-4 py-4 text-slate-500 dark:text-zinc-400">{{ $transferencia->created_at?->format('d/m/Y H:i') }}</td>
@@ -98,14 +98,56 @@
                                         @if ($transferencia->estado === 'rascunho')
                                             <form method="POST" action="{{ route('armazem.transferencias.expedir', $transferencia) }}">@csrf<button class="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white">Expedir</button></form>
                                             <form method="POST" action="{{ route('armazem.transferencias.cancelar', $transferencia) }}">@csrf<button class="rounded-md border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-600">Cancelar</button></form>
-                                        @elseif ($transferencia->estado === 'em_transito')
-                                            <form method="POST" action="{{ route('armazem.transferencias.receber', $transferencia) }}">@csrf<button class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">Confirmar receção</button></form>
+                                        @elseif (in_array($transferencia->estado, ['em_transito', 'parcialmente_recebida'], true))
+                                            <span class="text-xs text-slate-500">Usa o formulário de receção abaixo.</span>
                                         @else
                                             <span class="text-xs text-slate-400">Sem ações disponíveis</span>
                                         @endif
                                     </div>
                                 </td>
                             </tr>
+                            @if (in_array($transferencia->estado, ['em_transito', 'parcialmente_recebida'], true))
+                                <tr class="bg-slate-50/70 dark:bg-zinc-950/50">
+                                    <td colspan="6" class="px-4 py-4">
+                                        <details class="group">
+                                            <summary class="cursor-pointer text-sm font-semibold text-indigo-700 dark:text-indigo-300">Registar receção parcial ou finalizar · {{ $transferencia->linhas->count() }} linha(s)</summary>
+                                            <form method="POST" action="{{ route('armazem.transferencias.recepcao-parcial', $transferencia) }}" class="mt-4 space-y-3">
+                                                @csrf
+                                                <input type="hidden" name="chave_idempotencia" value="{{ $chavesRececao[$transferencia->id] }}">
+                                                <div class="overflow-x-auto">
+                                                    <table class="min-w-full text-xs">
+                                                        <thead class="text-left text-slate-500 dark:text-zinc-400">
+                                                            <tr><th class="px-2 py-2">Produto</th><th class="px-2 py-2">Enviado</th><th class="px-2 py-2">Já recebido</th><th class="px-2 py-2">Recebido agora</th><th class="px-2 py-2">Em falta</th><th class="px-2 py-2">Danificado</th></tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @foreach ($transferencia->linhas as $linha)
+                                                                <tr class="border-t border-slate-200 dark:border-zinc-800">
+                                                                    <td class="px-2 py-2 font-medium text-slate-800 dark:text-zinc-200">
+                                                                        {{ $linha->produto?->nome ?? 'Produto #'.$linha->produto_id }}
+                                                                        <input type="hidden" name="linhas[{{ $linha->id }}][linha_id]" value="{{ $linha->id }}">
+                                                                    </td>
+                                                                    <td class="px-2 py-2">{{ number_format((float) $linha->quantidade, 3, ',', '.') }}</td>
+                                                                    <td class="px-2 py-2">{{ number_format((float) $linha->quantidade_recebida, 3, ',', '.') }}</td>
+                                                                    <td class="px-2 py-2"><input type="number" name="linhas[{{ $linha->id }}][quantidade_recebida]" value="0.000" min="0" step="0.001" required class="w-28 rounded-md border border-slate-300 bg-white px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"></td>
+                                                                    <td class="px-2 py-2"><input type="number" name="linhas[{{ $linha->id }}][quantidade_em_falta]" value="0.000" min="0" step="0.001" required class="w-28 rounded-md border border-slate-300 bg-white px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"></td>
+                                                                    <td class="px-2 py-2"><input type="number" name="linhas[{{ $linha->id }}][quantidade_danificada]" value="0.000" min="0" step="0.001" required class="w-28 rounded-md border border-slate-300 bg-white px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"></td>
+                                                                </tr>
+                                                            @endforeach
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                                    <p class="max-w-2xl text-xs text-slate-500 dark:text-zinc-400">Só a quantidade recebida é adicionada ao stock. Falta e dano ficam registados como divergências e não entram no saldo.</p>
+                                                    <div class="flex flex-wrap gap-2">
+                                                        <button name="finalizar" value="0" class="rounded-lg border border-indigo-300 px-3 py-2 text-xs font-semibold text-indigo-700 dark:border-indigo-500/40 dark:text-indigo-300">Guardar receção parcial</button>
+                                                        <button name="finalizar" value="1" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Finalizar e registar divergências</button>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </details>
+                                    </td>
+                                </tr>
+                            @endif
                         @empty
                             <tr><td colspan="6" class="px-5 py-10 text-center text-slate-500 dark:text-zinc-400">Ainda não existem transferências.</td></tr>
                         @endforelse
