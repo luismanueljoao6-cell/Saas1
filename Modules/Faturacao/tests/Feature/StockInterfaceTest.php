@@ -1,16 +1,16 @@
 <?php
 
-namespace Modules\\Faturacao\\Tests\\Feature;
+namespace Modules\Faturacao\Tests\Feature;
 
-use Illuminate\\Foundation\\Testing\\RefreshDatabase;
-use Modules\\Core\\Models\\Empresa;
-use Modules\\Core\\Models\\User;
-use Modules\\Core\\Support\\Servico;
-use Modules\\Faturacao\\Models\\Produto;
-use Modules\\Faturacao\\Models\\StockMovimento;
-use Spatie\\Permission\\Models\\Role;
-use Spatie\\Permission\\PermissionRegistrar;
-use Tests\\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Core\Models\Empresa;
+use Modules\Core\Models\User;
+use Modules\Core\Support\Servico;
+use Modules\Faturacao\Models\Produto;
+use Modules\Faturacao\Models\StockMovimento;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
+use Tests\TestCase;
 
 class StockInterfaceTest extends TestCase
 {

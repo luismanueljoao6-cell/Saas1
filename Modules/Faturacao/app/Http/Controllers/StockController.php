@@ -1,15 +1,15 @@
 <?php
 
-namespace Modules\\Faturacao\\Http\\Controllers;
+namespace Modules\Faturacao\Http\Controllers;
 
-use Illuminate\\Http\\RedirectResponse;
-use Illuminate\\Http\\Request;
-use Illuminate\\Routing\\Controller;
-use Illuminate\\View\\View;
-use Modules\\Core\\Models\\Empresa;
-use Modules\\Faturacao\\Models\\Produto;
-use Modules\\Faturacao\\Models\\StockMovimento;
-use Modules\\Faturacao\\Services\\StockService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+use Illuminate\View\View;
+use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Models\Produto;
+use Modules\Faturacao\Models\StockMovimento;
+use Modules\Faturacao\Services\StockService;
 
 class StockController extends Controller
 {
