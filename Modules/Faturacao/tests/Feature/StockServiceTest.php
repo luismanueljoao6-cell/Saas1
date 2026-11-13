@@ -110,6 +110,25 @@ class StockServiceTest extends TestCase
         $this->assertSame('3.500', StockSaldo::withoutGlobalScopes()->where('produto_id', $produto->id)->value('quantidade'));
     }
 
+    public function test_mesma_chave_nao_pode_ser_reutilizada_noutro_produto_da_empresa(): void
+    {
+        [$empresa, $produto] = $this->criarProduto('630000309');
+        $outroProduto = Produto::create([
+            'empresa_id' => $empresa->id,
+            'nome' => 'Segundo produto de teste',
+            'unidade' => 'un',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'ativo' => true,
+            'controla_stock' => true,
+        ]);
+        $service = app(StockService::class);
+        $service->entrada($empresa, $produto, '2.000', 'Receção', null, 'chave-partilhada');
+
+        $this->expectException(\\DomainException::class);
+        $service->entrada($empresa, $outroProduto, '2.000', 'Receção', null, 'chave-partilhada');
+    }
+
     public function test_reutilizar_chave_com_dados_diferentes_e_rejeitado(): void
     {
         [$empresa, $produto] = $this->criarProduto('630000306');
