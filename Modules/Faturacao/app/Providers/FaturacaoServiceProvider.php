@@ -34,7 +34,8 @@ class FaturacaoServiceProvider extends ServiceProvider
         $menu->adicionar('faturacao.notas.index', 'Notas de crédito e débito', 25);
         $menu->adicionar('faturacao.recibos.index', 'Recibos', 27);
         $menu->adicionar('faturacao.clientes.index', 'Clientes', 30);
-        $menu->adicionar('faturacao.produtos.index', 'Produtos', 40);\n        $menu->adicionar('faturacao.stock.index', 'Gestão de stock', 45);
+        $menu->adicionar('faturacao.produtos.index', 'Produtos', 40);
+        $menu->adicionar('faturacao.stock.index', 'Gestão de stock', 45);
         $menu->adicionar('faturacao.saft.criar', 'SAF-T (AO)', 80);
 
         $this->publishes([
