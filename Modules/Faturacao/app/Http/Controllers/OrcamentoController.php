@@ -30,6 +30,9 @@ class OrcamentoController extends Controller
             'clientes' => Cliente::query()->orderBy('nome')->get(),
             'taxasIva' => config('faturacao.taxas_iva_permitidas'),
             'taxaPadrao' => config('faturacao.taxa_iva_geral'),
+            'motivosIsencao' => collect((array) config('faturacao.motivos_isencao', []))
+                ->filter(fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true)),
+            'tiposOperacaoAgt' => ValidacaoLinhas::TIPOS_OPERACAO_AGT,
         ]);
     }
 
@@ -48,7 +51,8 @@ class OrcamentoController extends Controller
             'clientes' => Cliente::query()->orderBy('nome')->get(),
             'taxasIva' => config('faturacao.taxas_iva_permitidas'),
             'taxaPadrao' => config('faturacao.taxa_iva_geral'),
-            'motivosIsencao' => (array) config('faturacao.motivos_isencao', []),
+            'motivosIsencao' => collect((array) config('faturacao.motivos_isencao', []))
+                ->filter(fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true)),
             'tiposOperacaoAgt' => ValidacaoLinhas::TIPOS_OPERACAO_AGT,
         ]);
     }
