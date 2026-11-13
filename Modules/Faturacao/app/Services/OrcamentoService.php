@@ -128,7 +128,10 @@ class OrcamentoService
         }
 
         return DB::transaction(function () use ($orcamento, $estado) {
-            $atual = Orcamento::query()->lockForUpdate()->findOrFail($orcamento->id);
+            $atual = Orcamento::withoutGlobalScopes()
+                ->where('empresa_id', $orcamento->empresa_id)
+                ->lockForUpdate()
+                ->findOrFail($orcamento->id);
 
             if ($atual->estado === 'convertido' || $atual->fatura_id !== null) {
                 throw new \DomainException('Um orçamento convertido não pode mudar de estado.');
@@ -156,7 +159,10 @@ class OrcamentoService
     public function converter(Orcamento $orcamento, Empresa $empresa, FaturaService $faturas): Fatura
     {
         return DB::transaction(function () use ($orcamento, $empresa, $faturas) {
-            $atual = Orcamento::query()->lockForUpdate()->findOrFail($orcamento->id);
+            $atual = Orcamento::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->lockForUpdate()
+                ->findOrFail($orcamento->id);
 
             if ((int) $atual->empresa_id !== (int) $empresa->id) {
                 throw new \DomainException('Orçamento de outra empresa.');
