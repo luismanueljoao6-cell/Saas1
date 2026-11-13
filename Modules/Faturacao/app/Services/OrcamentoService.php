@@ -128,7 +128,7 @@ class OrcamentoService
 
     public function alterarEstado(Orcamento $orcamento, string $estado): Orcamento
     {
-        if (! in_array($estado, ['enviado', 'aceite', 'recusado'], true)) {
+        if (!in_array($estado, ['enviado', 'aceite', 'recusado'], true)) {
             throw new \InvalidArgumentException('Estado de orçamento inválido.');
         }
 
