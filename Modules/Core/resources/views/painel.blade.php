@@ -104,7 +104,7 @@
                 ],
                 'linhas' => $faturasRecentes,
                 'filtroEstado' => 'estado',
-                'estados' => ['Paga', 'Pendente', 'Cancelada'],
+                'estados' => ['Emitida', 'Rascunho', 'Anulada'],
                 'tituloGaveta' => 'numero',
                 'detalhes' => [
                     ['chave' => 'cliente', 'rotulo' => 'Cliente'],
@@ -138,7 +138,7 @@
                 ],
                 'linhas' => $pedidosRecentes,
                 'filtroEstado' => 'estado',
-                'estados' => ['Pendente', 'Em corte', 'Em costura', 'Em prova', 'Concluído'],
+                'estados' => ['Pendente', 'Em Corte', 'Em Costura', 'Primeira Prova', 'Ajustes', 'Pronto para Retirada'],
                 'tituloGaveta' => 'numero',
                 'acoes' => [
                     ['rotulo' => 'Abrir pedido', 'url' => url('/atelier/pedidos/:id')],
