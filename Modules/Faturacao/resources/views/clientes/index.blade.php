@@ -4,7 +4,7 @@
 
 @section('conteudo')
     <div class="w-full max-w-7xl">
-        <h1 class="text-xl font-semibold text-slate-900">Clientes</h1>
+        <h1 class="text-xl font-semibold text-slate-900 dark:text-zinc-100">Clientes</h1>
 
         @if (session('sucesso'))
             <div class="mt-4 rounded-md bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700">
@@ -19,25 +19,25 @@
             </button>
 
             <form x-show="aFormulario" x-cloak method="POST" action="{{ route('faturacao.clientes.store') }}"
-                  class="mt-3 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
+                  class="mt-3 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 dark:bg-zinc-900 dark:border-zinc-800">
                 @csrf
-                <input name="nome" placeholder="Nome" required class="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2">
-                <input name="nif" placeholder="NIF (opcional — consumidor final)" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <input name="telefone" placeholder="Telefone" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <input name="email" type="email" placeholder="E-mail" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <input name="morada" placeholder="Morada" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <input name="nome" placeholder="Nome" required class="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2 dark:border-zinc-700">
+                <input name="nif" placeholder="NIF (opcional — consumidor final)" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700">
+                <input name="telefone" placeholder="Telefone" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700">
+                <input name="email" type="email" placeholder="E-mail" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700">
+                <input name="morada" placeholder="Morada" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700">
                 <button type="submit" class="sm:col-span-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
                     Guardar cliente
                 </button>
             </form>
         </div>
 
-        <div class="mt-6 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+        <div class="mt-6 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white dark:bg-zinc-900 dark:border-zinc-800 dark:divide-zinc-800">
             @forelse ($clientes as $cliente)
                 <div class="flex items-center justify-between px-4 py-3">
                     <div>
-                        <p class="text-sm font-medium text-slate-900">{{ $cliente->nome }}</p>
-                        <p class="text-xs text-slate-500">{{ $cliente->nif ?? 'Consumidor final' }}</p>
+                        <p class="text-sm font-medium text-slate-900 dark:text-zinc-100">{{ $cliente->nome }}</p>
+                        <p class="text-xs text-slate-500 dark:text-zinc-400">{{ $cliente->nif ?? 'Consumidor final' }}</p>
                     </div>
                     <a href="{{ route('faturacao.clientes.conta-corrente', $cliente) }}"
                        class="text-xs font-medium text-indigo-600 hover:text-indigo-500">
@@ -45,7 +45,7 @@
                     </a>
                 </div>
             @empty
-                <p class="px-4 py-6 text-center text-sm text-slate-500">Ainda não tens clientes.</p>
+                <p class="px-4 py-6 text-center text-sm text-slate-500 dark:text-zinc-400">Ainda não tens clientes.</p>
             @endforelse
         </div>
 
