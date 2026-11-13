@@ -11,35 +11,17 @@
         // Super admin / conta sem empresa vê tudo; os restantes só os serviços aderidos.
         $tem = fn (string $servico) => ! $empresa || $empresa->temServico($servico);
 
-        /*
-         * ATENÇÃO — DADOS DE DEMONSTRAÇÃO.
-         * Os valores abaixo servem para ver o desenho final. Para ligar a dados reais, passa
-         * $kpis, $faturasRecentes e $pedidosRecentes a partir de um controller (a rota atual
-         * é Route::view, por isso trocá-la por uma rota com controller) e apaga estes defaults.
-         */
+        // Os indicadores são fornecidos por um controller quando ligados a dados reais.
+        // Nunca apresentar valores fictícios como se fossem métricas da empresa.
         $kpis = $kpis ?? [
-            'receita' => ['rotulo' => 'Receita do mês', 'valor' => '1 250 000 Kz', 'icone' => 'dinheiro', 'variacao' => '+12,4%', 'tendencia' => 'alta', 'nota' => 'vs. mês anterior'],
-            'pedidos' => ['rotulo' => 'Pedidos em curso', 'valor' => '23', 'icone' => 'pedidos', 'variacao' => '+3', 'tendencia' => 'alta', 'nota' => 'esta semana'],
-            'sessoes' => ['rotulo' => 'Sessões agendadas', 'valor' => '14', 'icone' => 'calendario', 'variacao' => '-2', 'tendencia' => 'baixa', 'nota' => 'próximos 7 dias'],
-            'plano' => ['rotulo' => 'Utilização do plano', 'valor' => '38 / 50', 'icone' => 'medidor', 'progresso' => 76, 'limite' => '38 de 50 utilizadores'],
+            'receita' => ['rotulo' => 'Receita do mês', 'valor' => '—', 'icone' => 'dinheiro', 'nota' => 'A ligar a dados reais'],
+            'pedidos' => ['rotulo' => 'Pedidos em curso', 'valor' => '—', 'icone' => 'pedidos', 'nota' => 'A ligar a dados reais'],
+            'sessoes' => ['rotulo' => 'Sessões agendadas', 'valor' => '—', 'icone' => 'calendario', 'nota' => 'A ligar a dados reais'],
+            'plano' => ['rotulo' => 'Utilização do plano', 'valor' => '—', 'icone' => 'medidor', 'nota' => 'Dados indisponíveis'],
         ];
 
-        $faturasRecentes = $faturasRecentes ?? [
-            ['id' => 1, 'numero' => 'FT 2026/0142', 'cliente' => 'Hotel Baía Azul, Lda', 'nif' => '5417012345', 'emissao' => '2026-10-09', 'vencimento' => '2026-11-08', 'total' => 1250000, 'estado' => 'Paga'],
-            ['id' => 2, 'numero' => 'FT 2026/0141', 'cliente' => 'Mercado Central, SA', 'nif' => '5000123456', 'emissao' => '2026-10-08', 'vencimento' => '2026-11-07', 'total' => 480500, 'estado' => 'Pendente'],
-            ['id' => 3, 'numero' => 'FT 2026/0140', 'cliente' => 'Escola Nova Geração', 'nif' => '5401987654', 'emissao' => '2026-10-07', 'vencimento' => '2026-11-06', 'total' => 215000, 'estado' => 'Paga'],
-            ['id' => 4, 'numero' => 'FT 2026/0139', 'cliente' => 'Transportes Kwanza', 'nif' => '5417765432', 'emissao' => '2026-10-05', 'vencimento' => '2026-11-04', 'total' => 960000, 'estado' => 'Cancelada'],
-            ['id' => 5, 'numero' => 'FT 2026/0138', 'cliente' => 'Clínica Vida Plena', 'nif' => '5400456789', 'emissao' => '2026-10-04', 'vencimento' => '2026-11-03', 'total' => 330000, 'estado' => 'Pendente'],
-            ['id' => 6, 'numero' => 'FT 2026/0137', 'cliente' => 'Padaria Sol Nascente', 'nif' => '5417234567', 'emissao' => '2026-10-02', 'vencimento' => '2026-11-01', 'total' => 78500, 'estado' => 'Paga'],
-        ];
-
-        $pedidosRecentes = $pedidosRecentes ?? [
-            ['id' => 1, 'numero' => 'PED-0087', 'cliente' => 'Maria Fernandes', 'peca' => 'Vestido de noiva', 'entrega' => '2026-10-30', 'total' => 185000, 'estado' => 'Em corte'],
-            ['id' => 2, 'numero' => 'PED-0086', 'cliente' => 'João Baptista', 'peca' => 'Fato completo', 'entrega' => '2026-10-22', 'total' => 142000, 'estado' => 'Em prova'],
-            ['id' => 3, 'numero' => 'PED-0085', 'cliente' => 'Ana Paula Silva', 'peca' => 'Kimono tradicional', 'entrega' => '2026-10-15', 'total' => 64000, 'estado' => 'Concluído'],
-            ['id' => 4, 'numero' => 'PED-0084', 'cliente' => 'Carlos Mendes', 'peca' => 'Camisa por medida', 'entrega' => '2026-10-18', 'total' => 38500, 'estado' => 'Em costura'],
-            ['id' => 5, 'numero' => 'PED-0083', 'cliente' => 'Luzia Gomes', 'peca' => 'Conjunto de cerimónia', 'entrega' => '2026-11-05', 'total' => 210000, 'estado' => 'Pendente'],
-        ];
+        $faturasRecentes = $faturasRecentes ?? collect();
+        $pedidosRecentes = $pedidosRecentes ?? collect();
     @endphp
 
     <div class="flex flex-wrap items-end justify-between gap-3">
@@ -108,7 +90,7 @@
         </div>
     @endif
 
-    {{-- Tabelas de exemplo (substituir pelos dados reais — ver comentário no topo) --}}
+    {{-- As listas só apresentam dados reais fornecidos pelo controller. --}}
     @if ($tem('faturacao'))
         <div class="mt-6">
             @include('core::partials.data-table', ['tabela' => [
@@ -122,7 +104,7 @@
                 ],
                 'linhas' => $faturasRecentes,
                 'filtroEstado' => 'estado',
-                'estados' => ['Paga', 'Pendente', 'Cancelada'],
+                'estados' => ['Emitida', 'Rascunho', 'Anulada'],
                 'tituloGaveta' => 'numero',
                 'detalhes' => [
                     ['chave' => 'cliente', 'rotulo' => 'Cliente'],
@@ -156,7 +138,7 @@
                 ],
                 'linhas' => $pedidosRecentes,
                 'filtroEstado' => 'estado',
-                'estados' => ['Pendente', 'Em corte', 'Em costura', 'Em prova', 'Concluído'],
+                'estados' => ['Pendente', 'Em Corte', 'Em Costura', 'Primeira Prova', 'Ajustes', 'Pronto para Retirada'],
                 'tituloGaveta' => 'numero',
                 'acoes' => [
                     ['rotulo' => 'Abrir pedido', 'url' => url('/atelier/pedidos/:id')],

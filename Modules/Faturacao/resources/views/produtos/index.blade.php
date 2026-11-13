@@ -3,11 +3,20 @@
 @section('titulo', 'Produtos e serviços')
 
 @section('conteudo')
-    <div class="w-full max-w-4xl space-y-5">
+    <div class="w-full max-w-7xl space-y-5">
         <div>
-            <h1 class="text-xl font-semibold text-slate-900">Produtos e serviços</h1>
-            <p class="mt-1 text-sm text-slate-500">Organiza o catálogo por categoria e identifica artigos através do código de barras.</p>
+            <h1 class="text-xl font-semibold text-slate-900 dark:text-zinc-100">Produtos e serviços</h1>
+            <p class="mt-1 text-sm text-slate-500 dark:text-zinc-400">Organiza o catálogo por categoria e identifica artigos através do código de barras.</p>
         </div>
+
+        <form method="GET" action="{{ route('faturacao.produtos.index') }}" role="search" class="mt-4 flex flex-col gap-2 sm:flex-row">
+            <label for="pesquisa-registos" class="sr-only">Pesquisar produtos</label>
+            <input id="pesquisa-registos" type="search" name="q" value="{{ request('q') }}" maxlength="100" placeholder="Nome, código interno ou código de barras" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:max-w-md">
+            <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-900">Pesquisar</button>
+            @if (request()->filled('q'))
+                <a href="{{ route('faturacao.produtos.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-600 dark:border-zinc-700 dark:text-zinc-300">Limpar</a>
+            @endif
+        </form>
 
         @if (session('sucesso'))
             <div class="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
@@ -24,39 +33,39 @@
         @endif
 
         <div class="grid gap-4 lg:grid-cols-2">
-            <form method="POST" action="{{ route('faturacao.produtos.store') }}" class="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
+            <form method="POST" action="{{ route('faturacao.produtos.store') }}" class="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 dark:bg-zinc-900 dark:border-zinc-800">
                 @csrf
-                <h2 class="font-semibold text-slate-900 sm:col-span-2">Novo produto ou serviço</h2>
-                <input name="nome" value="{{ old('nome') }}" placeholder="Nome" required maxlength="255" class="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2">
-                <input name="codigo" value="{{ old('codigo') }}" placeholder="Código interno" maxlength="50" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <input name="codigo_barras" value="{{ old('codigo_barras') }}" placeholder="Código de barras (GTIN)" inputmode="numeric" pattern="[0-9]{8}|[0-9]{12}|[0-9]{13}|[0-9]{14}" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <select name="categoria_id" class="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2">
+                <h2 class="font-semibold text-slate-900 sm:col-span-2 dark:text-zinc-100">Novo produto ou serviço</h2>
+                <input name="nome" value="{{ old('nome') }}" placeholder="Nome" required maxlength="255" class="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2 dark:border-zinc-700">
+                <input name="codigo" value="{{ old('codigo') }}" placeholder="Código interno" maxlength="50" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700">
+                <input name="codigo_barras" value="{{ old('codigo_barras') }}" placeholder="Código de barras (GTIN)" inputmode="numeric" pattern="[0-9]{8}|[0-9]{12}|[0-9]{13}|[0-9]{14}" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700">
+                <select name="categoria_id" class="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2 dark:border-zinc-700">
                     <option value="">Sem categoria</option>
                     @foreach ($categorias as $categoria)
                         <option value="{{ $categoria->id }}" @selected(old('categoria_id') == $categoria->id)>{{ $categoria->nome }}</option>
                     @endforeach
                 </select>
-                <input name="unidade" value="{{ old('unidade', 'un') }}" placeholder="Unidade (un, hora, kg...)" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <input name="preco_unitario" value="{{ old('preco_unitario') }}" type="number" step="0.01" min="0" placeholder="Preço unitário" required class="rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <input name="taxa_iva" value="{{ old('taxa_iva') }}" type="number" step="0.01" min="0" max="100" placeholder="IVA % (vazio = geral)" class="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2">
-                <label class="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2"><input type="checkbox" name="controla_stock" value="1" @checked(old('controla_stock'))> Este produto controla stock</label>
-                <input name="stock_minimo" value="{{ old('stock_minimo', '0.000') }}" type="number" step="0.001" min="0" placeholder="Stock mínimo (opcional)" class="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2">
+                <input name="unidade" value="{{ old('unidade', 'un') }}" placeholder="Unidade (un, hora, kg...)" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700">
+                <input name="preco_unitario" value="{{ old('preco_unitario') }}" type="number" step="0.01" min="0" placeholder="Preço unitário" required class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700">
+                <input name="taxa_iva" value="{{ old('taxa_iva') }}" type="number" step="0.01" min="0" max="100" placeholder="IVA % (vazio = geral)" class="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2 dark:border-zinc-700">
+                <label class="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2 dark:text-zinc-200"><input type="checkbox" name="controla_stock" value="1" @checked(old('controla_stock'))> Este produto controla stock</label>
+                <input name="stock_minimo" value="{{ old('stock_minimo', '0.000') }}" type="number" step="0.001" min="0" placeholder="Stock mínimo (opcional)" class="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2 dark:border-zinc-700">
                 <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white sm:col-span-2">Guardar produto</button>
             </form>
 
-            <form method="POST" action="{{ route('faturacao.produtos.categorias.store') }}" class="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4">
+            <form method="POST" action="{{ route('faturacao.produtos.categorias.store') }}" class="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 dark:bg-zinc-900 dark:border-zinc-800">
                 @csrf
-                <h2 class="font-semibold text-slate-900">Nova categoria</h2>
-                <input name="nome" placeholder="Nome da categoria" required maxlength="120" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <textarea name="descricao" placeholder="Descrição (opcional)" maxlength="500" rows="3" class="rounded-md border border-slate-300 px-3 py-2 text-sm"></textarea>
-                <button type="submit" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Criar categoria</button>
-                <p class="text-xs text-slate-500">As categorias pertencem apenas à empresa atual.</p>
+                <h2 class="font-semibold text-slate-900 dark:text-zinc-100">Nova categoria</h2>
+                <input name="nome" placeholder="Nome da categoria" required maxlength="120" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700">
+                <textarea name="descricao" placeholder="Descrição (opcional)" maxlength="500" rows="3" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700"></textarea>
+                <button type="submit" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 dark:border-zinc-700 dark:text-zinc-200">Criar categoria</button>
+                <p class="text-xs text-slate-500 dark:text-zinc-400">As categorias pertencem apenas à empresa atual.</p>
             </form>
         </div>
 
-        <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-            <table class="min-w-full divide-y divide-slate-200 text-sm">
-                <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
+        <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:bg-zinc-900 dark:border-zinc-800">
+            <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-800">
+                <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-zinc-950 dark:text-zinc-400">
                     <tr>
                         <th class="px-4 py-3">Produto/serviço</th>
                         <th class="px-4 py-3">Código</th>
@@ -65,17 +74,17 @@
                         <th class="px-4 py-3 text-right">Preço</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100">
+                <tbody class="divide-y divide-slate-100 dark:divide-zinc-800">
                     @forelse ($produtos as $produto)
                         <tr>
-                            <td class="px-4 py-3 font-medium text-slate-900">{{ $produto->nome }}</td>
-                            <td class="px-4 py-3 text-slate-500">{{ $produto->codigo_barras ?: $produto->codigo ?: '—' }}</td>
-                            <td class="px-4 py-3 text-slate-500">{{ $produto->categoria?->nome ?: 'Sem categoria' }}</td>
-                            <td class="px-4 py-3 text-slate-500">{{ $produto->controla_stock ? number_format((float) ($produto->stockSaldo?->quantidade ?? 0), 3, ',', '.') : '—' }}</td>
+                            <td class="px-4 py-3 font-medium text-slate-900 dark:text-zinc-100">{{ $produto->nome }}</td>
+                            <td class="px-4 py-3 text-slate-500 dark:text-zinc-400">{{ $produto->codigo_barras ?: $produto->codigo ?: '—' }}</td>
+                            <td class="px-4 py-3 text-slate-500 dark:text-zinc-400">{{ $produto->categoria?->nome ?: 'Sem categoria' }}</td>
+                            <td class="px-4 py-3 text-slate-500 dark:text-zinc-400">{{ $produto->controla_stock ? number_format((float) ($produto->stockSaldo?->quantidade ?? 0), 3, ',', '.') : '—' }}</td>
                             <td class="whitespace-nowrap px-4 py-3 text-right">{{ number_format((float) $produto->preco_unitario, 2, ',', '.') }} Kz</td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">Ainda não tens produtos ou serviços.</td></tr>
+                        <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500 dark:text-zinc-400">Ainda não tens produtos ou serviços.</td></tr>
                     @endforelse
                 </tbody>
             </table>

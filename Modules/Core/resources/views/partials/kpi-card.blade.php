@@ -13,5 +13,7 @@
         <p class="mt-2 text-xs text-slate-500 dark:text-zinc-400">{{ $kpi['limite'] ?? ($progresso.'% utilizado') }}</p>
     @elseif (isset($kpi['variacao']))
         <p class="mt-2 text-xs text-slate-500 dark:text-zinc-400"><span class="{{ ($kpi['tendencia'] ?? '') === 'alta' ? 'text-emerald-600' : 'text-amber-600' }}">{{ $kpi['variacao'] }}</span> {{ $kpi['nota'] ?? '' }}</p>
+    @elseif (! empty($kpi['nota']))
+        <p class="mt-2 text-xs text-slate-500 dark:text-zinc-400">{{ $kpi['nota'] }}</p>
     @endif
 </article>

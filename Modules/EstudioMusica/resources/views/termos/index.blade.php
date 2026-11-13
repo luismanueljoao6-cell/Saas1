@@ -3,8 +3,8 @@
 @section('titulo', 'Termos e Privacidade')
 
 @section('conteudo')
-    <h1 class="mb-1 text-lg font-semibold text-slate-900">Termos e Privacidade</h1>
-    <p class="mb-6 text-sm text-slate-500">
+    <h1 class="mb-1 text-lg font-semibold text-slate-900 dark:text-zinc-100">Termos e Privacidade</h1>
+    <p class="mb-6 text-sm text-slate-500 dark:text-zinc-400">
         Os clientes aceitam os Termos de Serviço no Portal antes de aprovar ou descarregar ficheiros.
         A Política de Privacidade pública está em
         <a class="underline" href="{{ route('estudiomusica.landing.privacidade', $empresa->id) }}" target="_blank" rel="noopener">{{ route('estudiomusica.landing.privacidade', $empresa->id) }}</a>.
@@ -15,29 +15,29 @@
         cancelamentos, preços) antes de o publicares como versão definitiva.
     </div>
 
-    <form method="POST" action="{{ route('estudiomusica.termos.publicar') }}" class="mb-8 space-y-3 rounded-md border border-slate-200 bg-white p-4">
+    <form method="POST" action="{{ route('estudiomusica.termos.publicar') }}" class="mb-8 space-y-3 rounded-md border border-slate-200 bg-white p-4 dark:bg-zinc-900 dark:border-zinc-800">
         @csrf
-        <h2 class="text-sm font-semibold text-slate-900">Publicar nova versão (a atual é a v{{ $atual->versao }})</h2>
-        <input type="text" name="titulo" value="{{ old('titulo', $atual->titulo) }}" required maxlength="150" class="w-full rounded-md border-slate-300 text-sm">
-        <textarea name="conteudo" rows="18" required minlength="100" class="w-full rounded-md border-slate-300 font-mono text-xs">{{ old('conteudo', $atual->conteudo) }}</textarea>
+        <h2 class="text-sm font-semibold text-slate-900 dark:text-zinc-100">Publicar nova versão (a atual é a v{{ $atual->versao }})</h2>
+        <input type="text" name="titulo" value="{{ old('titulo', $atual->titulo) }}" required maxlength="150" class="w-full rounded-md border-slate-300 text-sm dark:border-zinc-700">
+        <textarea name="conteudo" rows="18" required minlength="100" class="w-full rounded-md border-slate-300 font-mono text-xs dark:border-zinc-700">{{ old('conteudo', $atual->conteudo) }}</textarea>
         @if ($errors->any())
             <p class="text-sm text-red-700">{{ $errors->first() }}</p>
         @endif
         <button type="submit" class="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-700">Publicar nova versão</button>
-        <p class="text-xs text-slate-500">Todos os clientes voltam a ter de aceitar.</p>
+        <p class="text-xs text-slate-500 dark:text-zinc-400">Todos os clientes voltam a ter de aceitar.</p>
     </form>
 
-    <div class="overflow-hidden rounded-md border border-slate-200 bg-white">
+    <div class="overflow-hidden rounded-md border border-slate-200 bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <table class="w-full text-left text-sm">
-            <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+            <thead class="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-zinc-950 dark:text-zinc-400">
                 <tr><th class="px-4 py-3">Versão</th><th class="px-4 py-3">Título</th><th class="px-4 py-3">Publicada em</th><th class="px-4 py-3">Aceites</th></tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-zinc-800">
                 @foreach ($historico as $versao)
                     <tr>
                         <td class="px-4 py-2">v{{ $versao->versao }}</td>
                         <td class="px-4 py-2">{{ $versao->titulo }}</td>
-                        <td class="px-4 py-2 text-slate-500">{{ $versao->publicado_em->format('d/m/Y H:i') }}</td>
+                        <td class="px-4 py-2 text-slate-500 dark:text-zinc-400">{{ $versao->publicado_em->format('d/m/Y H:i') }}</td>
                         <td class="px-4 py-2">{{ $versao->aceites_count }}</td>
                     </tr>
                 @endforeach

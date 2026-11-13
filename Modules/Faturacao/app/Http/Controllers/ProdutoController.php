@@ -12,10 +12,27 @@ use Modules\Faturacao\Models\Produto;
 
 class ProdutoController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
+        $dados = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+
+        $produtos = Produto::query()
+            ->with(['categoria', 'stockSaldo'])
+            ->ativos()
+            ->when($dados['q'] ?? null, function ($query, string $termo): void {
+                $termo = trim($termo);
+                $query->where(function ($subquery) use ($termo): void {
+                    $subquery->where('nome', 'like', "%{$termo}%")
+                        ->orWhere('codigo', 'like', "%{$termo}%")
+                        ->orWhere('codigo_barras', 'like', "%{$termo}%");
+                });
+            })
+            ->orderBy('nome')
+            ->paginate(20)
+            ->withQueryString();
+
         return view('faturacao::produtos.index', [
-            'produtos' => Produto::with(['categoria', 'stockSaldo'])->ativos()->orderBy('nome')->paginate(20),
+            'produtos' => $produtos,
             'categorias' => CategoriaProduto::query()->where('ativo', true)->orderBy('nome')->get(),
         ]);
     }

@@ -2,19 +2,35 @@
 
 namespace Modules\Faturacao\Http\Controllers;
 
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\View\View;
+use Modules\Faturacao\Http\Requests\GuardarClienteRequest;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Services\ContaCorrenteClienteService;
 
 class ClienteController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        return view('faturacao::clientes.index', [
-            'clientes' => Cliente::orderBy('nome')->paginate(20),
-        ]);
+        $dados = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+
+        $clientes = Cliente::query()
+            ->when($dados['q'] ?? null, function ($query, string $termo): void {
+                $termo = trim($termo);
+                $query->where(function ($subquery) use ($termo): void {
+                    $subquery->where('nome', 'like', "%{$termo}%")
+                        ->orWhere('nif', 'like', "%{$termo}%")
+                        ->orWhere('telefone', 'like', "%{$termo}%")
+                        ->orWhere('email', 'like', "%{$termo}%");
+                });
+            })
+            ->orderBy('nome')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('faturacao::clientes.index', compact('clientes'));
     }
 
     public function contaCorrente(Request $request, Cliente $cliente, ContaCorrenteClienteService $contas): View
@@ -33,7 +49,7 @@ class ClienteController extends Controller
         ]);
     }
 
-    public function store(\Modules\Faturacao\Http\Requests\GuardarClienteRequest $request): \Illuminate\Http\RedirectResponse
+    public function store(GuardarClienteRequest $request): RedirectResponse
     {
         Cliente::create([
             ...$request->validated(),

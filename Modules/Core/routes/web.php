@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Core\Http\Controllers\Auth\AuthenticatedSessionController;
 use Modules\Core\Http\Controllers\Auth\RegisteredTenantController;
 use Modules\Core\Http\Controllers\EmpresaController;
+use Modules\Core\Http\Controllers\PainelController;
 use Modules\Core\Http\Controllers\ServicoController;
 use Modules\Core\Http\Controllers\UtilizadorController;
 
@@ -45,7 +46,7 @@ Route::view('/subscricao/expirada', 'core::subscricao.expirada')
 | nas suas próprias rotas autenticadas.
 */
 Route::middleware(['auth', 'tenant', 'subscricao.ativa'])->group(function () {
-    Route::view('/painel', 'core::painel')->name('core.painel');
+    Route::get('/painel', PainelController::class)->name('core.painel');
 
     Route::get('/empresas/{empresa}/definicoes', [EmpresaController::class, 'editar'])
         ->name('core.empresa.editar');

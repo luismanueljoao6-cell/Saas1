@@ -25,11 +25,31 @@ class NotaController extends Controller
 {
     public function __construct(protected NotaCreditoDebitoService $notas) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        return view('faturacao::notas.index', [
-            'notas' => NotaCreditoDebito::with('cliente', 'agtSubmissao')->latest('id')->paginate(20),
+        $dados = $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
+            'tipo' => ['nullable', 'in:credito,debito'],
+            'estado' => ['nullable', 'string', 'max:30'],
         ]);
+
+        $notas = NotaCreditoDebito::query()
+            ->with('cliente', 'agtSubmissao')
+            ->when($dados['q'] ?? null, function ($query, string $termo): void {
+                $termo = trim($termo);
+                $query->where(function ($subquery) use ($termo): void {
+                    $subquery->where('numero_documento', 'like', "%{$termo}%")
+                        ->orWhere('motivo', 'like', "%{$termo}%")
+                        ->orWhereHas('cliente', fn ($cliente) => $cliente->where('nome', 'like', "%{$termo}%"));
+                });
+            })
+            ->when($dados['tipo'] ?? null, fn ($query, string $tipo) => $query->where('tipo', $tipo))
+            ->when($dados['estado'] ?? null, fn ($query, string $estado) => $query->where('estado', $estado))
+            ->latest('id')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('faturacao::notas.index', compact('notas'));
     }
 
     public function criar(Request $request): View|RedirectResponse
