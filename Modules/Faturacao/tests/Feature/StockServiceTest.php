@@ -100,7 +100,7 @@ class StockServiceTest extends TestCase
         $service = app(StockService::class);
         $service->entrada($empresa, $produto, '2.000', 'Receção', null, 'chave-unica');
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         $service->entrada($empresa, $produto, '3.000', 'Receção', null, 'chave-unica');
     }
 
