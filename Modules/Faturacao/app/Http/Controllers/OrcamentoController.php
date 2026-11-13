@@ -48,6 +48,8 @@ class OrcamentoController extends Controller
             'clientes' => Cliente::query()->orderBy('nome')->get(),
             'taxasIva' => config('faturacao.taxas_iva_permitidas'),
             'taxaPadrao' => config('faturacao.taxa_iva_geral'),
+            'motivosIsencao' => (array) config('faturacao.motivos_isencao', []),
+            'tiposOperacaoAgt' => ValidacaoLinhas::TIPOS_OPERACAO_AGT,
         ]);
     }
 
