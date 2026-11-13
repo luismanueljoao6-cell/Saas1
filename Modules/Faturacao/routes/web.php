@@ -23,6 +23,8 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao', 'p
         Route::get('/', PainelFaturacaoController::class)->name('painel');
         Route::get('/orcamentos', [OrcamentoController::class, 'index'])->name('orcamentos.index');
         Route::get('/orcamentos/criar', [OrcamentoController::class, 'criar'])->name('orcamentos.criar');
+        Route::get('/orcamentos/{orcamento}/editar', [OrcamentoController::class, 'editar'])->whereNumber('orcamento')->name('orcamentos.editar');
+        Route::put('/orcamentos/{orcamento}', [OrcamentoController::class, 'atualizar'])->whereNumber('orcamento')->middleware('throttle:30,1')->name('orcamentos.atualizar');
         Route::get('/orcamentos/{orcamento}', [OrcamentoController::class, 'mostrar'])->whereNumber('orcamento')->name('orcamentos.mostrar');
         Route::post('/orcamentos', [OrcamentoController::class, 'guardar'])->middleware('throttle:30,1')->name('orcamentos.guardar');
         Route::patch('/orcamentos/{orcamento}/estado', [OrcamentoController::class, 'estado'])->whereNumber('orcamento')->name('orcamentos.estado');
