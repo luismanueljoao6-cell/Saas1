@@ -3,7 +3,7 @@
 @section('titulo', 'Recibos')
 
 @section('conteudo')
-    <div class="w-full max-w-3xl">
+    <div class="w-full max-w-7xl">
         <h1 class="text-xl font-semibold text-slate-900">Recibos</h1>
         <p class="mt-1 text-sm text-slate-500">Um recibo regista um pagamento de uma fatura emitida: abre a fatura e escolhe «Registar recibo».</p>
 
