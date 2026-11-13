@@ -11,6 +11,8 @@ class Fornecedor extends Model
     use BelongsToTenant;
     use SoftDeletes;
 
+    protected $table = 'fornecedores';
+
     protected $fillable = [
         'empresa_id', 'nome', 'nif', 'email', 'telefone', 'morada',
         'pais', 'observacoes', 'ativo',
