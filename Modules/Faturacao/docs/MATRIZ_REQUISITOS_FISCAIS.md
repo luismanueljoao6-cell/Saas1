@@ -31,7 +31,13 @@ Presidencial 71/25, Decreto Executivo 683/25) antes de se afirmar conformidade.
 | Tipos FR, FA, FG, GF, AC, AR, TV, RG, RE, AF, RP, RA, CS, LD | — | — | — | — | — | ⛔ |
 | QR Code | `QrCodeAgt` | — | — | — | QrCodeAgtTest | ✅ |
 
-## Motivos de isenção de IVA — Anexo 6.4\n\nA tabela de códigos e menções foi atualizada a partir do portal oficial de Facturação Electrónica da AGT: https://portaldoparceiro.minfin.gov.ao/doc-agt/doc-agt/2/anexos.html. M02 e M04 são tratados como não sujeição (NS); os códigos de isenção são tratados como IVA/ISE. M00 consta do anexo como enquadramento do Regime Simplificado, mas não é oferecido como motivo individual de linha a 0%. M94 foi removido por não constar da tabela oficial consultada. A flag `FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS` permanece falsa por omissão: a transcrição da tabela não substitui os testes de homologação da classificação `taxType`/`taxCode` na AGT.\n\nOs formulários de faturas, notas de crédito, orçamentos/proformas e as respetivas vistas de consulta apresentam ou preservam o código e a menção. O SAF-T e o payload AGT usam a mesma classificação central e recusam códigos que não sejam aplicáveis a uma linha.\n\n## Requisitos do Regime Jurídico das Facturas ainda por mapear
+## Motivos de isenção de IVA — Anexo 6.4
+
+A tabela de códigos e menções foi atualizada a partir do portal oficial de Facturação Electrónica da AGT: https://portaldoparceiro.minfin.gov.ao/doc-agt/doc-agt/2/anexos.html. M02 e M04 são tratados como não sujeição (NS); os códigos de isenção são tratados como IVA/ISE. M00 consta do anexo como enquadramento do Regime Simplificado, mas não é oferecido como motivo individual de linha a 0%. M94 foi removido por não constar da tabela oficial consultada. A flag `FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS` permanece falsa por omissão: a transcrição da tabela não substitui os testes de homologação da classificação `taxType`/`taxCode` na AGT.
+
+Os formulários de faturas, notas de crédito, orçamentos/proformas e as respetivas vistas de consulta apresentam ou preservam o código e a menção. O SAF-T e o payload AGT usam a mesma classificação central e recusam códigos que não sejam aplicáveis a uma linha.
+
+## Requisitos do Regime Jurídico das Facturas ainda por mapear
 
 A auditoria apontou como não demonstrados (não como infrações): data da operação quando
 diferente da emissão; local de disponibilização dos bens ou da prestação dos serviços;
