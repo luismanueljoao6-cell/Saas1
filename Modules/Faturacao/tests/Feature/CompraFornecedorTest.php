@@ -110,6 +110,39 @@ class CompraFornecedorTest extends TestCase
 
         app(TenantManager::class)->set((int) $this->empresa->id);
         $this->assertSame('4.000', (string) StockSaldo::query()->where('produto_id', $produto->id)->value('quantidade'));
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'valor' => '5000.00',
+                'data_pagamento' => today()->toDateString(),
+                'metodo' => 'transferencia',
+                'referencia' => 'TRF-001',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $compra->refresh();
+        $this->assertSame('5000.00', (string) $compra->total_pago);
+        $this->assertSame('parcial', $compra->estado_pagamento);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'valor' => '5488.00',
+                'data_pagamento' => today()->toDateString(),
+                'metodo' => 'multicaixa',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $compra->refresh();
+        $this->assertSame('10488.00', (string) $compra->total_pago);
+        $this->assertSame('pago', $compra->estado_pagamento);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'valor' => '0.01',
+                'data_pagamento' => today()->toDateString(),
+                'metodo' => 'dinheiro',
+            ])
+            ->assertSessionHasErrors(['pagamento']);
     }
 
     public function test_nao_permite_compra_com_fornecedor_de_outra_empresa(): void
