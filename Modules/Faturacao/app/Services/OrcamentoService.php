@@ -89,6 +89,10 @@ class OrcamentoService
      */
     public function duplicar(Orcamento $origem, Empresa $empresa, ?Cliente $cliente = null, ?string $validade = null): Orcamento
     {
+        if ($validade !== null && \Illuminate\Support\Carbon::parse($validade)->startOfDay()->isBefore(today())) {
+            throw new \DomainException('A data de validade não pode estar no passado.');
+        }
+
         return DB::transaction(function () use ($origem, $empresa, $cliente, $validade) {
             $atual = Orcamento::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
@@ -137,7 +141,7 @@ class OrcamentoService
                 throw new \DomainException('Um orçamento convertido não pode mudar de estado.');
             }
 
-            if ($atual->data_validade && $atual->data_validade->isBefore(today())) {
+            if ($atual->estado === 'expirado' || ($atual->data_validade && $atual->data_validade->isBefore(today()))) {
                 throw new \DomainException('Este orçamento expirou e já não pode ser alterado.');
             }
 
@@ -172,7 +176,7 @@ class OrcamentoService
                 throw new \DomainException('Só é possível converter um orçamento aceite e ainda não convertido.');
             }
 
-            if ($atual->data_validade && $atual->data_validade->isBefore(today())) {
+            if ($atual->estado === 'expirado' || ($atual->data_validade && $atual->data_validade->isBefore(today()))) {
                 throw new \DomainException('O orçamento expirou.');
             }
 
