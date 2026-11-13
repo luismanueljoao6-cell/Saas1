@@ -35,4 +35,14 @@ class Armazem extends Model
     {
         return $this->belongsTo(Empresa::class);
     }
+
+    public function saldosStock(): HasMany
+    {
+        return $this->hasMany(ArmazemStockSaldo::class, 'armazem_id');
+    }
+
+    public function movimentosStock(): HasMany
+    {
+        return $this->hasMany(ArmazemStockMovimento::class, 'armazem_id');
+    }
 }
