@@ -19,8 +19,8 @@
             <a href="{{ route('faturacao.orcamentos.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Orçamentos</a>
             <a href="{{ route('faturacao.clientes.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Clientes</a>
             <a href="{{ route('faturacao.produtos.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Produtos</a>
-            <a href="{{ route('faturacao.stock.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Stock</a>
             @if (auth()->user()->hasRole('Administrador'))
+                <a href="{{ route('faturacao.stock.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Stock</a>
                 <a href="{{ route('faturacao.compras.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Compras</a>
                 <a href="{{ route('faturacao.fornecedores.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Fornecedores</a>
             @endif
