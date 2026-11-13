@@ -13,6 +13,7 @@
             @forelse($orcamentos as $orcamento)
                 <tr><td class="px-4 py-3 font-medium">{{ $orcamento->numero }}</td><td class="px-4 py-3">{{ $orcamento->cliente?->nome }}</td><td class="px-4 py-3">{{ $orcamento->data_validade?->format('d/m/Y') ?? '—' }}</td><td class="px-4 py-3">{{ number_format((float)$orcamento->valor_total,2,',',' ') }} AOA</td><td class="px-4 py-3">{{ ucfirst($orcamento->estado) }}</td><td class="px-4 py-3">
                 <a href="{{ route('faturacao.orcamentos.mostrar', $orcamento->id) }}" class="text-indigo-600">Ver proforma</a>
+                @if($orcamento->estado === 'rascunho')<a href="{{ route('faturacao.orcamentos.editar', $orcamento->id) }}" class="ml-2 text-amber-600">Editar</a>@endif
                 @if(in_array($orcamento->estado,['rascunho','enviado']))
                 <form method="POST" action="{{ route('faturacao.orcamentos.estado',$orcamento->id) }}" class="inline">@csrf @method('PATCH')<input type="hidden" name="estado" value="aceite"><button class="text-indigo-600">Marcar aceite</button></form>
                 @endif
