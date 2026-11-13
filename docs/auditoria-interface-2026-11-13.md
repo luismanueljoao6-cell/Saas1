@@ -110,5 +110,5 @@ Na atualização da branch, o painel principal deixou de ser servido diretamente
 ### Limites e validações pendentes
 - O indicador de faturação representa valor faturado em documentos emitidos, não dinheiro efetivamente recebido; recebimentos devem continuar a ser apresentados separadamente no painel específico de faturação.
 - A chave do limite de utilizadores é lida de forma compatível com `max_utilizadores` ou `utilizadores`; outros nomes de limite ainda não são interpretados.
-- A CI detetou e ajudou a corrigir três problemas sucessivos: namespace/import PSR-4 do controller, apresentação dos limites ilimitados e estilo Pint (espaçamento do operador !). O código foi corrigido; a execução de CI do head mais recente deve confirmar Pint e os testes MySQL/SQLite.
+- A CI detetou e ajudou a corrigir três problemas sucessivos: namespace/import PSR-4 do controller, apresentação dos limites ilimitados e estilo Pint (espaçamento do operador ! e formatação do match). O código foi corrigido; a execução de CI do head mais recente deve confirmar Pint e os testes MySQL/SQLite.
 - A validação visual e a criação de testes específicos de regressão para estes indicadores continuam pendentes.
