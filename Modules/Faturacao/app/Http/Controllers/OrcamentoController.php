@@ -214,7 +214,7 @@ class OrcamentoController extends Controller
 
         try {
             $novo = $service->duplicar($origem, $empresa, $cliente, $dados['data_validade'] ?? null);
-        } catch (\\DomainException|\\InvalidArgumentException $e) {
+        } catch (\DomainException|\InvalidArgumentException $e) {
             return back()->with('erro', $e->getMessage());
         }
 
