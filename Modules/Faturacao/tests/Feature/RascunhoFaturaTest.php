@@ -19,6 +19,7 @@ class RascunhoFaturaTest extends TestCase
 {
     use RefreshDatabase;
 
+
     protected function setUp(): void
     {
         parent::setUp();
