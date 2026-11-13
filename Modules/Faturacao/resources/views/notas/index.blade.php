@@ -16,6 +16,18 @@
         <form method="GET" action="{{ route('faturacao.notas.index') }}" role="search" class="mt-4 flex flex-col gap-2 sm:flex-row">
             <label for="pesquisa-registos" class="sr-only">Pesquisar notas</label>
             <input id="pesquisa-registos" type="search" name="q" value="{{ request('q') }}" maxlength="100" placeholder="Número, cliente ou motivo" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:max-w-md">
+            <label for="filtro-tipo" class="sr-only">Tipo de nota</label>
+            <select id="filtro-tipo" name="tipo" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
+                <option value="">Todos os tipos</option>
+                <option value="credito" @selected(request('tipo') === 'credito')>Crédito</option>
+                <option value="debito" @selected(request('tipo') === 'debito')>Débito</option>
+            </select>
+            <label for="filtro-estado" class="sr-only">Estado da nota</label>
+            <select id="filtro-estado" name="estado" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
+                <option value="">Todos os estados</option>
+                <option value="rascunho" @selected(request('estado') === 'rascunho')>Rascunho</option>
+                <option value="emitida" @selected(request('estado') === 'emitida')>Emitida</option>
+            </select>
             <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-900">Pesquisar</button>
             @if (request()->filled('q'))
                 <a href="{{ route('faturacao.notas.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-600 dark:border-zinc-700 dark:text-zinc-300">Limpar</a>
