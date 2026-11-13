@@ -4,28 +4,28 @@
 
 @section('conteudo')
 @include('estudiomusica::partials.erros')
-    <h1 class="mb-1 text-lg font-semibold text-slate-900">Reclamações</h1>
-    <p class="mb-6 text-sm text-slate-500">
+    <h1 class="mb-1 text-lg font-semibold text-slate-900 dark:text-zinc-100">Reclamações</h1>
+    <p class="mb-6 text-sm text-slate-500 dark:text-zinc-400">
         Reclamações recebidas pela página pública. Não substituem o Livro de Reclamações físico, que deve estar
         sempre disponível no estabelecimento.
     </p>
 
     <div class="space-y-3">
         @forelse ($reclamacoes as $reclamacao)
-            <div class="rounded-md border border-slate-200 bg-white p-4 text-sm">
+            <div class="rounded-md border border-slate-200 bg-white p-4 text-sm dark:bg-zinc-900 dark:border-zinc-800">
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                    <p class="font-medium text-slate-900">#{{ $reclamacao->id }} &middot; {{ $reclamacao->assunto }}</p>
-                    <span class="text-xs text-slate-500">{{ $reclamacao->created_at->format('d/m/Y H:i') }}</span>
+                    <p class="font-medium text-slate-900 dark:text-zinc-100">#{{ $reclamacao->id }} &middot; {{ $reclamacao->assunto }}</p>
+                    <span class="text-xs text-slate-500 dark:text-zinc-400">{{ $reclamacao->created_at->format('d/m/Y H:i') }}</span>
                 </div>
-                <p class="mt-1 text-xs text-slate-500">{{ $reclamacao->nome }} &middot; {{ $reclamacao->email ?: '—' }} &middot; {{ $reclamacao->telefone ?: '—' }}</p>
-                <p class="mt-2 whitespace-pre-line text-slate-700">{{ $reclamacao->descricao }}</p>
+                <p class="mt-1 text-xs text-slate-500 dark:text-zinc-400">{{ $reclamacao->nome }} &middot; {{ $reclamacao->email ?: '—' }} &middot; {{ $reclamacao->telefone ?: '—' }}</p>
+                <p class="mt-2 whitespace-pre-line text-slate-700 dark:text-zinc-200">{{ $reclamacao->descricao }}</p>
 
                 <form method="POST" action="{{ route('estudiomusica.reclamacoes.atualizar', $reclamacao->id) }}" class="mt-3 space-y-2">
                     @csrf
                     @method('PUT')
-                    <textarea name="resposta" rows="2" placeholder="Resposta ao cliente" maxlength="3000" class="w-full rounded-md border-slate-300 text-sm">{{ $reclamacao->resposta }}</textarea>
+                    <textarea name="resposta" rows="2" placeholder="Resposta ao cliente" maxlength="3000" class="w-full rounded-md border-slate-300 text-sm dark:border-zinc-700">{{ $reclamacao->resposta }}</textarea>
                     <div class="flex items-center gap-2">
-                        <select name="estado" class="rounded-md border-slate-300 text-xs">
+                        <select name="estado" class="rounded-md border-slate-300 text-xs dark:border-zinc-700">
                             @foreach (['recebida' => 'Recebida', 'em_analise' => 'Em análise', 'resolvida' => 'Resolvida'] as $valor => $rotulo)
                                 <option value="{{ $valor }}" @selected($reclamacao->estado === $valor)>{{ $rotulo }}</option>
                             @endforeach
@@ -35,7 +35,7 @@
                 </form>
             </div>
         @empty
-            <p class="text-sm text-slate-500">Ainda sem reclamações.</p>
+            <p class="text-sm text-slate-500 dark:text-zinc-400">Ainda sem reclamações.</p>
         @endforelse
     </div>
 
