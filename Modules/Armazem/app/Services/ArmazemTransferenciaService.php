@@ -61,7 +61,7 @@ class ArmazemTransferenciaService
             $origemValidada = $armazens->get($origem->id);
             $destinoValidado = $armazens->get($destino->id);
 
-            if (! $origemValidada || ! $destinoValidado) {
+            if ($origemValidada === null || $destinoValidado === null) {
                 throw new DomainException('Os dois armazéns devem pertencer à mesma empresa.');
             }
 
@@ -69,12 +69,12 @@ class ArmazemTransferenciaService
                 throw new DomainException('O armazém de origem e o de destino devem ser diferentes.');
             }
 
-            if (! $origemValidada->ativo || ! $destinoValidado->ativo) {
+            if ($origemValidada->ativo === false || $destinoValidado->ativo === false) {
                 throw new DomainException('A origem e o destino devem estar ativos.');
             }
 
-            if ($utilizadorId !== null && ! User::withoutGlobalScopes()
-                ->where('empresa_id', $empresa->id)->whereKey($utilizadorId)->exists()) {
+            if ($utilizadorId !== null && User::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)->whereKey($utilizadorId)->exists() === false) {
                 throw new DomainException('O utilizador não pertence à empresa.');
             }
 
@@ -297,8 +297,8 @@ class ArmazemTransferenciaService
 
     private function validarUtilizador(Empresa $empresa, ?int $utilizadorId): void
     {
-        if ($utilizadorId !== null && ! User::withoutGlobalScopes()
-            ->where('empresa_id', $empresa->id)->whereKey($utilizadorId)->exists()) {
+        if ($utilizadorId !== null && User::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)->whereKey($utilizadorId)->exists() === false) {
             throw new DomainException('O utilizador não pertence à empresa.');
         }
     }
@@ -307,7 +307,7 @@ class ArmazemTransferenciaService
     {
         $tenant = app(TenantManager::class);
 
-        if ($tenant->has() && ! $tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
+        if ($tenant->has() && $tenant->emBypass() === false && $tenant->id() !== (int) $empresa->id) {
             throw new DomainException('O contexto atual não corresponde à empresa da transferência.');
         }
     }
@@ -316,7 +316,7 @@ class ArmazemTransferenciaService
     {
         $valor = trim($valor);
 
-        if (! preg_match('/^(0|[1-9][0-9]{0,10})(?:\.([0-9]{1,3}))?$/', $valor, $partes)) {
+        if (preg_match('/^(0|[1-9][0-9]{0,10})(?:\.([0-9]{1,3}))?$/', $valor, $partes) !== 1) {
             throw new InvalidArgumentException('Quantidade inválida. Usa até três casas decimais.');
         }
 
