@@ -2,6 +2,7 @@
 
 namespace Modules\Faturacao\Services;
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Core\Models\Empresa;
@@ -54,7 +55,7 @@ class OrcamentoService
             throw new \InvalidArgumentException('O orçamento deve conter entre 1 e 100 linhas.');
         }
 
-        if ($validade !== null && \Illuminate\Support\Carbon::parse($validade)->startOfDay()->isBefore(today())) {
+        if ($validade !== null && Carbon::parse($validade)->startOfDay()->isBefore(today())) {
             throw new \DomainException('A data de validade não pode estar no passado.');
         }
 
