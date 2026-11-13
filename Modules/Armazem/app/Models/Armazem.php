@@ -1,11 +1,11 @@
 <?php
 
-namespace Modules\\Armazem\\Models;
+namespace Modules\Armazem\Models;
 
-use Illuminate\\Database\\Eloquent\\Model;
-use Illuminate\\Database\\Eloquent\\Relations\\BelongsTo;
-use Modules\\Core\\Models\\Empresa;
-use Modules\\Core\\Traits\\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Core\Models\Empresa;
+use Modules\Core\Traits\BelongsToTenant;
 
 class Armazem extends Model
 {

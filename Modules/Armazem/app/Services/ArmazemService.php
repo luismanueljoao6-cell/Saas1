@@ -1,13 +1,13 @@
 <?php
 
-namespace Modules\\Armazem\\Services;
+namespace Modules\Armazem\Services;
 
 use DomainException;
-use Illuminate\\Support\\Facades\\DB;
-use Illuminate\\Validation\\ValidationException;
-use Modules\\Armazem\\Models\\Armazem;
-use Modules\\Core\\Models\\Empresa;
-use Modules\\Core\\Services\\TenantManager;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use Modules\Armazem\Models\Armazem;
+use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 
 class ArmazemService
 {
@@ -79,7 +79,7 @@ class ArmazemService
 
             Armazem::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
-                ->whereKeyNot($alvo->id)
+                ->where('id', '!=', $alvo->id)
                 ->update(['principal' => false]);
 
             $alvo->forceFill(['principal' => true])->save();

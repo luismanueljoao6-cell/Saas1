@@ -1,8 +1,8 @@
 <?php
 
-namespace Modules\\Armazem\\Providers;
+namespace Modules\Armazem\Providers;
 
-use Illuminate\\Support\\ServiceProvider;
+use Illuminate\Support\ServiceProvider;
 
 class ArmazemServiceProvider extends ServiceProvider
 {
