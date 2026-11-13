@@ -28,7 +28,10 @@ class ArmazemTransferenciaService
     /**
      * Cria um rascunho. Cada produto só pode aparecer uma vez na transferência.
      *
-     * @param array<int, array{produto_id:int, quantidade:string|int|float}> $linhas
+     * @param array<int, array{
+     *     produto_id: int,
+     *     quantidade: string|int|float,
+     * }> $linhas
      */
     public function criar(
         Empresa $empresa,
@@ -243,7 +246,12 @@ class ArmazemTransferenciaService
      * Regista uma entrega parcial. Quantidades em falta/danificadas ficam
      * auditadas e nunca são creditadas no saldo do armazém de destino.
      *
-     * @param array<int, array{linha_id:int, quantidade_recebida:string, quantidade_em_falta:string, quantidade_danificada:string}> $linhas
+     * @param array<int, array{
+     *     linha_id: int,
+     *     quantidade_recebida: string,
+     *     quantidade_em_falta: string,
+     *     quantidade_danificada: string,
+     * }> $linhas
      */
     public function registarRececaoParcial(
         Empresa $empresa,
