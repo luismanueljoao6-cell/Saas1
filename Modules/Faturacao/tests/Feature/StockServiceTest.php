@@ -80,4 +80,28 @@ class StockServiceTest extends TestCase
         $this->assertSame(1, StockMovimento::withoutGlobalScopes()->where('produto_id', $produto->id)->count());
         $this->assertSame('4.000', StockSaldo::withoutGlobalScopes()->where('produto_id', $produto->id)->value('quantidade'));
     }
+    public function test_repetir_ajuste_com_a_mesma_chave_e_seguro_e_nao_duplica_movimento(): void
+    {
+        [$empresa, $produto] = $this->criarProduto('630000305');
+        $service = app(StockService::class);
+        $service->entrada($empresa, $produto, '5.000', 'Entrada');
+
+        $primeiro = $service->ajustar($empresa, $produto, '3.500', 'Contagem física', null, 'ajuste-001');
+        $segundo = $service->ajustar($empresa, $produto, '3.500', 'Contagem física', null, 'ajuste-001');
+
+        $this->assertSame($primeiro->id, $segundo->id);
+        $this->assertSame(2, StockMovimento::withoutGlobalScopes()->where('produto_id', $produto->id)->count());
+        $this->assertSame('3.500', StockSaldo::withoutGlobalScopes()->where('produto_id', $produto->id)->value('quantidade'));
+    }
+
+    public function test_reutilizar_chave_com_dados_diferentes_e_rejeitado(): void
+    {
+        [$empresa, $produto] = $this->criarProduto('630000306');
+        $service = app(StockService::class);
+        $service->entrada($empresa, $produto, '2.000', 'Receção', null, 'chave-unica');
+
+        $this->expectException(\\DomainException::class);
+        $service->entrada($empresa, $produto, '3.000', 'Receção', null, 'chave-unica');
+    }
+
 }

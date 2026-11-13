@@ -27,8 +27,31 @@ class StockService
     public function ajustar(Empresa $empresa, Produto $produto, string $quantidadeContada, string $motivo, ?int $utilizadorId = null, ?string $chaveIdempotencia = null): StockMovimento
     {
         $contagem = $this->emMilhares($quantidadeContada);
+        $motivo = trim($motivo);
 
         return DB::transaction(function () use ($empresa, $produto, $contagem, $motivo, $utilizadorId, $chaveIdempotencia) {
+            if ($chaveIdempotencia !== null) {
+                if (trim($chaveIdempotencia) === '' || mb_strlen($chaveIdempotencia) > 100) {
+                    throw new InvalidArgumentException('A chave de idempotência deve ter entre 1 e 100 caracteres.');
+                }
+
+                $existente = StockMovimento::withoutGlobalScopes()
+                    ->where('empresa_id', $empresa->id)
+                    ->where('chave_idempotencia', $chaveIdempotencia)
+                    ->first();
+
+                if ($existente) {
+                    if ((int) $existente->produto_id !== (int) $produto->id
+                        || $existente->tipo !== 'ajuste'
+                        || $existente->motivo !== $motivo
+                        || (string) $existente->saldo_posterior !== $this->formatar($contagem)) {
+                        throw new DomainException('A chave de idempotência já foi utilizada noutro movimento.');
+                    }
+
+                    return $existente;
+                }
+            }
+
             $saldo = $this->saldoBloqueado($empresa, $produto);
             $anterior = $this->emMilhares((string) $saldo->quantidade);
             $delta = $contagem - $anterior;
