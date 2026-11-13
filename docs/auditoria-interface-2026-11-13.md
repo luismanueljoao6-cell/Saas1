@@ -69,6 +69,24 @@ Estas alterações não modificam regras fiscais, cálculos, permissões, rotas 
 - Testes de permissões por papel e isolamento multiempresa.
 - Confirmar pipeline de build/deploy do ambiente real; merge em main não prova publicação.
 
+
+## Segunda passagem — navegação e dashboard (13/11/2026)
+
+A leitura integral do registo de navegação e dos layouts revelou problemas adicionais, agora corrigidos nesta branch:
+
+- **Dashboard com dados fictícios:** a view continha números, clientes, faturas e pedidos de demonstração apresentados como se fossem reais. Foram removidos; os indicadores mostram indisponibilidade de dados e as tabelas ficam vazias até receberem dados reais do controller. Isto evita decisões baseadas em informação inventada. A ligação do dashboard a métricas reais continua pendente.
+- **Botão Sair:** o header verificava a rota `logout`, mas o Core declara `core.logout`. O formulário foi ligado à rota efetivamente existente.
+- **Menu de faturação incompleto:** foram adicionados atalhos para visão geral, orçamentos/proformas e stock (este último apenas para Administrador).
+- **Menu Atelier com rotas inexistentes:** foram retirados os destinos para listagens gerais de provas e medidas que não têm rotas index implementadas; foram adicionados os destinos reais para orçamentos recebidos, campanhas, equipa, perfil e portfólio. Os atalhos administrativos foram ocultados a utilizadores sem papel Administrador.
+- **Menu Estúdio:** substituiu-se o destino inexistente de listagem de versões por rotas reais de pedidos de orçamento, reclamações, equipa e termos. Os pedidos de orçamento respeitam a permissão `estudiomusica.gerir-sessoes`; equipa e termos ficam restritos ao Administrador.
+- **Subscrições:** foram retirados dois atalhos para rotas inexistentes (`subscricoes.faturacao` e `subscricoes.pagamentos`); mantém-se o acesso ao plano e à rota de pagamento pendente por ligação contextual.
+- **Ícones:** a biblioteca Blade tinha apenas um conjunto mínimo, pelo que vários itens do menu caíam no ícone genérico. Foram acrescentados símbolos para documentos, faturas, utilizadores, empresa, stock, áudio, campanhas, alertas e restantes destinos usados na navegação.
+- **Tabelas do Atelier:** os contentores de pedidos, campanhas e equipa passaram a permitir scroll horizontal em ecrãs estreitos.
+
+## Estado atualizado das correções
+
+As alterações acima são de apresentação, navegação e honestidade dos dados. Não criam endpoints novos, não alteram permissões no backend, não mudam regras fiscais e não inventam métricas. A cobertura de dados reais no dashboard, as listas gerais de medidas/provas, a confirmação administrativa de pagamentos e a validação visual em browser permanecem tarefas futuras.
+
 ## Critérios de conclusão
 
 A auditoria só pode ser considerada concluída quando cada rota de negócio tiver destino de interface ou justificação explícita de ser API/webhook/ação interna; cada ação da UI estiver ligada a uma rota autorizada; os testes e build estiverem verdes; e a validação visual for feita num ambiente executável.
