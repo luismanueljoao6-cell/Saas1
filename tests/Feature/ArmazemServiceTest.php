@@ -1,14 +1,14 @@
 <?php
 
-namespace Tests\\Feature;
+namespace Tests\Feature;
 
 use DomainException;
-use Illuminate\\Foundation\\Testing\\RefreshDatabase;
-use Modules\\Armazem\\Models\\Armazem;
-use Modules\\Armazem\\Services\\ArmazemService;
-use Modules\\Core\\Models\\Empresa;
-use Modules\\Core\\Services\\TenantManager;
-use Tests\\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Armazem\Models\Armazem;
+use Modules\Armazem\Services\ArmazemService;
+use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
+use Tests\TestCase;
 
 class ArmazemServiceTest extends TestCase
 {
