@@ -7,8 +7,8 @@
         <button type="button" onclick="alternarTema()" class="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800" aria-label="Alternar tema">Tema</button>
         @auth
             <span class="hidden text-sm font-medium text-slate-700 dark:text-zinc-200 sm:inline">{{ auth()->user()->name }}</span>
-            @if (Route::has('logout'))
-                <form method="POST" action="{{ route('logout') }}">@csrf<button class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-900" type="submit">Sair</button></form>
+            @if (Route::has('core.logout'))
+                <form method="POST" action="{{ route('core.logout') }}">@csrf<button class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-900" type="submit">Sair</button></form>
             @endif
         @endauth
     </div>
