@@ -11,6 +11,7 @@ use Modules\Faturacao\Models\FaturaLinha;
 use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Support\Dinheiro;
 use Modules\Faturacao\Support\GuardaEmissao;
+use Modules\Faturacao\Support\SnapshotFiscalDocumento;
 use Modules\Faturacao\Support\ValidacaoLinhas;
 use Throwable;
 
@@ -118,6 +119,8 @@ class FaturaService
                 );
 
                 $fatura->serie_id = $resultado['serie']->id;
+                // O snapshot é gravado na mesma transação e antes da emissão imutável.
+                $fatura->snapshot_fiscal = SnapshotFiscalDocumento::capturar($fatura);
 
                 $this->assinaturaFiscalService->assinarEEmitir(
                     $fatura,
