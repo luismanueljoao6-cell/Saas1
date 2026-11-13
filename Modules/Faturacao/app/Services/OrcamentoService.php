@@ -38,6 +38,51 @@ class OrcamentoService
         ]);
     }
 
+    /**
+     * Atualiza apenas rascunhos. O lock e a consulta sem scopes garantem
+     * isolamento por empresa mesmo em jobs ou chamadas sem tenant ambiente.
+     *
+     * @param array<int, array<string, mixed>> $linhas
+     */
+    public function atualizarRascunho(Orcamento $orcamento, Cliente $cliente, array $linhas, ?string $validade, ?string $observacoes): Orcamento
+    {
+        if ((int) $cliente->empresa_id !== (int) $orcamento->empresa_id) {
+            throw new \\DomainException('O cliente não pertence a esta empresa.');
+        }
+
+        if (count($linhas) < 1 || count($linhas) > 100) {
+            throw new \\InvalidArgumentException('O orçamento deve conter entre 1 e 100 linhas.');
+        }
+
+        if ($validade !== null && \\Illuminate\\Support\\Carbon::parse($validade)->startOfDay()->isBefore(today())) {
+            throw new \\DomainException('A data de validade não pode estar no passado.');
+        }
+
+        ValidacaoLinhas::validar($linhas, (int) $orcamento->empresa_id);
+        $totais = $this->totais($linhas);
+
+        return DB::transaction(function () use ($orcamento, $cliente, $linhas, $validade, $observacoes, $totais) {
+            $atual = Orcamento::withoutGlobalScopes()
+                ->where('empresa_id', $orcamento->empresa_id)
+                ->lockForUpdate()
+                ->findOrFail($orcamento->id);
+
+            if ($atual->estado !== 'rascunho' || $atual->fatura_id !== null) {
+                throw new \\DomainException('Só é possível editar orçamentos em rascunho.');
+            }
+
+            $atual->update([
+                'cliente_id' => $cliente->id,
+                'data_validade' => $validade,
+                'linhas' => array_values($linhas),
+                ...$totais,
+                'observacoes' => $observacoes,
+            ]);
+
+            return $atual->fresh('cliente');
+        }, attempts: 3);
+    }
+
     public function alterarEstado(Orcamento $orcamento, string $estado): Orcamento
     {
         if (! in_array($estado, ['enviado', 'aceite', 'recusado'], true)) {
