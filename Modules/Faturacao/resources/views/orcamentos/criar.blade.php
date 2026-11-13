@@ -16,8 +16,16 @@
                     <input name="linhas[0][descricao]" required placeholder="Descrição" class="sm:col-span-5 rounded-lg border-slate-300 dark:bg-zinc-800">
                     <input name="linhas[0][quantidade]" required type="number" min="0.001" step="0.001" value="1" placeholder="Qtd." class="sm:col-span-2 rounded-lg border-slate-300 dark:bg-zinc-800">
                     <input name="linhas[0][preco_unitario]" required type="number" min="0" step="0.01" placeholder="Preço unitário" class="sm:col-span-3 rounded-lg border-slate-300 dark:bg-zinc-800">
-                    <select name="linhas[0][taxa_iva]" class="sm:col-span-2 rounded-lg border-slate-300 dark:bg-zinc-800">@foreach($taxasIva as $taxa)<option value="{{ $taxa }}" @selected((float)$taxa===(float)$taxaPadrao)>{{ $taxa }}% IVA</option>@endforeach</select>
+                    <select name="linhas[0][taxa_iva]" id="taxa-iva-0" class="campo-taxa sm:col-span-2 rounded-lg border-slate-300 dark:bg-zinc-800">@foreach($taxasIva as $taxa)<option value="{{ $taxa }}" @selected((float)$taxa===(float)$taxaPadrao)>{{ $taxa }}% IVA</option>@endforeach</select>
                     <input type="hidden" name="linhas[0][operation_type]" value="SG">
+                    <label class="campo-motivo text-xs sm:col-span-12" hidden>Motivo de isenção (obrigatório para IVA 0%)
+                        <select name="linhas[0][motivo_isencao]" class="mt-1 w-full rounded-lg border-slate-300 dark:bg-zinc-800">
+                            <option value="">Selecionar motivo</option>
+                            @foreach($motivosIsencao as $codigo => $motivo)
+                                <option value="{{ $codigo }}">{{ $codigo }} — {{ $motivo['mencao'] }}</option>
+                            @endforeach
+                        </select>
+                    </label>
                 </div>
             </div>
         </div>
@@ -30,6 +38,18 @@
 (() => {
     const lista = document.getElementById('linhas');
     let indice = 1;
+    const motivosIsencao = @json($motivosIsencao->map(fn (array $motivo) => $motivo['mencao']));
+    const sincronizarMotivo = (bloco) => {
+        const isento = Number(bloco.querySelector('.campo-taxa').value) === 0;
+        const campo = bloco.querySelector('.campo-motivo');
+        const select = campo.querySelector('select');
+        campo.hidden = !isento;
+        select.required = isento;
+        if (!isento) select.value = '';
+    };
+    const primeiraLinha = lista.querySelector('.grid');
+    primeiraLinha.querySelector('.campo-taxa').addEventListener('change', () => sincronizarMotivo(primeiraLinha));
+    sincronizarMotivo(primeiraLinha);
     document.getElementById('adicionar-linha').addEventListener('click', () => {
         if (indice >= 100) return;
         const bloco = document.createElement('div');
@@ -55,6 +75,21 @@
         @endforeach
         bloco.appendChild(taxa);
         const tipo = document.createElement('input'); tipo.type='hidden'; tipo.name='linhas['+indice+'][operation_type]'; tipo.value='SG'; bloco.appendChild(tipo);
+        const campoMotivo = document.createElement('label');
+        campoMotivo.className = 'campo-motivo text-xs sm:col-span-12';
+        campoMotivo.hidden = true;
+        campoMotivo.textContent = 'Motivo de isenção (obrigatório para IVA 0%)';
+        const selectMotivo = document.createElement('select');
+        selectMotivo.name = 'linhas['+indice+'][motivo_isencao]';
+        selectMotivo.className = 'mt-1 w-full rounded-lg border-slate-300 dark:bg-zinc-800';
+        const vazio = document.createElement('option'); vazio.value = ''; vazio.textContent = 'Selecionar motivo'; selectMotivo.appendChild(vazio);
+        Object.entries(motivosIsencao).forEach(([codigo, mencao]) => {
+            const option = document.createElement('option'); option.value = codigo; option.textContent = codigo + ' — ' + mencao; selectMotivo.appendChild(option);
+        });
+        campoMotivo.appendChild(selectMotivo);
+        bloco.appendChild(campoMotivo);
+        taxa.addEventListener('change', () => sincronizarMotivo(bloco));
+        sincronizarMotivo(bloco);
         const remover = document.createElement('button'); remover.type='button'; remover.textContent='Remover linha'; remover.className='text-left text-sm text-red-600 sm:col-span-12'; remover.addEventListener('click',()=>bloco.remove()); bloco.appendChild(remover);
         lista.appendChild(bloco); indice++;
     });
