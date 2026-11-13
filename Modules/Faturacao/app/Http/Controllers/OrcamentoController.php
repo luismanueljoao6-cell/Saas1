@@ -24,7 +24,7 @@ class OrcamentoController extends Controller
 
         $filtros = $request->validate([
             'pesquisa' => ['nullable', 'string', 'max:120'],
-            'estado' => ['nullable', Rule::in(['rascunho', 'enviado', 'aceite', 'recusado', 'convertido'])],
+            'estado' => ['nullable', Rule::in(['rascunho', 'enviado', 'aceite', 'recusado', 'expirado', 'convertido'])],
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date', 'after_or_equal:data_inicio'],
         ]);
@@ -38,7 +38,17 @@ class OrcamentoController extends Controller
                         ->orWhereHas('cliente', fn ($cliente) => $cliente->where('nome', 'like', '%'.$termo.'%'));
                 });
             })
-            ->when($filtros['estado'] ?? null, fn ($query, $estado) => $query->where('estado', $estado))
+            ->when(($filtros['estado'] ?? null) === 'expirado', function ($query) {
+                $query->where(function ($subquery) {
+                    $subquery->where('estado', 'expirado')
+                        ->orWhere(function ($validade) {
+                            $validade->whereNotNull('data_validade')
+                                ->whereDate('data_validade', '<', today())
+                                ->whereNotIn('estado', ['convertido', 'recusado']);
+                        });
+                });
+            })
+            ->when(isset($filtros['estado']) && $filtros['estado'] !== 'expirado', fn ($query) => $query->where('estado', $filtros['estado']))
             ->when($filtros['data_inicio'] ?? null, fn ($query, $data) => $query->whereDate('created_at', '>=', $data))
             ->when($filtros['data_fim'] ?? null, fn ($query, $data) => $query->whereDate('created_at', '<=', $data));
 
