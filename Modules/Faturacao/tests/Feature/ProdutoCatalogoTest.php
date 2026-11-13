@@ -59,7 +59,10 @@ class ProdutoCatalogoTest extends TestCase
             ])
             ->assertSessionHasNoErrors();
 
-        $categoria = CategoriaProduto::query()->where('nome', 'Bebidas')->firstOrFail();
+        $categoria = CategoriaProduto::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa->id)
+            ->where('nome', 'Bebidas')
+            ->firstOrFail();
 
         $this->actingAs($this->utilizador)
             ->post(route('faturacao.produtos.store'), [
@@ -73,7 +76,10 @@ class ProdutoCatalogoTest extends TestCase
             ])
             ->assertSessionHasNoErrors();
 
-        $produto = Produto::query()->where('codigo_barras', '5601234567890')->firstOrFail();
+        $produto = Produto::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa->id)
+            ->where('codigo_barras', '5601234567890')
+            ->firstOrFail();
 
         $this->assertSame($categoria->id, $produto->categoria_id);
         $this->assertSame('250.00', $produto->preco_unitario);
@@ -97,7 +103,7 @@ class ProdutoCatalogoTest extends TestCase
             ])
             ->assertSessionHasErrors(['codigo_barras']);
 
-        $this->assertSame(1, Produto::query()->count());
+        $this->assertSame(1, Produto::withoutGlobalScopes()->where('empresa_id', $this->empresa->id)->count());
     }
 
     public function test_nao_aceita_categoria_de_outra_empresa(): void
@@ -119,6 +125,6 @@ class ProdutoCatalogoTest extends TestCase
             ])
             ->assertSessionHasErrors(['categoria_id']);
 
-        $this->assertSame(0, Produto::query()->count());
+        $this->assertSame(0, Produto::withoutGlobalScopes()->where('empresa_id', $this->empresa->id)->count());
     }
 }
