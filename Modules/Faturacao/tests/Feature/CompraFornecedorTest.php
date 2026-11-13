@@ -153,4 +153,66 @@ class CompraFornecedorTest extends TestCase
 
         $this->assertSame(0, Compra::withoutGlobalScopes()->count());
     }
+
+    public function test_administrador_pode_editar_e_inativar_fornecedor(): void
+    {
+        $fornecedor = Fornecedor::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Fornecedor Antigo',
+            'nif' => '500000001',
+            'pais' => 'AO',
+            'ativo' => true,
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->put(route('faturacao.fornecedores.update', $fornecedor), [
+                'nome' => 'Fornecedor Atualizado',
+                'nif' => '500000002',
+                'pais' => 'AO',
+                'telefone' => '923000000',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('fornecedores', [
+            'id' => $fornecedor->id,
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Fornecedor Atualizado',
+            'nif' => '500000002',
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->patch(route('faturacao.fornecedores.estado', $fornecedor))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('fornecedores', [
+            'id' => $fornecedor->id,
+            'ativo' => false,
+        ]);
+    }
+
+    public function test_nao_permite_editar_fornecedor_de_outra_empresa(): void
+    {
+        $outraEmpresa = Empresa::create([
+            'nome_comercial' => 'Empresa Isolada',
+            'nif' => '630000321',
+        ]);
+        $fornecedor = Fornecedor::create([
+            'empresa_id' => $outraEmpresa->id,
+            'nome' => 'Fornecedor Alheio',
+            'pais' => 'AO',
+            'ativo' => true,
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->put(route('faturacao.fornecedores.update', $fornecedor), [
+                'nome' => 'Tentativa de alteração',
+                'pais' => 'AO',
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('fornecedores', [
+            'id' => $fornecedor->id,
+            'nome' => 'Fornecedor Alheio',
+        ]);
+    }
 }
