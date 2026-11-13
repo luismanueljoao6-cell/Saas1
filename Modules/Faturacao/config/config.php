@@ -133,62 +133,61 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Motivos de isenção / não sujeição de IVA (taxExemptionCode)
+    | Motivos de isenção / não sujeição de IVA — Anexo 6.4 da AGT
     |--------------------------------------------------------------------------
-    | Uma linha a 0% só é aceite com um motivo desta tabela, e o código segue
-    | para a AGT em `taxExemptionCode` (3 caracteres, Anexo 6.4 do Decreto
-    | Executivo n.º 683/25). 'tipo': ISE => taxType IVA + taxCode ISE (isento);
-    | NS => taxType NS (não sujeito).
+    | Códigos e menções transcritos do portal oficial de Facturação Electrónica
+    | da AGT (Anexos > Tabela de Isenções de IVA).
     |
-    | ATENÇÃO — tabela POR CONFIRMAR: é a transcrição de um terceiro (WISEDAT,
-    | set/2025) da tabela angolana de motivos de isenção; não é a cópia oficial
-    | do Anexo 6.4. Compara-a com o anexo oficial, corrige o que for preciso e só
-    | então define FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS=true. Enquanto isso for
-    | false, com a AGT ativa as isenções são recusadas (nenhum código por
-    | confirmar segue para a AGT).
-    | (M00 — Regime Simplificado — não é um motivo de isenção e fica de fora.)
+    | tipo:
+    | - ISE: IVA com taxCode ISE;
+    | - NS: operação não sujeita (taxType NS);
+    | - REGIME: código de enquadramento do regime, não aplicável como motivo
+    |   individual de uma linha a 0% (M00).
+    |
+    | A lista oficial está disponível na interface, mas a comunicação à AGT
+    | continua bloqueada até à confirmação operacional/homologação da tabela.
     */
     'motivos_isencao_confirmados' => (bool) env('FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS', false),
 
     'motivos_isencao' => [
-        'M02' => ['tipo' => 'NS', 'descricao' => 'Transmissão de bens e serviço não sujeita'],
-        'M04' => ['tipo' => 'NS', 'descricao' => 'IVA – Regime de Exclusão (Lei n.º 42/20)'],
-        'M10' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do n.º 1 do artigo 12.º do CIVA (bens alimentares)'],
-        'M11' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do n.º 1 do artigo 12.º do CIVA (medicamentos)'],
-        'M12' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea c) do n.º 1 do artigo 12.º do CIVA'],
-        'M13' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea d) do n.º 1 do artigo 12.º do CIVA (livros)'],
-        'M14' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea e) do n.º 1 do artigo 12.º do CIVA (locação de imóveis habitacionais)'],
-        'M15' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea f) do n.º 1 do artigo 12.º do CIVA'],
-        'M16' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea g) do n.º 1 do artigo 12.º do CIVA (jogos)'],
-        'M17' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea h) do n.º 1 do artigo 12.º do CIVA (transporte colectivo de passageiros)'],
-        'M18' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea i) do n.º 1 do artigo 12.º do CIVA (intermediação financeira)'],
-        'M19' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea j) do n.º 1 do artigo 12.º do CIVA (seguros)'],
-        'M20' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea k) do n.º 1 do artigo 12.º do CIVA (produtos petrolíferos)'],
-        'M21' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea l) do n.º 1 do artigo 12.º do CIVA (ensino)'],
-        'M22' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea m) do artigo 12.º do CIVA (serviços médico-sanitários)'],
-        'M23' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea n) do artigo 12.º do CIVA (transporte de doentes)'],
-        'M24' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea o) do artigo 12.º do CIVA (equipamentos médicos)'],
-        'M30' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do artigo 15.º do CIVA (exportações)'],
-        'M31' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea b) do artigo 15.º do CIVA'],
-        'M32' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea c) do artigo 15.º do CIVA'],
-        'M33' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea d) do artigo 15.º do CIVA'],
-        'M34' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea e) do artigo 15.º do CIVA'],
-        'M35' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea f) do artigo 15.º do CIVA'],
-        'M36' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea g) do artigo 15.º do CIVA'],
-        'M37' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea h) do artigo 15.º do CIVA'],
-        'M38' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea i) do artigo 15.º do CIVA'],
-        'M80' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do n.º 1 do artigo 14.º do CIVA (importações)'],
-        'M81' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea b) do n.º 1 do artigo 14.º do CIVA'],
-        'M82' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea c) do n.º 1 do artigo 14.º do CIVA'],
-        'M83' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea d) do n.º 1 do artigo 14.º do CIVA'],
-        'M84' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea e) do n.º 1 do artigo 14.º do CIVA'],
-        'M85' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do n.º 2 do artigo 14.º do CIVA'],
-        'M86' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea b) do n.º 2 do artigo 14.º do CIVA'],
-        'M90' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea a) do n.º 1 do artigo 16.º do CIVA (regimes aduaneiros especiais)'],
-        'M91' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea b) do n.º 1 do artigo 16.º do CIVA'],
-        'M92' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea c) do n.º 1 do artigo 16.º do CIVA'],
-        'M93' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea d) do n.º 1 do artigo 16.º do CIVA'],
-        'M94' => ['tipo' => 'ISE', 'descricao' => 'Isento nos termos da alínea e) do n.º 1 do artigo 16.º do CIVA'],
+        'M10' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea a) do nº1 do artigo 12.º do CIVA', 'descricao' => 'A transmissão dos bens alimentares, conforme anexo I do presente código.'],
+        'M11' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea b) do nº1 do artigo 12.º do CIVA', 'descricao' => 'As transmissões de medicamentos destinados exclusivamente a fins terapêuticos e profilácticos.'],
+        'M12' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea c) do nº1 do artigo 12.º do CIVA', 'descricao' => 'As transmissões de cadeiras de rodas e veículos semelhantes, accionados manualmente ou por motor, para portadores de deficiência, aparelhos, máquinas de escrever com caracteres braille, impressoras para caracteres braille e os artefactos que se destinam a ser utilizados por invisuais ou a corrigir a audição.'],
+        'M13' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea d) do nº1 do artigo 12.º do CIVA', 'descricao' => 'A transmissão de livros, incluindo em formato digital.'],
+        'M14' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea e) do nº1 do artigo 12.º do CIVA', 'descricao' => 'A locação de bens imóveis destinados a fins habitacionais, designadamente prédios urbanos, fracções autónomas destes ou terrenos para construção, com excepção das prestações de serviços de alojamento efectuadas no âmbito da actividade hoteleira ou de outras com funções análogas.'],
+        'M15' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea f) do nº1 do artigo 12.º do CIVA', 'descricao' => 'As operações sujeitas ao imposto de SISA, ainda que dele isentas.'],
+        'M16' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea g) do nº1 do artigo 12.º do CIVA', 'descricao' => 'A exploração e a prática de jogos de fortuna ou azar e de diversão social, bem como as respectivas comissões e todas as operações relacionadas, quando as mesmas estejam sujeitas a Imposto Especial sobre o Jogos, nos termos da legislação aplicável.'],
+        'M17' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea h) do nº1 do artigo 12.º do CIVA', 'descricao' => 'O transporte colectivo de passageiros.'],
+        'M18' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea i) do nº1 do artigo 12.º do CIVA', 'descricao' => 'As operações de intermediação financeira, incluindo a locação financeira, exceptuando-se aquelas em que uma taxa, ou contraprestação, específica e predeterminada é cobrada pelo serviço.'],
+        'M19' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea j) do nº1 do artigo 12.º do CIVA', 'descricao' => 'O seguro de saúde, bem como a prestação de seguros e resseguros do ramo vida.'],
+        'M20' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea k) do nº1 do artigo 12.º do CIVA', 'descricao' => 'As transmissões de produtos petrolíferos conforme anexo II do presente código.'],
+        'M21' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea l) do nº1 do artigo 12.º do CIVA', 'descricao' => 'As prestações de serviço que tenham por objecto o ensino, efectuadas por estabelecimentos integrados conforme definidos na Lei de Bases do Sistema de Educação e Ensino, bem como por estabelecimentos de Ensino Superior devidamente reconhecidos pelo Ministério de Tutela.'],
+        'M22' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea m) do artigo 12.º do CIVA', 'descricao' => 'As prestações de serviço médico sanitário, efectuadas por estabelecimentos hospitalares, clínicas, dispensários e similares.'],
+        'M23' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea n) do artigo 12.º do CIVA', 'descricao' => 'O transporte de doentes ou feridos em ambulâncias ou outros veículos apropriados efectuados por organismos devidamente autorizados.'],
+        'M24' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea o) do artigo 12.º do CIVA', 'descricao' => 'Os equipamentos médicos para o exercício da actividade dos estabelecimentos de saúde.'],
+        'M80' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea a) do nº1 do artigo 14.º', 'descricao' => 'As importações definitivas de bens cuja transmissão no território nacional seja isenta de imposto.'],
+        'M81' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea b) do nº1 do artigo 14.º', 'descricao' => 'As importações de ouro, moedas ou notas de banco, efectuadas pelo Banco Nacional de Angola.'],
+        'M82' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea c) do nº1 do artigo 14.º', 'descricao' => 'A importação de bens destinados a ofertas para atenuar os efeitos das calamidades naturais, tais como cheias, tempestades, secas, ciclones, sismos, terramotos e outros de idêntica natureza, desde que devidamente autorizado pelo Titular do Poder Executivo.'],
+        'M83' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea d) do nº1 do artigo 14.º', 'descricao' => 'A importação de mercadorias ou equipamentos destinados exclusivos e directamente à execução das operações petrolíferas e mineiras nos termos da Lei que estabelece o Regime Aduaneiro do Sector Petrolífero e do Código Mineiro, respectivamente.'],
+        'M84' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea e) do nº1 do artigo 14.º', 'descricao' => 'Importação de moeda estrangeira efectuada pelas instituições financeiras bancárias, nos termos definidos pelo Banco Nacional de Angola.'],
+        'M85' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea a) do nº2 do artigo 14.º', 'descricao' => 'No âmbito de tratados e acordos internacionais de que a República de Angola seja parte, nos termos previstos nesses tratados e acordos.'],
+        'M86' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea b) do nº2 do artigo 14.º', 'descricao' => 'No âmbito de relações diplomáticas e consulares, quando a isenção resulte de tratados e acordos internacionais celebrados pela República de Angola.'],
+        'M30' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea a) do artigo 15.º do CIVA', 'descricao' => 'As transmissões de bens expedidos ou transportados com destino ao estrangeiro pelo vendedor ou por um terceiro por conta deste.'],
+        'M31' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea b) do artigo 15.º do CIVA', 'descricao' => 'As transmissões de bens de abastecimento postos a bordo das embarcações que efectuem navegação marítima em alto mar e que assegurem o transporte remunerado de passageiros ou o exercício de uma actividade comercial, industrial ou de pesca.'],
+        'M32' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea c) do artigo 15.º do CIVA', 'descricao' => 'As transmissões de bens de abastecimento postos a bordo das aeronaves utilizadas por companhias de navegação aérea que se dediquem principalmente ao tráfego internacional e que assegurem o transporte remunerado de passageiros, ou o exercício de uma actividade comercial ou industrial.'],
+        'M33' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea d) do artigo 15.º do CIVA', 'descricao' => 'As transmissões de bens de abastecimento postos a bordo das embarcações de salvamento, assistência marítima, pesca costeira e embarcações de guerra, quando deixem o país com destino a um porto ou ancoradouro situado no estrangeiro.'],
+        'M34' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea e) do artigo 15.º do CIVA', 'descricao' => 'As transmissões, transformações, reparações, manutenção, frete e aluguer, incluindo a locação financeira, de embarcações e aeronaves afectas às companhias de navegação aérea e marítima que se dediquem principalmente ao tráfego internacional, assim como as transmissões de bens de abastecimento postos a bordo das mesmas e as prestações de serviços efectuadas com vista à satisfação das suas necessidades directas e da respectiva carga.'],
+        'M35' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea f) do artigo 15.º do CIVA', 'descricao' => 'As transmissões de bens efectuadas no âmbito de relações diplomáticas e consulares cuja isenção resulte de acordos e convénios internacionais celebrados por Angola.'],
+        'M36' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea g) do artigo 15.º do CIVA', 'descricao' => 'As transmissões de bens destinados a organismos internacionais reconhecidos por Angola ou a membros dos mesmos organismos, nos limites e com as condições fixadas em acordos e convénios internacionais celebrados por Angola.'],
+        'M37' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea h) do artigo 15.º do CIVA', 'descricao' => 'As transmissões de bens efectuadas no âmbito de tratados e acordos internacionais de que a República de Angola seja parte, quando a isenção resulte desses mesmos tratados e acordos.'],
+        'M38' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea i) do artigo 15.º do CIVA', 'descricao' => 'O transporte de pessoas provenientes ou com destino ao estrangeiro.'],
+        'M90' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea a) do nº1 do artigo 16.º', 'descricao' => 'As importações de bens que, sob controlo aduaneiro e de acordo com as disposições aduaneiras especificamente aplicáveis, sejam postas nos regimes de zona franca, que sejam introduzidos em armazéns de regimes aduaneiros ou lojas francas, enquanto permanecerem sob tais regimes.'],
+        'M91' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea b) do nº1 do artigo 16.º', 'descricao' => 'As transmissões de bens que sejam expedidos ou transportados para as zonas ou depósitos mencionados na alínea anterior, bem como as prestações de serviços directamente conexas com essas transmissões.'],
+        'M92' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea c) do nº1 do artigo 16.º', 'descricao' => 'As transmissões de bens que se efectuem nos regimes a que se refere a alínea a), assim como as prestações de serviços directamente conexas com essas transmissões, enquanto os bens permanecerem naquelas situações.'],
+        'M93' => ['tipo' => 'ISE', 'mencao' => 'Isento nos termos da alínea d) do nº1 do artigo 16.º', 'descricao' => 'As transmissões de bens que se encontrem nos regimes de trânsito, draubaque ou importação temporária e as prestações de serviços directamente conexas com essas operações, enquanto os mesmos forem considerados abrangidos por aqueles regimes.'],
+        'M00' => ['tipo' => 'REGIME', 'mencao' => 'IVA– Regime Simplificado', 'descricao' => 'Código de enquadramento do regime simplificado; não é motivo de isenção individual de uma linha a 0%.'],
+        'M02' => ['tipo' => 'NS', 'mencao' => 'Transmissão de bens e serviço não sujeita', 'descricao' => 'Operação não sujeita a IVA.'],
+        'M04' => ['tipo' => 'NS', 'mencao' => 'IVA – Regime de Exclusão', 'descricao' => 'Enquadramento no Regime de Exclusão do IVA.'],
     ],
 
     /*
