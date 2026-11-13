@@ -145,6 +145,59 @@ class CompraFornecedorTest extends TestCase
             ->assertSessionHasErrors(['pagamento']);
     }
 
+    public function test_nao_permite_pagar_compra_antes_de_ser_recebida(): void
+    {
+        $fornecedor = Fornecedor::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Fornecedor a prazo',
+            'pais' => 'AO',
+            'ativo' => true,
+        ]);
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Material em rascunho',
+            'unidade' => 'un',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '0',
+            'ativo' => true,
+            'controla_stock' => true,
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.guardar'), [
+                'fornecedor_id' => $fornecedor->id,
+                'data_documento' => today()->toDateString(),
+                'linhas' => [[
+                    'selecionado' => '1',
+                    'produto_id' => $produto->id,
+                    'quantidade' => '2.000',
+                    'preco_unitario' => '100.00',
+                    'taxa_iva' => '0',
+                ]],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $compra = Compra::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa->id)
+            ->firstOrFail();
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'valor' => '50.00',
+                'data_pagamento' => today()->toDateString(),
+                'metodo' => 'dinheiro',
+            ])
+            ->assertSessionHasErrors(['pagamento']);
+
+        $this->assertDatabaseHas('compras', [
+            'id' => $compra->id,
+            'estado' => 'rascunho',
+            'total_pago' => '0.00',
+            'estado_pagamento' => 'pendente',
+        ]);
+        $this->assertDatabaseCount('compra_pagamentos', 0);
+    }
+
     public function test_nao_permite_compra_com_fornecedor_de_outra_empresa(): void
     {
         $outraEmpresa = Empresa::create([
