@@ -400,3 +400,7 @@ correção assistida de notas de crédito/débito e recibos rejeitados.
 - O histórico de pagamentos fica associado à empresa e à compra.
 - A listagem de compras mostra saldo em dívida, compras vencidas e valor vencido, com filtros por estado financeiro e vencimento.
 - O registo de pagamento é um controlo interno de tesouraria; não emite recibo fiscal nem substitui o documento do fornecedor.
+
+### Resolução segura de registos por empresa
+
+Em rotas protegidas pelo middleware `tenant`, os controladores devem receber os identificadores como valores escalares (`int`) e resolver os modelos com `Model::query()->findOrFail($id)` apenas dentro da ação. Evita-se assim o route model binding implícito antes da identificação do tenant. Esta regra aplica-se também a operações de compras e fornecedores; a validação de pertença à empresa permanece obrigatória nos serviços que executam alterações.
