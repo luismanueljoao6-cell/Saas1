@@ -19,6 +19,8 @@ class ArmazemTransferenciaLinha extends Model
         'produto_id',
         'quantidade',
         'quantidade_recebida',
+        'quantidade_em_falta',
+        'quantidade_danificada',
     ];
 
     protected function casts(): array
