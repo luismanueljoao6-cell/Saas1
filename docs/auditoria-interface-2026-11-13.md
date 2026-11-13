@@ -110,5 +110,5 @@ Na atualização da branch, o painel principal deixou de ser servido diretamente
 ### Limites e validações pendentes
 - O indicador de faturação representa valor faturado em documentos emitidos, não dinheiro efetivamente recebido; recebimentos devem continuar a ser apresentados separadamente no painel específico de faturação.
 - A chave do limite de utilizadores é lida de forma compatível com `max_utilizadores` ou `utilizadores`; outros nomes de limite ainda não são interpretados.
-- A execução da CI desta atualização está em curso. É necessário confirmar testes MySQL/SQLite e Pint antes de considerar a alteração validada.
+- A primeira CI detetou um namespace com escapes duplicados e a ausência do import do controller; ambos foram corrigidos. A CI deve ser novamente confirmada no head mais recente, incluindo testes MySQL/SQLite e Pint.
 - A validação visual e a criação de testes específicos de regressão para estes indicadores continuam pendentes.
