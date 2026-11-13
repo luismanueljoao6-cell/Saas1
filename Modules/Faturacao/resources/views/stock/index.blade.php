@@ -20,6 +20,7 @@
 
         <form method="POST" action="{{ route('faturacao.stock.store') }}" class="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
             @csrf
+            <input type="hidden" name="chave_idempotencia" value="{{ $chaveIdempotencia }}">
             <h2 class="font-semibold text-slate-900 sm:col-span-2 lg:col-span-4">Registar movimento</h2>
             <label class="grid gap-1 text-sm text-slate-600">
                 Produto
