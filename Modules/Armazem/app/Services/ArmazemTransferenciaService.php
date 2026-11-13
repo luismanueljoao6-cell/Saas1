@@ -16,7 +16,12 @@ use Modules\Faturacao\Models\Produto;
 
 class ArmazemTransferenciaService
 {
-    public function __construct(private readonly ArmazemStockService $stock) {}
+    private readonly ArmazemStockService $stock;
+
+    public function __construct(ArmazemStockService $stock)
+    {
+        $this->stock = $stock;
+    }
 
     /**
      * Cria um rascunho. Cada produto só pode aparecer uma vez na transferência.
