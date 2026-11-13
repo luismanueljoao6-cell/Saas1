@@ -60,9 +60,9 @@ class CompraController extends Controller
             'linhas' => ['required', 'array', 'min:1', 'max:100'],
             'linhas.*.selecionado' => ['nullable', 'in:1'],
             'linhas.*.produto_id' => ['required', 'integer', 'exists:produtos,id'],
-            'linhas.*.quantidade' => ['required', 'numeric', 'gt:0', 'max:99999999999.999'],
-            'linhas.*.preco_unitario' => ['required', 'numeric', 'min:0', 'max:999999999999.99'],
-            'linhas.*.taxa_iva' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'linhas.*.quantidade' => ['required', 'numeric', 'gt:0', 'decimal:0,3', 'max:99999999999.999'],
+            'linhas.*.preco_unitario' => ['required', 'numeric', 'min:0', 'decimal:0,2', 'max:999999999999.99'],
+            'linhas.*.taxa_iva' => ['nullable', 'numeric', 'min:0', 'decimal:0,2', 'max:100'],
         ]);
 
         abort_unless(
