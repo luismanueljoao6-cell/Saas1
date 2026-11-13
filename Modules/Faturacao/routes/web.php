@@ -2,6 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Faturacao\Http\Controllers\ClienteController;
+use Modules\Faturacao\Http\Controllers\CompraController;
+use Modules\Faturacao\Http\Controllers\FornecedorController;
 use Modules\Faturacao\Http\Controllers\FaturaController;
 use Modules\Faturacao\Http\Controllers\NotaController;
 use Modules\Faturacao\Http\Controllers\OrcamentoController;
