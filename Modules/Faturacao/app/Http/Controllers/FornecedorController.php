@@ -29,9 +29,11 @@ class FornecedorController extends Controller
         return view('faturacao::fornecedores.index', compact('fornecedores'));
     }
 
-    public function atualizar(Request $request, Fornecedor $fornecedor): RedirectResponse
+    public function atualizar(Request $request, int $fornecedorId): RedirectResponse
     {
         $empresaId = (int) $request->user()->empresa_id;
+        // Resolver depois de IdentificarTenant; evitar route model binding prematuro.
+        $fornecedor = Fornecedor::query()->findOrFail($fornecedorId);
         abort_unless((int) $fornecedor->empresa_id === $empresaId, 404);
 
         $dados = $request->validate([
@@ -49,8 +51,9 @@ class FornecedorController extends Controller
         return back()->with('sucesso', 'Dados do fornecedor atualizados.');
     }
 
-    public function alternarEstado(Request $request, Fornecedor $fornecedor): RedirectResponse
+    public function alternarEstado(Request $request, int $fornecedorId): RedirectResponse
     {
+        $fornecedor = Fornecedor::query()->findOrFail($fornecedorId);
         abort_unless((int) $fornecedor->empresa_id === (int) $request->user()->empresa_id, 404);
 
         $fornecedor->update(['ativo' => ! $fornecedor->ativo]);
