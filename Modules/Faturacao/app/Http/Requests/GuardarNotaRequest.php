@@ -34,7 +34,7 @@ class GuardarNotaRequest extends FormRequest
             'linhas.*.quantidade' => ['required', 'numeric', 'decimal:0,3', 'min:0.001', 'max:10000'],
             'linhas.*.preco_unitario' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
             'linhas.*.taxa_iva' => [$taxaObrigatoria ? 'required' : 'nullable', 'numeric', 'between:0,100'],
-            'linhas.*.motivo_isencao' => ['nullable', 'string', Rule::in(array_keys((array) config('faturacao.motivos_isencao', [])))],
+            'linhas.*.motivo_isencao' => ['nullable', 'string', Rule::in(array_keys(array_filter((array) config('faturacao.motivos_isencao', []), fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true))))],
         ];
     }
 }
