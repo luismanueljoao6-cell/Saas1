@@ -41,7 +41,7 @@
             "Modules\\Atelier\\Database\\Seeders\\": "Modules/Atelier/database/seeders/",
             "Modules\\EstudioMusica\\": "Modules/EstudioMusica/app/",
             "Modules\\EstudioMusica\\Database\\Seeders\\": "Modules/EstudioMusica/database/seeders/",
-            "Modules\\\\Armazem\\\\": "Modules/Armazem/app/"
+            "Modules\\Armazem\\": "Modules/Armazem/app/"
         }
     },
     "autoload-dev": {
