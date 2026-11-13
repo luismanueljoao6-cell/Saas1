@@ -204,7 +204,7 @@ class ArmazemTransferenciaService
                 return $alvo->setRelation('linhas', $this->obterLinhas($empresa, $alvo, false));
             }
 
-            if (! in_array($alvo->estado, ['em_transito', 'parcialmente_recebida'], true)) {
+            if (in_array($alvo->estado, ['em_transito', 'parcialmente_recebida'], true) === false) {
                 throw new DomainException('Só é possível receber uma transferência que esteja em trânsito.');
             }
 
@@ -277,7 +277,7 @@ class ArmazemTransferenciaService
             throw new InvalidArgumentException('A chave de receção é inválida.');
         }
 
-        if ($linhas === [] && ! $finalizar) {
+        if ($linhas === [] && $finalizar === false) {
             throw new InvalidArgumentException('Indica pelo menos uma linha para registar a receção.');
         }
 
@@ -305,7 +305,7 @@ class ArmazemTransferenciaService
             ];
         }
 
-        if ($normalizadas === [] && ! $finalizar) {
+        if ($normalizadas === [] && $finalizar === false) {
             throw new InvalidArgumentException('Regista uma quantidade recebida, em falta ou danificada.');
         }
 
@@ -335,7 +335,7 @@ class ArmazemTransferenciaService
 
             if ($rececaoExistente) {
                 if ((int) $rececaoExistente->transferencia_id !== (int) $alvo->id
-                    || ! hash_equals($rececaoExistente->payload_hash, $payloadHash)) {
+                    || hash_equals($rececaoExistente->payload_hash, $payloadHash) === false) {
                     throw new DomainException('A chave de idempotência já foi utilizada com outros dados.');
                 }
 
@@ -353,7 +353,7 @@ class ArmazemTransferenciaService
             foreach ($normalizadas as $linhaId => $quantidades) {
                 $linha = $porId->get($linhaId);
 
-                if (! $linha) {
+                if ($linha === null) {
                     throw new DomainException('Uma das linhas não pertence a esta transferência.');
                 }
 
