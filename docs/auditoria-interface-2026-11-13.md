@@ -83,6 +83,10 @@ A leitura integral do registo de navegação e dos layouts revelou problemas adi
 - **Ícones:** a biblioteca Blade tinha apenas um conjunto mínimo, pelo que vários itens do menu caíam no ícone genérico. Foram acrescentados símbolos para documentos, faturas, utilizadores, empresa, stock, áudio, campanhas, alertas e restantes destinos usados na navegação.
 - **Tabelas do Atelier:** os contentores de pedidos, campanhas e equipa passaram a permitir scroll horizontal em ecrãs estreitos.
 
+
+- **Pesquisa nas listas de faturação:** foram acrescentados filtros GET com paginação preservando a pesquisa para faturas (número/cliente), clientes (nome/NIF/telefone/e-mail), produtos (nome/código/código de barras), notas (número/cliente/motivo), recibos (número/cliente/fatura/meio de pagamento) e movimentos de stock (produto/motivo). As consultas continuam a usar os modelos com âmbito de tenant; não foi removido qualquer isolamento.
+- **Tema escuro:** as principais listas de Faturação, Atelier, Estúdio e Subscrições receberam variantes dark para fundos, texto, bordas e divisórias, mantendo o tema claro como padrão.
+
 ## Estado atualizado das correções
 
 As alterações acima são de apresentação, navegação e honestidade dos dados. Não criam endpoints novos, não alteram permissões no backend, não mudam regras fiscais e não inventam métricas. A cobertura de dados reais no dashboard, as listas gerais de medidas/provas, a confirmação administrativa de pagamentos e a validação visual em browser permanecem tarefas futuras.
