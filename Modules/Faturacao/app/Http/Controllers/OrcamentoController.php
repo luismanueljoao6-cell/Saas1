@@ -76,7 +76,7 @@ class OrcamentoController extends Controller
             'linhas.*.quantidade' => ['required', 'numeric', 'decimal:0,3', 'gt:0', 'max:10000'],
             'linhas.*.preco_unitario' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
             'linhas.*.taxa_iva' => ['required', 'numeric'],
-            'linhas.*.motivo_isencao' => ['nullable', 'string'],
+            'linhas.*.motivo_isencao' => ['nullable', 'string', Rule::in($this->codigosMotivosIsencao())],
             'linhas.*.operation_type' => ['nullable', 'string', Rule::in(ValidacaoLinhas::TIPOS_OPERACAO_AGT)],
         ]);
 
@@ -143,7 +143,7 @@ class OrcamentoController extends Controller
             'linhas.*.quantidade' => ['required', 'numeric', 'decimal:0,3', 'gt:0', 'max:10000'],
             'linhas.*.preco_unitario' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
             'linhas.*.taxa_iva' => ['required', 'numeric'],
-            'linhas.*.motivo_isencao' => ['nullable', 'string'],
+            'linhas.*.motivo_isencao' => ['nullable', 'string', Rule::in($this->codigosMotivosIsencao())],
             'linhas.*.operation_type' => ['nullable', 'string', Rule::in(ValidacaoLinhas::TIPOS_OPERACAO_AGT)],
         ]);
 
@@ -160,6 +160,15 @@ class OrcamentoController extends Controller
         }
 
         return redirect()->route('faturacao.orcamentos.index')->with('sucesso', "Orçamento {$orcamento->numero} criado.");
+    }
+
+    /** @return list<string> */
+    protected function codigosMotivosIsencao(): array
+    {
+        return array_keys(array_filter(
+            (array) config('faturacao.motivos_isencao', []),
+            fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true),
+        ));
     }
 
     public function estado(Request $request, int $orcamento, OrcamentoService $service): RedirectResponse
