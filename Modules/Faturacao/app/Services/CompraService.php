@@ -120,6 +120,29 @@ class CompraService
         }, attempts: 3);
     }
 
+    public function cancelarRascunho(Empresa $empresa, Compra $compra): Compra
+    {
+        return DB::transaction(function () use ($empresa, $compra): Compra {
+            $bloqueada = Compra::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->whereKey($compra->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($bloqueada->estado !== 'rascunho') {
+                throw new DomainException('Só é possível cancelar compras em rascunho. Compras recebidas não podem ser canceladas por este fluxo.');
+            }
+
+            if ($bloqueada->pagamentos()->exists()) {
+                throw new DomainException('Não é possível cancelar uma compra com pagamentos registados.');
+            }
+
+            $bloqueada->forceFill(['estado' => 'cancelada'])->save();
+
+            return $bloqueada;
+        }, attempts: 3);
+    }
+
     public function registarPagamento(Empresa $empresa, Compra $compra, array $dados, int $utilizadorId): CompraPagamento
     {
         return DB::transaction(function () use ($empresa, $compra, $dados, $utilizadorId): CompraPagamento {
