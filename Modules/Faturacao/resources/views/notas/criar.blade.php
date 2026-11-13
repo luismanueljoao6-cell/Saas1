@@ -3,7 +3,7 @@
 @section('titulo', $tipo === 'credito' ? 'Nova nota de crédito' : 'Nova nota de débito')
 
 @section('conteudo')
-    <div class="w-full max-w-3xl" x-data="novaNota(@js($linhasIniciais), @js($tipo === 'credito'), @js($taxaNaInterface))">
+    <div class="w-full max-w-3xl" x-data="novaNota(@js($linhasIniciais), @js($tipo === 'credito'), @js($taxaNaInterface), @js($motivosIsencao))">
         <h1 class="text-xl font-semibold text-slate-900">{{ $tipo === 'credito' ? 'Nova nota de crédito' : 'Nova nota de débito' }}</h1>
         <p class="mt-1 text-sm text-slate-500">
             @if ($tipo === 'credito')
@@ -74,6 +74,7 @@
                             </template>
                             <input type="hidden" :name="`linhas[${indice}][produto_id]`" :value="linha.produto_id ?? ''">
                             <input type="hidden" :name="`linhas[${indice}][motivo_isencao]`" :value="linha.motivo_isencao ?? ''">
+                            <p x-show="credito && linha.motivo_isencao" x-text="rotuloMotivo(linha.motivo_isencao)" class="col-span-12 text-xs text-slate-500"></p>
                             <button type="button" @click="removerLinha(indice)" class="col-span-1 text-red-500 hover:text-red-700" title="Remover">✕</button>
                         </div>
                     </template>
@@ -95,12 +96,16 @@
     </div>
 
     <script>
-        function novaNota(linhasIniciais = [], credito = false, comTaxa = false) {
+        function novaNota(linhasIniciais = [], credito = false, comTaxa = false, motivosIsencao = {}) {
             const vazia = () => ({ descricao: '', quantidade: 1, preco_unitario: 0, taxa_iva: 0, motivo_isencao: '' });
 
             return {
                 credito,
                 comTaxa,
+                motivosIsencao,
+                rotuloMotivo(codigo) {
+                    return this.motivosIsencao[codigo] ?? codigo;
+                },
                 linhas: linhasIniciais.length > 0 ? linhasIniciais : [vazia()],
                 adicionarLinha() {
                     this.linhas.push(vazia());
