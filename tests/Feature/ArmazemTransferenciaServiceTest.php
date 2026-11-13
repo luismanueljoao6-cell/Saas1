@@ -185,4 +185,36 @@ class ArmazemTransferenciaServiceTest extends TestCase
             ['produto_id' => $produto->id, 'quantidade' => '0.000'],
         ], 'Quantidade zero');
     }
+
+    public function test_nao_permite_inativar_armazem_com_transferencia_em_transito(): void
+    {
+        [$empresa, $origem, $destino, $produto] = $this->preparar('630100208');
+        $stock = app(ArmazemStockService::class);
+        $stock->entrada($empresa, $origem, $produto, '5.000', 'Stock inicial');
+
+        $transferencia = $this->criarTransferencia($empresa, $origem, $destino, $produto, '1.000');
+        app(ArmazemTransferenciaService::class)->expedir($empresa, $transferencia);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Não é possível inativar este armazém enquanto existir uma transferência em trânsito associada.');
+
+        app(ArmazemService::class)->alternarEstado($empresa, $destino);
+    }
+
+    public function test_permite_inativar_armazem_depois_da_rececao_da_transferencia(): void
+    {
+        [$empresa, $origem, $destino, $produto] = $this->preparar('630100209');
+        $stock = app(ArmazemStockService::class);
+        $stock->entrada($empresa, $origem, $produto, '5.000', 'Stock inicial');
+
+        $transferencia = $this->criarTransferencia($empresa, $origem, $destino, $produto, '1.000');
+        $service = app(ArmazemTransferenciaService::class);
+        $service->expedir($empresa, $transferencia);
+        $service->receber($empresa, $transferencia);
+
+        $inativo = app(ArmazemService::class)->alternarEstado($empresa, $destino);
+
+        $this->assertFalse($inativo->ativo);
+    }
+
 }
