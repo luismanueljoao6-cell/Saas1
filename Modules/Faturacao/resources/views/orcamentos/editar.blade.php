@@ -158,7 +158,9 @@
 
         const operacoes = {};
         tiposOperacaoAgt.forEach(tipo => { operacoes[tipo] = tipo; });
-        bloco.appendChild(criarSelect('linhas[' + indice + '][operation_type]', operacoes, 'Tipo de operação AGT', 'campo-operacao'));
+        const campoOperacao = criarSelect('linhas[' + indice + '][operation_type]', operacoes, 'Tipo de operação AGT', 'campo-operacao');
+        campoOperacao.querySelector('select').value = 'SG';
+        bloco.appendChild(campoOperacao);
 
         const motivos = {'': 'Selecionar motivo'};
         Object.entries(motivosIsencao).forEach(([codigo, motivo]) => { motivos[codigo] = codigo + ' — ' + (motivo.descricao || codigo); });
