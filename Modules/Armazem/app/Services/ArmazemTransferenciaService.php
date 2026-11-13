@@ -198,39 +198,259 @@ class ArmazemTransferenciaService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($alvo->estado === 'recebida') {
+            if (in_array($alvo->estado, ['recebida', 'recebida_com_divergencia'], true)) {
                 return $alvo->setRelation('linhas', $this->obterLinhas($empresa, $alvo, false));
             }
 
-            if ($alvo->estado !== 'em_transito') {
+            if (! in_array($alvo->estado, ['em_transito', 'parcialmente_recebida'], true)) {
                 throw new DomainException('Só é possível receber uma transferência que esteja em trânsito.');
             }
 
-            $this->validarUtilizador($empresa, $utilizadorId);
             $linhas = $this->obterLinhas($empresa, $alvo);
+            $dados = [];
 
             foreach ($linhas as $linha) {
-                $this->stock->entrada(
-                    $empresa,
-                    $this->obterArmazem($empresa, $alvo->armazem_destino_id),
-                    $this->obterProduto($empresa, $linha->produto_id),
-                    (string) $linha->quantidade,
-                    'Transferência '.$alvo->id.' recebida',
-                    $utilizadorId,
-                    'transferencia:'.$alvo->id.':linha:'.$linha->id.':rececao'
-                );
+                $enviada = $this->normalizarQuantidade((string) $linha->quantidade);
+                $recebida = $this->normalizarQuantidade((string) $linha->quantidade_recebida);
+                $falta = $this->normalizarQuantidade((string) $linha->quantidade_em_falta);
+                $danificada = $this->normalizarQuantidade((string) $linha->quantidade_danificada);
+                $restante = $enviada - $recebida - $falta - $danificada;
 
-                $linha->forceFill(['quantidade_recebida' => $linha->quantidade])->save();
+                if ($restante > 0) {
+                    $dados[] = [
+                        'linha_id' => (int) $linha->id,
+                        'quantidade_recebida' => $this->formatar($restante),
+                        'quantidade_em_falta' => '0.000',
+                        'quantidade_danificada' => '0.000',
+                    ];
+                }
             }
 
-            $alvo->forceFill([
-                'estado' => 'recebida',
-                'recebido_por' => $utilizadorId,
-                'recebido_em' => now(),
-            ])->save();
+            return $this->registarRececao(
+                $empresa,
+                $alvo,
+                $dados,
+                true,
+                'rececao-integral:'.$alvo->id,
+                $utilizadorId
+            );
+        }, attempts: 3);
+    }
+
+    /**
+     * Regista uma entrega parcial. Quantidades em falta/danificadas ficam
+     * auditadas e nunca são creditadas no saldo do armazém de destino.
+     *
+     * @param array<int, array{linha_id:int, quantidade_recebida:string, quantidade_em_falta:string, quantidade_danificada:string}> $linhas
+     */
+    public function registarRececaoParcial(
+        Empresa $empresa,
+        ArmazemTransferencia $transferencia,
+        array $linhas,
+        bool $finalizar,
+        string $chaveIdempotencia,
+        ?int $utilizadorId = null
+    ): ArmazemTransferencia {
+        return $this->registarRececao(
+            $empresa,
+            $transferencia,
+            $linhas,
+            $finalizar,
+            $chaveIdempotencia,
+            $utilizadorId
+        );
+    }
+
+    private function registarRececao(
+        Empresa $empresa,
+        ArmazemTransferencia $transferencia,
+        array $linhas,
+        bool $finalizar,
+        string $chaveIdempotencia,
+        ?int $utilizadorId
+    ): ArmazemTransferencia {
+        $chaveIdempotencia = trim($chaveIdempotencia);
+
+        if ($chaveIdempotencia === '' || mb_strlen($chaveIdempotencia) > 100) {
+            throw new InvalidArgumentException('A chave de receção é inválida.');
+        }
+
+        if ($linhas === []) {
+            throw new InvalidArgumentException('Indica pelo menos uma linha para registar a receção.');
+        }
+
+        $normalizadas = [];
+        foreach ($linhas as $linha) {
+            $linhaId = (int) ($linha['linha_id'] ?? 0);
+            $recebida = $this->normalizarQuantidade((string) ($linha['quantidade_recebida'] ?? '0'));
+            $falta = $this->normalizarQuantidade((string) ($linha['quantidade_em_falta'] ?? '0'));
+            $danificada = $this->normalizarQuantidade((string) ($linha['quantidade_danificada'] ?? '0'));
+
+            if ($linhaId <= 0 || isset($normalizadas[$linhaId])) {
+                throw new InvalidArgumentException('As linhas da receção devem ser válidas e não repetidas.');
+            }
+
+            if (($recebida + $falta + $danificada) <= 0) {
+                continue;
+            }
+
+            $normalizadas[$linhaId] = [
+                'recebida' => $recebida,
+                'falta' => $falta,
+                'danificada' => $danificada,
+            ];
+        }
+
+        if ($normalizadas === []) {
+            throw new InvalidArgumentException('Regista uma quantidade recebida, em falta ou danificada.');
+        }
+
+        ksort($normalizadas);
+        $payloadHash = hash('sha256', json_encode([
+            'transferencia_id' => (int) $transferencia->id,
+            'finalizar' => $finalizar,
+            'linhas' => $normalizadas,
+        ], JSON_THROW_ON_ERROR));
+
+        return DB::transaction(function () use (
+            $empresa, $transferencia, $normalizadas, $finalizar, $chaveIdempotencia, $utilizadorId, $payloadHash
+        ): ArmazemTransferencia {
+            $this->validarTenant($empresa);
+            Empresa::query()->whereKey($empresa->id)->lockForUpdate()->firstOrFail();
+
+            $alvo = ArmazemTransferencia::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->whereKey($transferencia->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $rececaoExistente = \Modules\Armazem\Models\ArmazemTransferenciaRececao::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->where('chave_idempotencia', $chaveIdempotencia)
+                ->first();
+
+            if ($rececaoExistente) {
+                if ((int) $rececaoExistente->transferencia_id !== (int) $alvo->id
+                    || ! hash_equals($rececaoExistente->payload_hash, $payloadHash)) {
+                    throw new DomainException('A chave de idempotência já foi utilizada com outros dados.');
+                }
+
+                return $alvo->setRelation('linhas', $this->obterLinhas($empresa, $alvo, false));
+            }
+
+            if (! in_array($alvo->estado, ['em_transito', 'parcialmente_recebida'], true)) {
+                throw new DomainException('A transferência não está disponível para receção.');
+            }
+
+            $this->validarUtilizador($empresa, $utilizadorId);
+            $linhasTransferencia = $this->obterLinhas($empresa, $alvo);
+            $porId = $linhasTransferencia->keyBy('id');
+
+            foreach ($normalizadas as $linhaId => $quantidades) {
+                $linha = $porId->get($linhaId);
+
+                if (! $linha) {
+                    throw new DomainException('Uma das linhas não pertence a esta transferência.');
+                }
+
+                $enviada = $this->normalizarQuantidade((string) $linha->quantidade);
+                $jaRecebida = $this->normalizarQuantidade((string) $linha->quantidade_recebida);
+                $jaEmFalta = $this->normalizarQuantidade((string) $linha->quantidade_em_falta);
+                $jaDanificada = $this->normalizarQuantidade((string) $linha->quantidade_danificada);
+                $total = $jaRecebida + $jaEmFalta + $jaDanificada
+                    + $quantidades['recebida'] + $quantidades['falta'] + $quantidades['danificada'];
+
+                if ($total > $enviada) {
+                    throw new DomainException('A receção ultrapassa a quantidade expedida do produto '.$linha->produto_id.'.');
+                }
+            }
+
+            if ($finalizar) {
+                foreach ($linhasTransferencia as $linha) {
+                    $quantidades = $normalizadas[(int) $linha->id] ?? [
+                        'recebida' => 0,
+                        'falta' => 0,
+                        'danificada' => 0,
+                    ];
+                    $total = $this->normalizarQuantidade((string) $linha->quantidade_recebida)
+                        + $this->normalizarQuantidade((string) $linha->quantidade_em_falta)
+                        + $this->normalizarQuantidade((string) $linha->quantidade_danificada)
+                        + $quantidades['recebida'] + $quantidades['falta'] + $quantidades['danificada'];
+
+                    if ($total !== $this->normalizarQuantidade((string) $linha->quantidade)) {
+                        throw new DomainException('Para finalizar, todas as quantidades expedidas devem estar classificadas como recebidas, em falta ou danificadas.');
+                    }
+                }
+            }
+
+            $rececao = \Modules\Armazem\Models\ArmazemTransferenciaRececao::create([
+                'empresa_id' => $empresa->id,
+                'transferencia_id' => $alvo->id,
+                'chave_idempotencia' => $chaveIdempotencia,
+                'payload_hash' => $payloadHash,
+                'utilizador_id' => $utilizadorId,
+                'finalizada' => $finalizar,
+            ]);
+
+            foreach ($normalizadas as $linhaId => $quantidades) {
+                $linha = $porId->get($linhaId);
+
+                \Modules\Armazem\Models\ArmazemTransferenciaRececaoLinha::create([
+                    'empresa_id' => $empresa->id,
+                    'rececao_id' => $rececao->id,
+                    'transferencia_linha_id' => $linha->id,
+                    'quantidade_recebida' => $this->formatar($quantidades['recebida']),
+                    'quantidade_em_falta' => $this->formatar($quantidades['falta']),
+                    'quantidade_danificada' => $this->formatar($quantidades['danificada']),
+                ]);
+
+                if ($quantidades['recebida'] > 0) {
+                    $this->stock->entrada(
+                        $empresa,
+                        $this->obterArmazem($empresa, $alvo->armazem_destino_id),
+                        $this->obterProduto($empresa, $linha->produto_id),
+                        $this->formatar($quantidades['recebida']),
+                        'Receção da transferência '.$alvo->id.' · TRC-'.$rececao->id,
+                        $utilizadorId,
+                        'transferencia:'.$alvo->id.':rececao:'.$rececao->id.':linha:'.$linha->id
+                    );
+                }
+
+                $linha->forceFill([
+                    'quantidade_recebida' => $this->formatar(
+                        $this->normalizarQuantidade((string) $linha->quantidade_recebida) + $quantidades['recebida']
+                    ),
+                    'quantidade_em_falta' => $this->formatar(
+                        $this->normalizarQuantidade((string) $linha->quantidade_em_falta) + $quantidades['falta']
+                    ),
+                    'quantidade_danificada' => $this->formatar(
+                        $this->normalizarQuantidade((string) $linha->quantidade_danificada) + $quantidades['danificada']
+                    ),
+                ])->save();
+            }
+
+            $temDivergencia = false;
+            foreach ($linhasTransferencia as $linha) {
+                $linha->refresh();
+                if ($this->normalizarQuantidade((string) $linha->quantidade_em_falta) > 0
+                    || $this->normalizarQuantidade((string) $linha->quantidade_danificada) > 0) {
+                    $temDivergencia = true;
+                    break;
+                }
+            }
+
+            if ($finalizar) {
+                $alvo->forceFill([
+                    'estado' => $temDivergencia ? 'recebida_com_divergencia' : 'recebida',
+                    'recebido_por' => $utilizadorId,
+                    'recebido_em' => now(),
+                ])->save();
+            } else {
+                $alvo->forceFill(['estado' => 'parcialmente_recebida'])->save();
+            }
 
             return $alvo
-                ->setRelation('linhas', $linhas->load('produto'))
+                ->setRelation('linhas', $this->obterLinhas($empresa, $alvo, false))
                 ->load(['origem', 'destino']);
         }, attempts: 3);
     }
