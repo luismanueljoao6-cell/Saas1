@@ -8,6 +8,9 @@ use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
+use Modules\Faturacao\Models\Produto;
+use Modules\Faturacao\Models\StockMovimento;
+use Modules\Faturacao\Models\StockSaldo;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Tests\TestCase;
@@ -141,4 +144,74 @@ class RascunhoFaturaTest extends TestCase
 
         $this->assertDatabaseCount('notas_credito_debito', 0);
     }
+    public function test_emissao_de_ft_baixa_stock_apenas_uma_vez(): void
+    {
+        [$empresa, $cliente] = $this->cenario('630000009');
+        $produto = Produto::create([
+            'empresa_id' => $empresa->id, 'nome' => 'Produto vendável', 'unidade' => 'un',
+            'preco_unitario' => '100.00', 'taxa_iva' => '14', 'ativo' => true, 'controla_stock' => true,
+        ]);
+        app(\Modules\Faturacao\Services\StockService::class)->entrada($empresa, $produto, '5.000', 'Stock inicial');
+
+        $servico = app(FaturaService::class);
+        $rascunho = $servico->criarRascunho($empresa, $cliente, [[
+            'produto_id' => $produto->id, 'descricao' => 'Produto vendável', 'quantidade' => '2.500',
+            'preco_unitario' => '100.00', 'taxa_iva' => 14,
+        ]]);
+
+        $emitida = $servico->emitir($rascunho);
+        $servico->emitir($emitida);
+
+        $this->assertSame('2.500', StockSaldo::withoutGlobalScopes()->where('produto_id', $produto->id)->value('quantidade'));
+        $this->assertSame(2, StockMovimento::withoutGlobalScopes()->where('produto_id', $produto->id)->count());
+        $this->assertSame(1, StockMovimento::withoutGlobalScopes()->where('produto_id', $produto->id)->where('tipo', 'saida')->count());
+    }
+
+    public function test_emissao_de_fa_nao_baixa_stock_de_mercadoria(): void
+    {
+        [$empresa, $cliente] = $this->cenario('630000010');
+        $produto = Produto::create([
+            'empresa_id' => $empresa->id, 'nome' => 'Produto de adiantamento', 'unidade' => 'un',
+            'preco_unitario' => '100.00', 'taxa_iva' => '14', 'ativo' => true, 'controla_stock' => true,
+        ]);
+        app(\Modules\Faturacao\Services\StockService::class)->entrada($empresa, $produto, '5.000', 'Stock inicial');
+
+        $servico = app(FaturaService::class);
+        $servico->emitir($servico->criarRascunhoAdiantamento($empresa, $cliente, [[
+            'produto_id' => $produto->id, 'descricao' => 'Adiantamento', 'quantidade' => '2.000',
+            'preco_unitario' => '100.00', 'taxa_iva' => 14,
+        ]]));
+
+        $this->assertSame('5.000', StockSaldo::withoutGlobalScopes()->where('produto_id', $produto->id)->value('quantidade'));
+        $this->assertSame(1, StockMovimento::withoutGlobalScopes()->where('produto_id', $produto->id)->count());
+    }
+
+    public function test_emissao_ft_sem_stock_suficiente_reverte_emissao_e_movimentos(): void
+    {
+        [$empresa, $cliente] = $this->cenario('630000011');
+        $produto = Produto::create([
+            'empresa_id' => $empresa->id, 'nome' => 'Produto limitado', 'unidade' => 'un',
+            'preco_unitario' => '100.00', 'taxa_iva' => '14', 'ativo' => true, 'controla_stock' => true,
+        ]);
+        $stock = app(\Modules\Faturacao\Services\StockService::class);
+        $stock->entrada($empresa, $produto, '1.000', 'Stock inicial');
+
+        $servico = app(FaturaService::class);
+        $rascunho = $servico->criarRascunho($empresa, $cliente, [[
+            'produto_id' => $produto->id, 'descricao' => 'Produto limitado', 'quantidade' => '2.000',
+            'preco_unitario' => '100.00', 'taxa_iva' => 14,
+        ]]);
+
+        try {
+            $servico->emitir($rascunho);
+            $this->fail('A emissão devia ser bloqueada por stock insuficiente.');
+        } catch (\DomainException $e) {
+            $this->assertSame('Stock insuficiente para esta saída.', $e->getMessage());
+        }
+
+        $this->assertDatabaseHas('faturas', ['id' => $rascunho->id, 'estado' => 'rascunho']);
+        $this->assertSame('1.000', StockSaldo::withoutGlobalScopes()->where('produto_id', $produto->id)->value('quantidade'));
+        $this->assertSame(1, StockMovimento::withoutGlobalScopes()->where('produto_id', $produto->id)->count());
+    }
+
 }

@@ -18,6 +18,7 @@ class FaturaService
     public function __construct(
         protected NumeracaoService $numeracaoService,
         protected AssinaturaFiscalService $assinaturaFiscalService,
+        protected StockService $stockService,
     ) {}
 
     /**
@@ -126,6 +127,36 @@ class FaturaService
                 );
 
                 $fatura->save();
+
+                // Uma FT representa a venda; FA é adiantamento e não baixa stock.
+                // Os movimentos ficam na mesma transação da emissão e são idempotentes por linha.
+                if ($fatura->tipo_documento === 'FT') {
+                    $empresa = Empresa::withoutGlobalScopes()->findOrFail($fatura->empresa_id);
+
+                    foreach ($fatura->linhas as $linha) {
+                        if (! $linha->produto_id) {
+                            continue;
+                        }
+
+                        $produto = Produto::withTrashed()
+                            ->withoutGlobalScopes()
+                            ->where('empresa_id', $fatura->empresa_id)
+                            ->find($linha->produto_id);
+
+                        if (! $produto || ! $produto->controla_stock) {
+                            continue;
+                        }
+
+                        $this->stockService->saida(
+                            $empresa,
+                            $produto,
+                            (string) $linha->quantidade,
+                            'Venda '.$fatura->numero_documento,
+                            null,
+                            'fatura:'.$fatura->id.':linha:'.$linha->id,
+                        );
+                    }
+                }
 
                 Log::info('Fatura emitida', [
                     'fatura_id' => $fatura->id,
