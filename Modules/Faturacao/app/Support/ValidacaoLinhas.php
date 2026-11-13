@@ -21,7 +21,7 @@ final class ValidacaoLinhas
      * @throws \InvalidArgumentException dados malformados
      * @throws \DomainException regra de negócio (taxa, isenção, produto)
      */
-    public static function validar(array $linhas, int $empresaId, bool $verificarTaxas = true, bool $exigirMotivoIsencao = true, bool $verificarMotivoAtivo = true): void
+    public static function validar(array $linhas, int $empresaId, bool $verificarTaxas = true, bool $exigirMotivoIsencao = true, bool $verificarMotivoAtivo = true, bool $verificarMotivoConfirmado = true): void
     {
         foreach (array_values($linhas) as $indice => $linha) {
             $n = $indice + 1;
@@ -74,7 +74,7 @@ final class ValidacaoLinhas
             }
 
             if ($exigirMotivoIsencao) {
-                self::validarMotivoIsencao((float) $linha['taxa_iva'], $linha['motivo_isencao'] ?? null, $n, $empresaId, $verificarMotivoAtivo);
+                self::validarMotivoIsencao((float) $linha['taxa_iva'], $linha['motivo_isencao'] ?? null, $n, $empresaId, $verificarMotivoAtivo, $verificarMotivoConfirmado);
             }
 
             $produtoId = $linha['produto_id'] ?? null;
@@ -126,7 +126,7 @@ final class ValidacaoLinhas
     }
 
     /** Linhas a 0% exigem motivo de isenção da tabela; linhas com imposto não levam motivo. */
-    protected static function validarMotivoIsencao(float $taxa, mixed $bruto, int $n, int $empresaId, bool $verificarMotivoAtivo = true): void
+    protected static function validarMotivoIsencao(float $taxa, mixed $bruto, int $n, int $empresaId, bool $verificarMotivoAtivo = true, bool $verificarMotivoConfirmado = true): void
     {
         if ($bruto !== null && ! is_string($bruto)) {
             throw new \InvalidArgumentException("Linha {$n}: o motivo de isenção tem de ser um código (ex.: M10).");
@@ -162,7 +162,7 @@ final class ValidacaoLinhas
         }
 
         // Nada de códigos por confirmar a caminho da AGT.
-        if (config('faturacao.agt.ativo') && ! config('faturacao.motivos_isencao_confirmados')) {
+        if ($verificarMotivoConfirmado && config('faturacao.agt.ativo') && ! config('faturacao.motivos_isencao_confirmados')) {
             throw new \DomainException("Linha {$n}: com a AGT ativa, as isenções só são aceites depois de confirmares a tabela de motivos de isenção (FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS).");
         }
     }
