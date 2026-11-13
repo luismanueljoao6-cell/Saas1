@@ -45,7 +45,7 @@ Route::view('/subscricao/expirada', 'core::subscricao.expirada')
 | nas suas próprias rotas autenticadas.
 */
 Route::middleware(['auth', 'tenant', 'subscricao.ativa'])->group(function () {
-    Route::view('/painel', 'core::painel')->name('core.painel');
+    Route::get('/painel', PainelController::class)->name('core.painel');
 
     Route::get('/empresas/{empresa}/definicoes', [EmpresaController::class, 'editar'])
         ->name('core.empresa.editar');
