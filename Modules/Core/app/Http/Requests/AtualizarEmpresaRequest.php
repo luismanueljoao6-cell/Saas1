@@ -37,7 +37,7 @@ class AtualizarEmpresaRequest extends FormRequest
             'telefone' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
             'configuracoes_fiscais.regime_iva' => ['nullable', 'string', Rule::in(['geral', 'simplificado', 'exclusao', 'transitorio'])],
-            'configuracoes_fiscais.taxa_iva_padrao' => ['nullable', 'numeric', 'min:0', 'max:30'],
+            'configuracoes_fiscais.taxa_iva_padrao' => ['nullable', 'numeric', Rule::in(array_map(fn ($taxa) => (string) $taxa, (array) config('faturacao.taxas_iva_permitidas', [])))],
             'configuracoes_fiscais.motivos_isencao_ativos' => ['sometimes', 'array', 'max:50'],
             'configuracoes_fiscais.motivos_isencao_ativos.*' => ['required', 'string', Rule::in(array_keys(array_filter((array) config('faturacao.motivos_isencao', []), fn (array $m) => in_array($m['tipo'] ?? null, ['ISE', 'NS'], true)))],
         ];
