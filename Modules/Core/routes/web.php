@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Core\Http\Controllers\Auth\AuthenticatedSessionController;
 use Modules\Core\Http\Controllers\Auth\RegisteredTenantController;
 use Modules\Core\Http\Controllers\EmpresaController;
+use Modules\Core\Http\Controllers\PainelController;
 use Modules\Core\Http\Controllers\ServicoController;
 use Modules\Core\Http\Controllers\UtilizadorController;
 
