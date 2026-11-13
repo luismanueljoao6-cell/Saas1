@@ -5,6 +5,7 @@ namespace Modules\Faturacao\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
+use Modules\Core\Services\TenantManager;
 use Modules\Core\Support\Servico;
 use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Models\StockMovimento;
@@ -67,6 +68,10 @@ class StockInterfaceTest extends TestCase
             ])
             ->assertRedirect(route('faturacao.stock.index'))
             ->assertSessionHasNoErrors();
+
+        // O middleware limpa o tenant no fim do pedido; reativamo-lo para
+        // validar a relação protegida pelo TenantScope neste teste.
+        app(TenantManager::class)->set((int) $this->empresa->id);
 
         $this->assertSame('5.000', $produto->stockSaldo()->value('quantidade'));
         $this->assertSame(1, StockMovimento::withoutGlobalScopes()->where('empresa_id', $this->empresa->id)->count());
