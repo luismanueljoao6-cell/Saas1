@@ -31,12 +31,16 @@ class ArmazemTransferenciaController extends Controller
             ->get(['id', 'nome']);
 
         $transferencias = ArmazemTransferencia::query()
-            ->with(['origem:id,nome,codigo', 'destino:id,nome,codigo', 'criador:id,name', 'expedidor:id,name', 'recebedor:id,name', 'linhas'])
+            ->with(['origem:id,nome,codigo', 'destino:id,nome,codigo', 'criador:id,name', 'expedidor:id,name', 'recebedor:id,name', 'linhas.produto', 'rececoes'])
             ->latest()
             ->paginate(15)
             ->withQueryString();
 
-        return view('armazem::transferencias.index', compact('armazens', 'produtos', 'transferencias', 'empresa'));
+        $chavesRececao = $transferencias->getCollection()->mapWithKeys(
+            fn (ArmazemTransferencia $transferencia): array => [$transferencia->id => (string) Str::uuid()]
+        );
+
+        return view('armazem::transferencias.index', compact('armazens', 'produtos', 'transferencias', 'empresa', 'chavesRececao'));
     }
 
     public function store(Request $request, ArmazemTransferenciaService $service): RedirectResponse
@@ -94,6 +98,37 @@ class ArmazemTransferenciaController extends Controller
         }
 
         return back()->with('sucesso', 'Transferência recebida. O stock foi creditado no destino.');
+    }
+
+    public function rececaoParcial(Request $request, int $transferencia, ArmazemTransferenciaService $service): RedirectResponse
+    {
+        $alvo = $this->obterTransferencia($request, $transferencia);
+        $dados = $request->validate([
+            'chave_idempotencia' => ['required', 'uuid', 'max:100'],
+            'finalizar' => ['nullable', 'boolean'],
+            'linhas' => ['required', 'array', 'min:1'],
+            'linhas.*.linha_id' => ['required', 'integer', 'distinct'],
+            'linhas.*.quantidade_recebida' => ['required', 'numeric', 'gte:0', 'decimal:0,3'],
+            'linhas.*.quantidade_em_falta' => ['required', 'numeric', 'gte:0', 'decimal:0,3'],
+            'linhas.*.quantidade_danificada' => ['required', 'numeric', 'gte:0', 'decimal:0,3'],
+        ]);
+
+        try {
+            $service->registarRececaoParcial(
+                $request->user()->empresa,
+                $alvo,
+                $dados['linhas'],
+                (bool) ($dados['finalizar'] ?? false),
+                $dados['chave_idempotencia'],
+                (int) $request->user()->id
+            );
+        } catch (DomainException | \\InvalidArgumentException $exception) {
+            return back()->with('erro', $exception->getMessage());
+        }
+
+        return back()->with('sucesso', ! empty($dados['finalizar'])
+            ? 'Receção finalizada. As divergências ficaram registadas e não foram adicionadas ao stock.'
+            : 'Receção parcial registada. Podes continuar a receber as quantidades em falta.');
     }
 
     public function cancelar(Request $request, int $transferencia, ArmazemTransferenciaService $service): RedirectResponse
