@@ -5,7 +5,16 @@
 @section('conteudo')
 @include('estudiomusica::partials.erros')
 <div class="space-y-6">
-    <h1 class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Pedidos de Orçamento (landing page)</h1>
+    <h1 class="mb-3 text-lg font-semibold text-slate-900 dark:text-zinc-100">Pedidos de Orçamento (landing page)</h1>
+
+    <form method="GET" action="{{ route('estudiomusica.solicitacoes.index') }}" role="search" class="mb-4 flex flex-col gap-2 sm:flex-row">
+        <label for="pesquisa-solicitacoes" class="sr-only">Pesquisar pedidos recebidos</label>
+        <input id="pesquisa-solicitacoes" type="search" name="q" value="{{ request('q') }}" maxlength="100" placeholder="Nome, e-mail, telefone ou mensagem" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:max-w-md">
+        <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">Pesquisar</button>
+        @if (request()->filled('q'))
+            <a href="{{ route('estudiomusica.solicitacoes.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-center text-sm dark:border-zinc-700 dark:text-zinc-300">Limpar</a>
+        @endif
+    </form>
 
     <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-800">
