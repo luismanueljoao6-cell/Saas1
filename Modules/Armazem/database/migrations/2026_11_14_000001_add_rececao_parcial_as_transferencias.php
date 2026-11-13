@@ -55,8 +55,5 @@ return new class extends Migration
             $table->dropColumn(['quantidade_em_falta', 'quantidade_danificada']);
         });
 
-        Schema::table('armazem_transferencias', function (Blueprint $table): void {
-            $table->string('estado', 20)->default('rascunho')->change();
-        });
     }
 };
