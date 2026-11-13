@@ -18,5 +18,6 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'papel:Administrador'])
         Route::post('/transferencias', [ArmazemTransferenciaController::class, 'store'])->middleware('throttle:20,1')->name('transferencias.store');
         Route::post('/transferencias/{transferencia}/expedir', [ArmazemTransferenciaController::class, 'expedir'])->whereNumber('transferencia')->middleware('throttle:20,1')->name('transferencias.expedir');
         Route::post('/transferencias/{transferencia}/receber', [ArmazemTransferenciaController::class, 'receber'])->whereNumber('transferencia')->middleware('throttle:20,1')->name('transferencias.receber');
+        Route::post('/transferencias/{transferencia}/rececao-parcial', [ArmazemTransferenciaController::class, 'rececaoParcial'])->whereNumber('transferencia')->middleware('throttle:20,1')->name('transferencias.recepcao-parcial');
         Route::post('/transferencias/{transferencia}/cancelar', [ArmazemTransferenciaController::class, 'cancelar'])->whereNumber('transferencia')->middleware('throttle:10,1')->name('transferencias.cancelar');
     });
