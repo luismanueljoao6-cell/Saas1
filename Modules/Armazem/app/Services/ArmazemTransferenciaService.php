@@ -275,7 +275,7 @@ class ArmazemTransferenciaService
             throw new InvalidArgumentException('A chave de receção é inválida.');
         }
 
-        if ($linhas === []) {
+        if ($linhas === [] && ! $finalizar) {
             throw new InvalidArgumentException('Indica pelo menos uma linha para registar a receção.');
         }
 
