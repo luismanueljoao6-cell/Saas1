@@ -61,7 +61,7 @@ class ArmazemTransferenciaService
             $origemValidada = $armazens->get($origem->id);
             $destinoValidado = $armazens->get($destino->id);
 
-            if (!$origemValidada || !$destinoValidado) {
+            if (! $origemValidada || ! $destinoValidado) {
                 throw new DomainException('Os dois armazéns devem pertencer à mesma empresa.');
             }
 
