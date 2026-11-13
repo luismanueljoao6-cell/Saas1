@@ -70,7 +70,8 @@ class FaturaController extends Controller
     {
         return [
             'motivosIsencao' => collect((array) config('faturacao.motivos_isencao', []))
-                ->map(fn (array $motivo, string $codigo) => "{$codigo} — {$motivo['descricao']}")
+                ->filter(fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true))
+                ->map(fn (array $motivo, string $codigo) => "{$codigo} — {$motivo['mencao']}")
                 ->all(),
             'aceitaIsencao' => in_array(0.0, array_map('floatval', (array) config('faturacao.taxas_iva_permitidas', [])), true),
             'tiposOperacao' => [
