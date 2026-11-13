@@ -70,11 +70,11 @@ final class ValidacaoLinhas
             }
 
             if ($verificarTaxas) {
-                self::validarTaxa((float) $linha['taxa_iva'], $n);
+                self::validarTaxa((float) $linha['taxa_iva'], $n, $empresaId);
             }
 
             if ($exigirMotivoIsencao) {
-                self::validarMotivoIsencao((float) $linha['taxa_iva'], $linha['motivo_isencao'] ?? null, $n);
+                self::validarMotivoIsencao((float) $linha['taxa_iva'], $linha['motivo_isencao'] ?? null, $n, $empresaId);
             }
 
             $produtoId = $linha['produto_id'] ?? null;
@@ -99,7 +99,7 @@ final class ValidacaoLinhas
         return strtoupper(trim($motivo));
     }
 
-    protected static function validarTaxa(float $taxa, int $n): void
+    protected static function validarTaxa(float $taxa, int $n, int $empresaId): void
     {
         $permitida = false;
 
@@ -126,7 +126,7 @@ final class ValidacaoLinhas
     }
 
     /** Linhas a 0% exigem motivo de isenção da tabela; linhas com imposto não levam motivo. */
-    protected static function validarMotivoIsencao(float $taxa, mixed $bruto, int $n): void
+    protected static function validarMotivoIsencao(float $taxa, mixed $bruto, int $n, int $empresaId): void
     {
         if ($bruto !== null && ! is_string($bruto)) {
             throw new \InvalidArgumentException("Linha {$n}: o motivo de isenção tem de ser um código (ex.: M10).");
@@ -146,7 +146,7 @@ final class ValidacaoLinhas
             throw new \DomainException("Linha {$n}: uma linha isenta (IVA 0%) exige o motivo de isenção.");
         }
 
-        $entrada = ((array) config('faturacao.motivos_isencao', []))[$motivo] ?? null;
+        $entrada = ConfiguracaoFiscalEmpresa::motivosDisponiveis($empresaId)[$motivo] ?? null;
 
         if (! is_array($entrada)) {
             throw new \DomainException("Linha {$n}: o motivo de isenção '{$motivo}' não consta da tabela (faturacao.motivos_isencao).");
