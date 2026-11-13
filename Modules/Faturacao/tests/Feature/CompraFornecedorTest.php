@@ -125,6 +125,16 @@ class CompraFornecedorTest extends TestCase
             'ativo' => true,
         ]);
 
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Produto válido',
+            'unidade' => 'un',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'ativo' => true,
+            'controla_stock' => true,
+        ]);
+
         $this->actingAs($this->utilizador)
             ->post(route('faturacao.compras.guardar'), [
                 'fornecedor_id' => $fornecedorAlheio->id,
@@ -132,7 +142,7 @@ class CompraFornecedorTest extends TestCase
                 'linhas' => [
                     0 => [
                         'selecionado' => '1',
-                        'produto_id' => 999999,
+                        'produto_id' => $produto->id,
                         'quantidade' => '1.000',
                         'preco_unitario' => '100.00',
                         'taxa_iva' => '0',
