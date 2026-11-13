@@ -8,6 +8,7 @@ use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Modules\Armazem\Models\Armazem;
 use Modules\Armazem\Models\ArmazemTransferencia;
+use Modules\Armazem\Models\ArmazemTransferenciaLinha;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
@@ -60,7 +61,7 @@ class ArmazemTransferenciaService
             $origemValidada = $armazens->get($origem->id);
             $destinoValidado = $armazens->get($destino->id);
 
-            if (!$origemValidada || ! $destinoValidado) {
+            if (!$origemValidada || !$destinoValidado) {
                 throw new DomainException('Os dois armazéns devem pertencer à mesma empresa.');
             }
 
@@ -82,9 +83,13 @@ class ArmazemTransferenciaService
                 $produtoId = (int) ($linha['produto_id'] ?? 0);
                 $quantidade = $this->normalizarQuantidade((string) ($linha['quantidade'] ?? ''));
 
-                if ($produtoId <= 0 || $quantidade <= 0 || isset($normalizadas[$produtoId])) {
+                if ($quantidade <= 0) {
+                    throw new InvalidArgumentException('A quantidade de cada produto deve ser superior a zero.');
+                }
+
+                if ($produtoId <= 0 || isset($normalizadas[$produtoId])) {
                     throw ValidationException::withMessages([
-                        'linhas' => 'Cada produto deve ser válido, ter quantidade positiva e aparecer apenas uma vez.',
+                        'linhas' => 'Cada produto deve ser válido e aparecer apenas uma vez.',
                     ]);
                 }
 
@@ -121,7 +126,9 @@ class ArmazemTransferenciaService
                 ]);
             }
 
-            return $transferencia\n                ->setRelation('linhas', $this->obterLinhas($empresa, $transferencia, false))\n                ->load(['origem', 'destino']);
+            return $transferencia
+                ->setRelation('linhas', $this->obterLinhas($empresa, $transferencia, false))
+                ->load(['origem', 'destino']);
         }, attempts: 3);
     }
 
@@ -170,7 +177,9 @@ class ArmazemTransferenciaService
                 'expedido_em' => now(),
             ])->save();
 
-            return $alvo\n                ->setRelation('linhas', $linhas->load('produto'))\n                ->load(['origem', 'destino']);
+            return $alvo
+                ->setRelation('linhas', $linhas->load('produto'))
+                ->load(['origem', 'destino']);
         }, attempts: 3);
     }
 
@@ -187,7 +196,7 @@ class ArmazemTransferenciaService
                 ->firstOrFail();
 
             if ($alvo->estado === 'recebida') {
-                return $alvo->load('linhas');
+                return $alvo->setRelation('linhas', $this->obterLinhas($empresa, $alvo, false));
             }
 
             if ($alvo->estado !== 'em_transito') {
@@ -195,7 +204,7 @@ class ArmazemTransferenciaService
             }
 
             $this->validarUtilizador($empresa, $utilizadorId);
-            $linhas = $alvo->linhas()->orderBy('id')->lockForUpdate()->get();
+            $linhas = $this->obterLinhas($empresa, $alvo);
 
             foreach ($linhas as $linha) {
                 $this->stock->entrada(
@@ -217,7 +226,9 @@ class ArmazemTransferenciaService
                 'recebido_em' => now(),
             ])->save();
 
-            return $alvo->load(['origem', 'destino', 'linhas.produto']);
+            return $alvo
+                ->setRelation('linhas', $linhas->load('produto'))
+                ->load(['origem', 'destino']);
         }, attempts: 3);
     }
 
@@ -245,6 +256,25 @@ class ArmazemTransferenciaService
 
             return $alvo;
         }, attempts: 3);
+    }
+
+    /**
+     * Consulta explícita por empresa: processos internos podem executar sem
+     * tenant HTTP, cenário em que a TenantScope bloqueia queries implícitas.
+     */
+    private function obterLinhas(Empresa $empresa, ArmazemTransferencia $transferencia, bool $bloquear = true)
+    {
+        $query = ArmazemTransferenciaLinha::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->where('transferencia_id', $transferencia->id)
+            ->with('produto')
+            ->orderBy('id');
+
+        if ($bloquear) {
+            $query->lockForUpdate();
+        }
+
+        return $query->get();
     }
 
     private function obterArmazem(Empresa $empresa, int $id): Armazem
