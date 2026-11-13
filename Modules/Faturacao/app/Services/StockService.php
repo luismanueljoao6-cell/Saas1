@@ -30,11 +30,15 @@ class StockService
         $motivo = trim($motivo);
 
         return DB::transaction(function () use ($empresa, $produto, $contagem, $motivo, $utilizadorId, $chaveIdempotencia) {
-            if ($chaveIdempotencia !== null) {
-                if (trim($chaveIdempotencia) === '' || mb_strlen($chaveIdempotencia) > 100) {
-                    throw new InvalidArgumentException('A chave de idempotência deve ter entre 1 e 100 caracteres.');
-                }
+            if ($chaveIdempotencia !== null && (trim($chaveIdempotencia) === '' || mb_strlen($chaveIdempotencia) > 100)) {
+                throw new InvalidArgumentException('A chave de idempotência deve ter entre 1 e 100 caracteres.');
+            }
 
+            // O lock tem de preceder a leitura da chave. Duas contagens concorrentes
+            // para o mesmo produto ficam serializadas antes de calcular a diferença.
+            $saldo = $this->saldoBloqueado($empresa, $produto);
+
+            if ($chaveIdempotencia !== null) {
                 $existente = StockMovimento::withoutGlobalScopes()
                     ->where('empresa_id', $empresa->id)
                     ->where('chave_idempotencia', $chaveIdempotencia)
@@ -51,8 +55,6 @@ class StockService
                     return $existente;
                 }
             }
-
-            $saldo = $this->saldoBloqueado($empresa, $produto);
             $anterior = $this->emMilhares((string) $saldo->quantidade);
             $delta = $contagem - $anterior;
 
@@ -156,10 +158,19 @@ class StockService
                 ->first();
 
             if ($existente) {
-                if ((int) $existente->produto_id !== (int) $produto->id
-                    || $existente->tipo !== $tipo
-                    || (string) $existente->quantidade !== $this->formatar($delta)
-                    || $existente->motivo !== $motivo) {
+                $movimentoCorresponde = (int) $existente->produto_id === (int) $produto->id
+                    && $existente->tipo === $tipo
+                    && $existente->motivo === $motivo;
+
+                if ($tipo === 'ajuste') {
+                    $movimentoCorresponde = $movimentoCorresponde
+                        && (string) $existente->saldo_posterior === $this->formatar($posterior);
+                } else {
+                    $movimentoCorresponde = $movimentoCorresponde
+                        && (string) $existente->quantidade === $this->formatar($delta);
+                }
+
+                if (! $movimentoCorresponde) {
                     throw new DomainException('A chave de idempotência já foi utilizada noutro movimento.');
                 }
 
