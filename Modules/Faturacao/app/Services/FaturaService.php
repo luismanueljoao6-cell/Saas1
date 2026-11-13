@@ -8,6 +8,7 @@ use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
+use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Support\Dinheiro;
 use Modules\Faturacao\Support\GuardaEmissao;
 use Modules\Faturacao\Support\ValidacaoLinhas;
