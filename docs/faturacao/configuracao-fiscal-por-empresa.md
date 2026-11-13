@@ -27,6 +27,31 @@ O Saas1 é multiempresa. Uma taxa padrão, regime de IVA ou seleção de motivos
 - A confirmação da tabela para comunicação AGT continua controlada por `FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS`; esta funcionalidade não ativa homologação nem comunicação fiscal.
 - O regime é, nesta fase, um registo declarativo e não altera automaticamente a liquidação, a taxa, a elegibilidade legal, o SAF-T ou o enquadramento AGT. A automatização dessas regras exige regras fiscais formalmente validadas e versionadas.
 
+## Snapshot fiscal dos documentos emitidos
+
+Na emissão, os serviços de faturas e notas de crédito/débito guardam em
+`snapshot_fiscal` uma fotografia dos dados do emitente, configuração fiscal
+operacional e linhas (taxas, valores, tipos de operação e fundamento de
+isenção). Nas notas ligadas a uma fatura, o snapshot inclui também o snapshot
+da origem, quando existe.
+
+O snapshot é capturado dentro da transação de emissão, depois do recálculo dos
+totais e antes da confirmação da emissão/assinatura. Os modelos usam cast
+JSON para array e a proteção de imutabilidade dos documentos emitidos impede
+alterações posteriores ao registo.
+
+As notas de crédito reproduzem os fundamentos e taxas da fatura original.
+Por isso, a validação continua a exigir que o código exista no catálogo central
+e seja do tipo elegível (ISE/NS), mas não exige que o motivo continue ativo nas
+definições atuais da empresa. Desativar um motivo afeta novos documentos; não
+deve impedir a correção de um documento histórico.
+
+O snapshot é uma cópia de auditoria interna e não substitui o payload fiscal
+assinado, os dados exigidos no SAF-T, nem uma confirmação de conformidade ou
+homologação pela AGT. Documentos emitidos antes da introdução desta coluna
+continuam com snapshot nulo; não se deve reconstruir retroativamente a partir
+das definições atuais, pois isso poderia falsear o histórico.
+
 ## Próximos passos antes de produção
 
 1. Confirmar a lista de taxas e os regimes vigentes com a AGT/contabilista.
