@@ -340,4 +340,26 @@ class ArmazemTransferenciaServiceTest extends TestCase
         ]], false, 'teste-chave-reutilizada-213');
     }
 
+
+    public function test_inativacao_fica_bloqueada_ate_finalizar_rececao_parcial(): void
+    {
+        [$empresa, $origem, $destino, $produto] = $this->preparar('630100214');
+        app(ArmazemStockService::class)->entrada($empresa, $origem, $produto, '5.000', 'Stock inicial');
+        $service = app(ArmazemTransferenciaService::class);
+        $transferencia = $this->criarTransferencia($empresa, $origem, $destino, $produto, '2.000');
+        $service->expedir($empresa, $transferencia);
+        $linhaId = (int) $transferencia->linhas->first()->id;
+
+        $service->registarRececaoParcial($empresa, $transferencia, [[
+            'linha_id' => $linhaId,
+            'quantidade_recebida' => '1.000',
+            'quantidade_em_falta' => '0.000',
+            'quantidade_danificada' => '0.000',
+        ]], false, 'teste-inativacao-parcial-214');
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Não é possível inativar este armazém enquanto existir uma transferência em trânsito associada.');
+        app(ArmazemService::class)->alternarEstado($empresa, $destino);
+    }
+
 }
