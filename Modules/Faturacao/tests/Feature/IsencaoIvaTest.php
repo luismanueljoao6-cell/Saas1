@@ -133,4 +133,48 @@ class IsencaoIvaTest extends TestCase
 
         app(FaturaService::class)->criarRascunho($this->empresa, $this->cliente, $this->linha());
     }
+
+    public function test_tabela_de_motivos_contem_os_codigos_publicados_no_anexo_agt(): void
+    {
+        $motivos = (array) config('faturacao.motivos_isencao', []);
+
+        $esperados = [
+            'M10', 'M11', 'M12', 'M13', 'M14', 'M15', 'M16', 'M17', 'M18', 'M19',
+            'M20', 'M21', 'M22', 'M23', 'M24', 'M80', 'M81', 'M82', 'M83', 'M84',
+            'M85', 'M86', 'M30', 'M31', 'M32', 'M33', 'M34', 'M35', 'M36', 'M37',
+            'M38', 'M90', 'M91', 'M92', 'M93', 'M00', 'M02', 'M04',
+        ];
+
+        $this->assertSame($esperados, array_keys($motivos));
+        $this->assertArrayNotHasKey('M94', $motivos);
+        $this->assertSame('NS', $motivos['M02']['tipo']);
+        $this->assertSame('NS', $motivos['M04']['tipo']);
+        $this->assertSame('REGIME', $motivos['M00']['tipo']);
+        $this->assertStringContainsString('alínea b)', $motivos['M11']['mencao']);
+    }
+
+    public function test_codigo_m00_de_regime_nao_pode_ser_usado_como_isencao_de_linha(): void
+    {
+        $this->expectException(\\DomainException::class);
+        $this->expectExceptionMessage('enquadramento de regime');
+
+        app(FaturaService::class)->criarRascunho(
+            $this->empresa,
+            $this->cliente,
+            $this->linha(['motivo_isencao' => 'M00']),
+        );
+    }
+
+    public function test_codigo_m02_e_guardado_como_nao_sujeicao(): void
+    {
+        $fatura = app(FaturaService::class)->criarRascunho(
+            $this->empresa,
+            $this->cliente,
+            $this->linha(['motivo_isencao' => 'M02']),
+        );
+
+        $this->assertSame('M02', $fatura->linhas()->first()->motivo_isencao);
+        $this->assertSame('0.00', $fatura->valor_iva);
+    }
+
 }
