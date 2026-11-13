@@ -391,3 +391,12 @@ correção assistida de notas de crédito/débito e recibos rejeitados.
 - A confirmação de receção é transacional: bloqueia a compra, cria entradas através do `StockService` e muda o estado para `recebida`.
 - Cada linha usa uma chave de idempotência própria (`compra:{id}:linha:{id}`) para impedir entradas duplicadas.
 - O fluxo não emite faturas de venda nem substitui documentos fiscais emitidos pelo fornecedor. O registo contabilístico e fiscal de compras será uma fase separada, sujeita às regras aplicáveis em Angola.
+
+### Contas a pagar e pagamentos de compras
+
+- Cada compra mantém o total pago e o estado financeiro separado do estado de receção da mercadoria.
+- Permite registar pagamentos parciais e liquidar o saldo, com data, método, referência e observações.
+- A operação bloqueia a compra em transação e impede pagamentos superiores ao saldo em dívida.
+- O histórico de pagamentos fica associado à empresa e à compra.
+- A listagem de compras mostra saldo em dívida, compras vencidas e valor vencido, com filtros por estado financeiro e vencimento.
+- O registo de pagamento é um controlo interno de tesouraria; não emite recibo fiscal nem substitui o documento do fornecedor.
