@@ -188,7 +188,7 @@ class ArmazemService
             if ($alvo->ativo) {
                 $temTransferenciaEmTransito = DB::table('armazem_transferencias')
                     ->where('empresa_id', $empresa->id)
-                    ->where('estado', 'em_transito')
+                    ->whereIn('estado', ['em_transito', 'parcialmente_recebida'])
                     ->where(function ($query) use ($alvo): void {
                         $query->where('armazem_origem_id', $alvo->id)
                             ->orWhere('armazem_destino_id', $alvo->id);
