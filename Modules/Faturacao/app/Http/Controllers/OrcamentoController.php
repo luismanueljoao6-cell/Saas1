@@ -11,6 +11,7 @@ use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Orcamento;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\OrcamentoService;
+use Modules\Faturacao\Support\Dinheiro;
 use Modules\Faturacao\Support\ValidacaoLinhas;
 use Throwable;
 
@@ -43,15 +44,15 @@ class OrcamentoController extends Controller
             ->findOrFail($orcamento);
 
         $linhas = collect($documento->linhas ?? [])->map(function (array $linha): array {
-            $valores = \Modules\Faturacao\Support\Dinheiro::calcularLinha(
+            $valores = Dinheiro::calcularLinha(
                 $linha['quantidade'] ?? 0,
                 $linha['preco_unitario'] ?? 0,
                 $linha['taxa_iva'] ?? 0,
             );
 
-            $linha['total_linha'] = \Modules\Faturacao\Support\Dinheiro::formatar(
-                \Modules\Faturacao\Support\Dinheiro::centimos($valores['sem_iva'])
-                + \Modules\Faturacao\Support\Dinheiro::centimos($valores['iva'])
+            $linha['total_linha'] = Dinheiro::formatar(
+                Dinheiro::centimos($valores['sem_iva'])
+                + Dinheiro::centimos($valores['iva'])
             );
 
             return $linha;
