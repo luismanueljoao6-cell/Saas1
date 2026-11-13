@@ -86,6 +86,7 @@ A leitura integral do registo de navegação e dos layouts revelou problemas adi
 
 - **Pesquisa nas listas de faturação:** foram acrescentados filtros GET com paginação preservando a pesquisa para faturas (número/cliente), clientes (nome/NIF/telefone/e-mail), produtos (nome/código/código de barras), notas (número/cliente/motivo), recibos (número/cliente/fatura/meio de pagamento) e movimentos de stock (produto/motivo). As consultas continuam a usar os modelos com âmbito de tenant; não foi removido qualquer isolamento.
 - **Tema escuro:** as principais listas de Faturação, Atelier, Estúdio e Subscrições receberam variantes dark para fundos, texto, bordas e divisórias, mantendo o tema claro como padrão.
+- **Pesquisa nos módulos operacionais:** foram acrescentadas pesquisas server-side, com validação e paginação preservada, a pedidos, campanhas e leads do Atelier, projetos musicais e pedidos recebidos do Estúdio. A listagem de pedidos mantém a restrição da Costureira aos pedidos atribuídos.
 
 ## Estado atualizado das correções
 
