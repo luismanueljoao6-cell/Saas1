@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Compra;
+use Modules\Faturacao\Models\CompraPagamento;
 use Modules\Faturacao\Models\Fornecedor;
 use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Support\Dinheiro;
@@ -116,6 +117,50 @@ class CompraService
             ])->save();
 
             return $bloqueada->load('fornecedor', 'linhas.produto');
+        }, attempts: 3);
+    }
+
+
+    public function registarPagamento(Empresa $empresa, Compra $compra, array $dados, int $utilizadorId): CompraPagamento
+    {
+        return DB::transaction(function () use ($empresa, $compra, $dados, $utilizadorId): CompraPagamento {
+            $bloqueada = Compra::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->whereKey($compra->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($bloqueada->estado !== 'recebida') {
+                throw new DomainException('Só é possível pagar compras já recebidas.');
+            }
+
+            $valorCentimos = Dinheiro::centimos((string) $dados['valor']);
+            $totalCentimos = Dinheiro::centimos((string) $bloqueada->total);
+            $pagoCentimos = Dinheiro::centimos((string) $bloqueada->total_pago);
+            $saldoCentimos = $totalCentimos - $pagoCentimos;
+
+            if ($valorCentimos <= 0 || $valorCentimos > $saldoCentimos) {
+                throw new DomainException('O pagamento deve ser positivo e não pode exceder o saldo em dívida.');
+            }
+
+            $pagamento = CompraPagamento::create([
+                'empresa_id' => $empresa->id,
+                'compra_id' => $bloqueada->id,
+                'valor' => Dinheiro::formatar($valorCentimos),
+                'data_pagamento' => $dados['data_pagamento'],
+                'metodo' => $dados['metodo'],
+                'referencia' => $dados['referencia'] ?? null,
+                'observacoes' => $dados['observacoes'] ?? null,
+                'registado_por' => $utilizadorId,
+            ]);
+
+            $novoPago = $pagoCentimos + $valorCentimos;
+            $bloqueada->forceFill([
+                'total_pago' => Dinheiro::formatar($novoPago),
+                'estado_pagamento' => $novoPago === $totalCentimos ? 'pago' : 'parcial',
+            ])->save();
+
+            return $pagamento;
         }, attempts: 3);
     }
 
