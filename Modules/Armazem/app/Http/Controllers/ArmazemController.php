@@ -66,16 +66,16 @@ class ArmazemController extends Controller
         return back()->with('sucesso', 'Armazém atualizado.');
     }
 
-    public function alternarEstado(Request $request, int $armazemId): RedirectResponse
+    public function alternarEstado(Request $request, int $armazemId, ArmazemService $armazens): RedirectResponse
     {
         $armazem = Armazem::query()->findOrFail($armazemId);
         abort_unless((int) $armazem->empresa_id === (int) $request->user()->empresa_id, 404);
 
-        if ($armazem->principal && $armazem->ativo) {
-            return back()->with('erro', 'Define outro armazém como principal antes de inativar este.');
+        try {
+            $armazem = $armazens->alternarEstado($request->user()->empresa, $armazem);
+        } catch (DomainException $exception) {
+            return back()->with('erro', $exception->getMessage());
         }
-
-        $armazem->update(['ativo' => ! $armazem->ativo]);
 
         return back()->with('sucesso', $armazem->ativo ? 'Armazém reativado.' : 'Armazém inativado.');
     }
