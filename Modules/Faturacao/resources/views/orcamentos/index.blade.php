@@ -3,7 +3,7 @@
 @section('conteudo')
 <div class="space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 class="text-2xl font-semibold">Orçamentos</h1><p class="mt-1 text-sm text-slate-500">Propostas comerciais sem valor fiscal.</p></div>
+        <div><h1 class="text-2xl font-semibold">Orçamentos</h1><p class="mt-1 text-sm text-slate-500 dark:text-zinc-400">Propostas comerciais sem valor fiscal.</p></div>
         <a href="{{ route('faturacao.orcamentos.criar') }}" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Novo orçamento</a>
     </div>
     <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -21,7 +21,7 @@
                 <form method="POST" action="{{ route('faturacao.orcamentos.converter',$orcamento->id) }}" class="inline ml-2">@csrf<button class="text-emerald-600">Converter em fatura</button></form>
                 @endif
             </td></tr>
-            @empty<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Ainda não existem orçamentos.</td></tr>@endforelse
+            @empty<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500 dark:text-zinc-400">Ainda não existem orçamentos.</td></tr>@endforelse
             </tbody>
         </table>
     </div>
