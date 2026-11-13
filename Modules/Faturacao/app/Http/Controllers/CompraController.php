@@ -6,6 +6,7 @@ use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Compra;
@@ -20,7 +21,8 @@ class CompraController extends Controller
         $dados = $request->validate([
             'q' => ['nullable', 'string', 'max:100'],
             'estado' => ['nullable', 'in:rascunho,recebida,cancelada'],
-            'pagamento' => ['nullable', 'in:pendente,parcial,pago'],\n            'vencimento' => ['nullable', 'in:vencidas,em_dia'],
+            'pagamento' => ['nullable', 'in:pendente,parcial,pago'],
+            'vencimento' => ['nullable', 'in:vencidas,em_dia'],
         ]);
 
         $compras = Compra::query()
@@ -33,7 +35,9 @@ class CompraController extends Controller
                 });
             })
             ->when($dados['estado'] ?? null, fn ($query, string $estado) => $query->where('estado', $estado))
-            ->when($dados['pagamento'] ?? null, fn ($query, string $estado) => $query->where('estado_pagamento', $estado))\n            ->when(($dados['vencimento'] ?? null) === 'vencidas', fn ($query) => $query->where('estado', 'recebida')->whereColumn('total_pago', '<', 'total')->whereNotNull('data_vencimento')->whereDate('data_vencimento', '<', today()))\n            ->when(($dados['vencimento'] ?? null) === 'em_dia', fn ($query) => $query->where(function ($subquery) { $subquery->whereNull('data_vencimento')->orWhereDate('data_vencimento', '>=', today()); }))
+            ->when($dados['pagamento'] ?? null, fn ($query, string $estado) => $query->where('estado_pagamento', $estado))
+            ->when(($dados['vencimento'] ?? null) === 'vencidas', fn ($query) => $query->where('estado', 'recebida')->whereColumn('total_pago', '<', 'total')->whereNotNull('data_vencimento')->whereDate('data_vencimento', '<', today()))
+            ->when(($dados['vencimento'] ?? null) === 'em_dia', fn ($query) => $query->where(function ($subquery) { $subquery->whereNull('data_vencimento')->orWhereDate('data_vencimento', '>=', today()); }))
             ->latest('id')
             ->paginate(20)
             ->withQueryString();
