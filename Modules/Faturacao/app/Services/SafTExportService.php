@@ -413,7 +413,7 @@ class SafTExportService
         }
 
         if ($tipo !== 'ISE') {
-            throw new \\RuntimeException("O código {$motivo} não é um motivo de isenção aplicável a uma linha SAF-T (AO).");
+            throw new \RuntimeException("O código {$motivo} não é um motivo de isenção aplicável a uma linha SAF-T (AO).");
         }
 
         return ['IVA', 'ISE', $motivo];
