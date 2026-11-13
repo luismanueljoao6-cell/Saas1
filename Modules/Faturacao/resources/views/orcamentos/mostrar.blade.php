@@ -4,6 +4,9 @@
 <div class="mx-auto max-w-5xl space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <a href="{{ route('faturacao.orcamentos.index') }}" class="text-sm text-indigo-600">← Voltar aos orçamentos</a>
+        @if($orcamento->estado === 'rascunho')
+            <a href="{{ route('faturacao.orcamentos.editar', $orcamento->id) }}" class="rounded-lg border px-4 py-2 text-sm">Editar orçamento</a>
+        @endif
         <button type="button" onclick="window.print()" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Imprimir / Guardar PDF</button>
     </div>
     <article class="rounded-xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm sm:p-10">
