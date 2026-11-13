@@ -149,11 +149,11 @@ final class ValidacaoLinhas
         $entrada = ((array) config('faturacao.motivos_isencao', []))[$motivo] ?? null;
 
         if (! is_array($entrada)) {
-            throw new \\DomainException("Linha {$n}: o motivo de isenção '{$motivo}' não consta da tabela (faturacao.motivos_isencao).");
+            throw new \DomainException("Linha {$n}: o motivo de isenção '{$motivo}' não consta da tabela (faturacao.motivos_isencao).");
         }
 
         if (! in_array($entrada['tipo'] ?? null, ['ISE', 'NS'], true)) {
-            throw new \\DomainException("Linha {$n}: o código '{$motivo}' é de enquadramento de regime e não pode ser usado como motivo de isenção de uma linha.");
+            throw new \DomainException("Linha {$n}: o código '{$motivo}' é de enquadramento de regime e não pode ser usado como motivo de isenção de uma linha.");
         }
 
         // Nada de códigos por confirmar a caminho da AGT.
