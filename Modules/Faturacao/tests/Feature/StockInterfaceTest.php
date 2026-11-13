@@ -160,5 +160,4 @@ class StockInterfaceTest extends TestCase
             ]))
             ->assertSessionHasErrors(['data_fim']);
     }
-
 }
