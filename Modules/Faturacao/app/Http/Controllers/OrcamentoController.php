@@ -33,6 +33,63 @@ class OrcamentoController extends Controller
         ]);
     }
 
+    public function editar(Request $request, int $orcamento): View
+    {
+        $empresa = $request->user()->empresa;
+        abort_if($empresa === null, 403);
+
+        $documento = Orcamento::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->where('estado', 'rascunho')
+            ->findOrFail($orcamento);
+
+        return view('faturacao::orcamentos.editar', [
+            'orcamento' => $documento,
+            'clientes' => Cliente::query()->orderBy('nome')->get(),
+            'taxasIva' => config('faturacao.taxas_iva_permitidas'),
+            'taxaPadrao' => config('faturacao.taxa_iva_geral'),
+        ]);
+    }
+
+    public function atualizar(Request $request, int $orcamento, OrcamentoService $service): RedirectResponse
+    {
+        $empresa = $request->user()->empresa;
+        abort_if($empresa === null, 403);
+
+        $documento = Orcamento::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->findOrFail($orcamento);
+
+        $dados = $request->validate([
+            'cliente_id' => ['required', 'integer', Rule::exists('clientes', 'id')->where('empresa_id', $empresa->id)],
+            'data_validade' => ['nullable', 'date', 'after_or_equal:today'],
+            'observacoes' => ['nullable', 'string', 'max:1000'],
+            'linhas' => ['required', 'array', 'min:1', 'max:100'],
+            'linhas.*.produto_id' => ['nullable', 'integer', Rule::exists('produtos', 'id')->where('empresa_id', $empresa->id)],
+            'linhas.*.descricao' => ['required', 'string', 'max:255'],
+            'linhas.*.quantidade' => ['required', 'numeric', 'decimal:0,3', 'gt:0', 'max:10000'],
+            'linhas.*.preco_unitario' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
+            'linhas.*.taxa_iva' => ['required', 'numeric'],
+            'linhas.*.motivo_isencao' => ['nullable', 'string'],
+            'linhas.*.operation_type' => ['nullable', 'string', Rule::in(ValidacaoLinhas::TIPOS_OPERACAO_AGT)],
+        ]);
+
+        try {
+            $service->atualizarRascunho(
+                $documento,
+                Cliente::query()->findOrFail($dados['cliente_id']),
+                $dados['linhas'],
+                $dados['data_validade'] ?? null,
+                $dados['observacoes'] ?? null,
+            );
+        } catch (\\DomainException|\\InvalidArgumentException $e) {
+            return back()->withInput()->withErrors(['orcamento' => $e->getMessage()]);
+        }
+
+        return redirect()->route('faturacao.orcamentos.mostrar', $documento->id)
+            ->with('sucesso', 'Orçamento atualizado.');
+    }
+
     public function mostrar(Request $request, int $orcamento): View
     {
         $empresa = $request->user()->empresa;
