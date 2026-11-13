@@ -127,4 +127,51 @@ class ProdutoCatalogoTest extends TestCase
 
         $this->assertSame(0, Produto::withoutGlobalScopes()->where('empresa_id', $this->empresa->id)->count());
     }
+
+    public function test_filtros_do_catalogo_limitam_categoria_e_estado_de_stock(): void
+    {
+        $categoria = CategoriaProduto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Acessórios',
+        ]);
+
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'categoria_id' => $categoria->id,
+            'nome' => 'Cabo USB',
+            'unidade' => 'un',
+            'preco_unitario' => '500.00',
+            'taxa_iva' => '14',
+            'ativo' => true,
+            'controla_stock' => true,
+            'stock_minimo' => '3.000',
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->get(route('faturacao.produtos.index', ['categoria_id' => $categoria->id, 'stock' => 'baixo']))
+            ->assertOk()
+            ->assertSee('Cabo USB');
+
+        $this->actingAs($this->utilizador)
+            ->get(route('faturacao.produtos.index', ['categoria_id' => $categoria->id, 'stock' => 'sem_stock']))
+            ->assertOk()
+            ->assertSee('Cabo USB');
+    }
+
+    public function test_filtro_de_categoria_nao_aceita_categoria_de_outra_empresa(): void
+    {
+        $outraEmpresa = Empresa::create([
+            'nome_comercial' => 'Empresa externa',
+            'nif' => '630000303',
+        ]);
+        $categoriaAlheia = CategoriaProduto::create([
+            'empresa_id' => $outraEmpresa->id,
+            'nome' => 'Privada',
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->get(route('faturacao.produtos.index', ['categoria_id' => $categoriaAlheia->id]))
+            ->assertSessionHasErrors(['categoria_id']);
+    }
+
 }
