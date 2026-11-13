@@ -96,7 +96,7 @@ class OrcamentoService
                 ->findOrFail($origem->id);
 
             if ($cliente !== null && (int) $cliente->empresa_id !== (int) $empresa->id) {
-                throw new \\DomainException('O cliente selecionado não pertence a esta empresa.');
+                throw new \DomainException('O cliente selecionado não pertence a esta empresa.');
             }
 
             $clienteFinal = $cliente ?? Cliente::query()
