@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Armazem\Models\Armazem;
 use Modules\Armazem\Models\ArmazemStockMovimento;
 use Modules\Armazem\Models\ArmazemStockSaldo;
 use Modules\Armazem\Services\ArmazemService;
