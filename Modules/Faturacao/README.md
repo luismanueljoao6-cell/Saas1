@@ -381,3 +381,13 @@ Fica por fazer: versão para impressão (o layout fiscal tem de ser validado con
 adiantamento (a AGT ainda não os suporta aqui), edição de notas em rascunho (elimina-se e recria-se) e
 correção assistida de notas de crédito/débito e recibos rejeitados.
 
+## Gestão de fornecedores e compras
+
+- Fornecedores são registados no âmbito da empresa e o NIF é único por empresa.
+- Uma compra é criada como rascunho, com fornecedor, datas, referência externa e linhas de artigos.
+- As linhas guardam uma fotografia da descrição, quantidade, preço unitário e taxa de IVA registadas no momento.
+- Os totais monetários são calculados através de `Dinheiro`, evitando operações com `float`.
+- Guardar a compra não altera o stock.
+- A confirmação de receção é transacional: bloqueia a compra, cria entradas através do `StockService` e muda o estado para `recebida`.
+- Cada linha usa uma chave de idempotência própria (`compra:{id}:linha:{id}`) para impedir entradas duplicadas.
+- O fluxo não emite faturas de venda nem substitui documentos fiscais emitidos pelo fornecedor. O registo contabilístico e fiscal de compras será uma fase separada, sujeita às regras aplicáveis em Angola.
