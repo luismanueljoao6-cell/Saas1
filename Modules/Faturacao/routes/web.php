@@ -30,7 +30,7 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao', 'p
         Route::get('/clientes/{cliente}/conta-corrente', [ClienteController::class, 'contaCorrente'])->whereNumber('cliente')->name('clientes.conta-corrente');
         Route::post('/clientes', [ClienteController::class, 'store'])->name('clientes.store');
 
-        Route::get('/produtos', [ProdutoController::class, 'index'])->name('produtos.index');
+        Route::get('/produtos', [ProdutoController::class, 'index'])->name('produtos.index');\n\n        Route::middleware('papel:Administrador')->group(function () {\n            Route::get('/stock', [StockController::class, 'index'])->name('stock.index');\n            Route::post('/stock/movimentos', [StockController::class, 'store'])->middleware('throttle:30,1')->name('stock.store');\n        });
         Route::post('/produtos', [ProdutoController::class, 'store'])->name('produtos.store');
         Route::post('/produtos/categorias', [ProdutoController::class, 'storeCategoria'])->name('produtos.categorias.store');
 
