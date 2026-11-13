@@ -431,7 +431,6 @@ class ArmazemTransferenciaService
 
             $temDivergencia = false;
             foreach ($linhasTransferencia as $linha) {
-                $linha->refresh();
                 if ($this->normalizarQuantidade((string) $linha->quantidade_em_falta) > 0
                     || $this->normalizarQuantidade((string) $linha->quantidade_danificada) > 0) {
                     $temDivergencia = true;
