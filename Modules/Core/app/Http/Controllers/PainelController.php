@@ -58,7 +58,11 @@ class PainelController extends Controller
                         'cliente' => $fatura->cliente?->nome ?? 'Consumidor final',
                         'emissao' => $fatura->data_emissao,
                         'total' => $fatura->valor_total,
-                        'estado' => match ($fatura->estado) { 'emitida' => 'Emitida', 'anulada' => 'Anulada', default => 'Rascunho' },
+                        'estado' => match ($fatura->estado) {
+                            'emitida' => 'Emitida',
+                            'anulada' => 'Anulada',
+                            default => 'Rascunho',
+                        },
                     ]);
             }
 
