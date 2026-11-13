@@ -110,15 +110,19 @@ class PainelController extends Controller
                 ->first();
 
             $limites = $subscricao?->limites ?? [];
+            $temLimiteUtilizadores = array_key_exists('max_utilizadores', $limites)
+                || array_key_exists('utilizadores', $limites);
             $limiteUtilizadores = $limites['max_utilizadores'] ?? $limites['utilizadores'] ?? null;
             $utilizadoresAtivos = $empresa->utilizadores()->where('ativo', true)->count();
 
             $kpis['plano'] = [
                 'rotulo' => 'Utilizadores do plano',
-                'valor' => $limiteUtilizadores !== null
+                'valor' => $temLimiteUtilizadores && $limiteUtilizadores !== null
                     ? $utilizadoresAtivos.' / '.(int) $limiteUtilizadores
-                    : number_format($utilizadoresAtivos, 0, ',', ' '),
-                'nota' => $limiteUtilizadores !== null ? 'Utilizadores ativos' : 'Sem limite de utilizadores definido no plano',
+                    : ($temLimiteUtilizadores ? $utilizadoresAtivos.' / ∞' : number_format($utilizadoresAtivos, 0, ',', ' ')),
+                'nota' => ! $temLimiteUtilizadores
+                    ? 'Limite não definido no snapshot da subscrição'
+                    : ($limiteUtilizadores === null ? 'Plano sem limite de utilizadores' : 'Utilizadores ativos'),
                 'icone' => 'medidor',
             ];
 
