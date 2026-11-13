@@ -14,7 +14,12 @@ class ProdutoController extends Controller
 {
     public function index(Request $request): View
     {
-        $dados = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $empresaId = (int) $request->user()->empresa_id;
+        $dados = $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
+            'categoria_id' => ['nullable', 'integer', Rule::exists('categorias_produtos', 'id')->where('empresa_id', $empresaId)],
+            'stock' => ['nullable', 'in:baixo,sem_stock'],
+        ]);
 
         $produtos = Produto::query()
             ->with(['categoria', 'stockSaldo'])
@@ -25,6 +30,19 @@ class ProdutoController extends Controller
                     $subquery->where('nome', 'like', "%{$termo}%")
                         ->orWhere('codigo', 'like', "%{$termo}%")
                         ->orWhere('codigo_barras', 'like', "%{$termo}%");
+                });
+            })
+            ->when($dados['categoria_id'] ?? null, fn ($query, int $categoriaId) => $query->where('categoria_id', $categoriaId))
+            ->when(($dados['stock'] ?? null) === 'baixo', function ($query): void {
+                $query->where(function ($stock): void {
+                    $stock->whereHas('stockSaldo', fn ($saldo) => $saldo->whereColumn('stock_saldos.quantidade', '<=', 'produtos.stock_minimo'))
+                        ->orWhereDoesntHave('stockSaldo')->where('produtos.stock_minimo', '>', 0);
+                });
+            })
+            ->when(($dados['stock'] ?? null) === 'sem_stock', function ($query): void {
+                $query->where(function ($stock): void {
+                    $stock->whereHas('stockSaldo', fn ($saldo) => $saldo->where('quantidade', '<=', 0))
+                        ->orWhereDoesntHave('stockSaldo');
                 });
             })
             ->orderBy('nome')
