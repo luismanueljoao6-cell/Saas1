@@ -10,7 +10,6 @@ use Illuminate\View\View;
 use Modules\Armazem\Models\Armazem;
 use Modules\Armazem\Models\ArmazemTransferencia;
 use Modules\Armazem\Services\ArmazemTransferenciaService;
-use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Produto;
 
 class ArmazemTransferenciaController extends Controller
