@@ -25,7 +25,26 @@ class EmpresaController extends Controller
     public function atualizar(AtualizarEmpresaRequest $request, Empresa $empresa): RedirectResponse
     {
         try {
-            $this->empresaRepository->atualizar($empresa, $request->validated());
+            $dados = $request->validated();
+            $configuracoesFiscais = $dados['configuracoes_fiscais'] ?? [];
+            unset($dados['configuracoes_fiscais']);
+
+            if ($configuracoesFiscais !== []) {
+                $atuais = (array) ($empresa->configuracoes ?? []);
+                $atuais['faturacao'] = array_replace(
+                    (array) ($atuais['faturacao'] ?? []),
+                    [
+                        'regime_iva' => $configuracoesFiscais['regime_iva'] ?? ($atuais['faturacao']['regime_iva'] ?? 'geral'),
+                        'taxa_iva_padrao' => isset($configuracoesFiscais['taxa_iva_padrao'])
+                            ? number_format((float) $configuracoesFiscais['taxa_iva_padrao'], 2, '.', '')
+                            : ($atuais['faturacao']['taxa_iva_padrao'] ?? config('faturacao.taxa_iva_geral')),
+                        'motivos_isencao_ativos' => array_values(array_unique($configuracoesFiscais['motivos_isencao_ativos'] ?? [])),
+                    ],
+                );
+                $dados['configuracoes'] = $atuais;
+            }
+
+            $this->empresaRepository->atualizar($empresa, $dados);
         } catch (Throwable $e) {
             Log::error('Falha ao atualizar definições da empresa', [
                 'empresa_id' => $empresa->id,
