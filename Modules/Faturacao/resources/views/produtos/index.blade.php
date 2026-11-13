@@ -9,6 +9,15 @@
             <p class="mt-1 text-sm text-slate-500 dark:text-zinc-400">Organiza o catálogo por categoria e identifica artigos através do código de barras.</p>
         </div>
 
+        <form method="GET" action="{{ route('faturacao.produtos.index') }}" role="search" class="mt-4 flex flex-col gap-2 sm:flex-row">
+            <label for="pesquisa-registos" class="sr-only">Pesquisar produtos</label>
+            <input id="pesquisa-registos" type="search" name="q" value="{{ request('q') }}" maxlength="100" placeholder="Nome, código interno ou código de barras" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:max-w-md">
+            <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-900">Pesquisar</button>
+            @if (request()->filled('q'))
+                <a href="{{ route('faturacao.produtos.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-600 dark:border-zinc-700 dark:text-zinc-300">Limpar</a>
+            @endif
+        </form>
+
         @if (session('sucesso'))
             <div class="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                 {{ session('sucesso') }}
