@@ -46,6 +46,27 @@ class ArmazemService
                 Armazem::withoutGlobalScopes()
                     ->where('empresa_id', $empresa->id)
                     ->update(['principal' => false]);
+            } else {
+                $principalExistente = Armazem::withoutGlobalScopes()
+                    ->where('empresa_id', $empresa->id)
+                    ->where('principal', true)
+                    ->where('ativo', true)
+                    ->exists();
+
+                if (! $principalExistente) {
+                    $primeiroAtivo = Armazem::withoutGlobalScopes()
+                        ->where('empresa_id', $empresa->id)
+                        ->where('ativo', true)
+                        ->orderBy('id')
+                        ->lockForUpdate()
+                        ->first();
+
+                    if ($primeiroAtivo) {
+                        $primeiroAtivo->forceFill(['principal' => true])->save();
+                    } else {
+                        $principal = true;
+                    }
+                }
             }
 
             return Armazem::create([
@@ -115,6 +136,21 @@ class ArmazemService
                 $existente->forceFill(['principal' => true, 'ativo' => true])->save();
 
                 return $existente->refresh();
+            }
+
+            // Empresas com armazéns antigos sem principal devem reutilizar
+            // um local ativo existente, em vez de criar um armazém duplicado.
+            $primeiroAtivo = Armazem::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->where('ativo', true)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->first();
+
+            if ($primeiroAtivo) {
+                $primeiroAtivo->forceFill(['principal' => true])->save();
+
+                return $primeiroAtivo->refresh();
             }
 
             return Armazem::create([
