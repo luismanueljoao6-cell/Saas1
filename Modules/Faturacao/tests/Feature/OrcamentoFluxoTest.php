@@ -200,7 +200,6 @@ class OrcamentoFluxoTest extends TestCase
         ]], null, null);
     }
 
-
     public function test_duplicacao_cria_novo_rascunho_sem_reutilizar_fatura_ou_numero(): void
     {
         [$empresa, $cliente] = $this->criarContexto('630000211');
