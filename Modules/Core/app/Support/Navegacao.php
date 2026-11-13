@@ -68,10 +68,10 @@ class Navegacao
                 'itens' => [
                     ['rota' => 'atelier.pedidos.index', 'rotulo' => 'Pedidos', 'icone' => 'pedidos', 'ativo' => 'atelier.pedidos.*'],
                     ['rota' => 'atelier.orcamentos.index', 'rotulo' => 'Orçamentos', 'icone' => 'orcamento', 'ativo' => 'atelier.orcamentos.*'],
-                    ['rota' => 'atelier.orcamentos.index', 'rotulo' => 'Orçamentos recebidos', 'icone' => 'orcamento', 'ativo' => 'atelier.orcamentos.*'],
+                    ['rota' => 'atelier.orcamentos.index', 'rotulo' => 'Orçamentos recebidos', 'icone' => 'orcamento', 'ativo' => 'atelier.orcamentos.*', 'papeis' => ['Administrador', 'Secretária']],
                     ['rota' => 'atelier.campanhas.index', 'rotulo' => 'Campanhas', 'icone' => 'campanha', 'ativo' => 'atelier.campanhas.*', 'admin' => true],
                     ['rota' => 'atelier.equipa.index', 'rotulo' => 'Equipa', 'icone' => 'utilizadores', 'ativo' => 'atelier.equipa.*', 'admin' => true],
-                    ['rota' => 'atelier.perfil.editar', 'rotulo' => 'Perfil do atelier', 'icone' => 'empresa', 'ativo' => 'atelier.perfil.*'],
+                    ['rota' => 'atelier.perfil.editar', 'rotulo' => 'Perfil do atelier', 'icone' => 'empresa', 'ativo' => 'atelier.perfil.*', 'admin' => true],
                     ['rota' => 'atelier.portfolio.index', 'rotulo' => 'Portfólio', 'icone' => 'imagem', 'ativo' => 'atelier.portfolio.*', 'admin' => true],
                 ],
             ],
@@ -105,6 +105,10 @@ class Navegacao
                 }
 
                 if (! empty($item['permissao']) && ! $utilizador?->can($item['permissao'])) {
+                    continue;
+                }
+
+                if (! empty($item['papeis']) && ! $utilizador?->hasAnyRole($item['papeis'])) {
                     continue;
                 }
 
