@@ -216,4 +216,128 @@ class ArmazemTransferenciaServiceTest extends TestCase
 
         $this->assertFalse($inativo->ativo);
     }
+
+    public function test_rececao_parcial_credita_apenas_o_recebido_e_finaliza_com_divergencias(): void
+    {
+        [$empresa, $origem, $destino, $produto] = $this->preparar('630100210');
+        $stock = app(ArmazemStockService::class);
+        $stock->entrada($empresa, $origem, $produto, '10.000', 'Stock inicial');
+
+        $service = app(ArmazemTransferenciaService::class);
+        $transferencia = $this->criarTransferencia($empresa, $origem, $destino, $produto, '5.000');
+        $service->expedir($empresa, $transferencia);
+        $linhaId = (int) $transferencia->linhas->first()->id;
+
+        $parcial = [[
+            'linha_id' => $linhaId,
+            'quantidade_recebida' => '2.000',
+            'quantidade_em_falta' => '0.000',
+            'quantidade_danificada' => '0.000',
+        ]];
+
+        $service->registarRececaoParcial($empresa, $transferencia, $parcial, false, 'teste-rececao-210');
+        $service->registarRececaoParcial($empresa, $transferencia, $parcial, false, 'teste-rececao-210');
+
+        $this->assertSame('parcialmente_recebida', $transferencia->fresh()->estado);
+        $this->assertSame('2.000', (string) ArmazemStockSaldo::withoutGlobalScopes()
+            ->where('armazem_id', $destino->id)->where('produto_id', $produto->id)->value('quantidade'));
+        $this->assertSame(3, ArmazemStockMovimento::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)->count());
+
+        $service->registarRececaoParcial($empresa, $transferencia, [[
+            'linha_id' => $linhaId,
+            'quantidade_recebida' => '1.000',
+            'quantidade_em_falta' => '1.000',
+            'quantidade_danificada' => '1.000',
+        ]], true, 'teste-rececao-final-210');
+
+        $linha = $transferencia->fresh()->linhas()->first();
+        $this->assertSame('recebida_com_divergencia', $transferencia->fresh()->estado);
+        $this->assertSame('3.000', (string) $linha->quantidade_recebida);
+        $this->assertSame('1.000', (string) $linha->quantidade_em_falta);
+        $this->assertSame('1.000', (string) $linha->quantidade_danificada);
+        $this->assertSame('3.000', (string) ArmazemStockSaldo::withoutGlobalScopes()
+            ->where('armazem_id', $destino->id)->where('produto_id', $produto->id)->value('quantidade'));
+    }
+
+    public function test_rececao_parcial_rejeita_excesso_e_finalizacao_incompleta(): void
+    {
+        [$empresa, $origem, $destino, $produto] = $this->preparar('630100211');
+        app(ArmazemStockService::class)->entrada($empresa, $origem, $produto, '5.000', 'Stock inicial');
+        $service = app(ArmazemTransferenciaService::class);
+        $transferencia = $this->criarTransferencia($empresa, $origem, $destino, $produto, '2.000');
+        $service->expedir($empresa, $transferencia);
+        $linhaId = (int) $transferencia->linhas->first()->id;
+
+        try {
+            $service->registarRececaoParcial($empresa, $transferencia, [[
+                'linha_id' => $linhaId,
+                'quantidade_recebida' => '2.001',
+                'quantidade_em_falta' => '0.000',
+                'quantidade_danificada' => '0.000',
+            ]], false, 'teste-excesso-211');
+            $this->fail('Não deve aceitar quantidade superior à expedida.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('ultrapassa a quantidade expedida', $exception->getMessage());
+        }
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Para finalizar, todas as quantidades expedidas devem estar classificadas como recebidas, em falta ou danificadas.');
+        $service->registarRececaoParcial($empresa, $transferencia, [[
+            'linha_id' => $linhaId,
+            'quantidade_recebida' => '1.000',
+            'quantidade_em_falta' => '0.000',
+            'quantidade_danificada' => '0.000',
+        ]], true, 'teste-incompleta-211');
+    }
+
+    public function test_receber_integral_completa_o_remanescente_depois_de_uma_rececao_parcial(): void
+    {
+        [$empresa, $origem, $destino, $produto] = $this->preparar('630100212');
+        app(ArmazemStockService::class)->entrada($empresa, $origem, $produto, '5.000', 'Stock inicial');
+        $service = app(ArmazemTransferenciaService::class);
+        $transferencia = $this->criarTransferencia($empresa, $origem, $destino, $produto, '2.000');
+        $service->expedir($empresa, $transferencia);
+        $linhaId = (int) $transferencia->linhas->first()->id;
+
+        $service->registarRececaoParcial($empresa, $transferencia, [[
+            'linha_id' => $linhaId,
+            'quantidade_recebida' => '0.500',
+            'quantidade_em_falta' => '0.000',
+            'quantidade_danificada' => '0.000',
+        ]], false, 'teste-remanescente-212');
+
+        $service->receber($empresa, $transferencia);
+
+        $this->assertSame('recebida', $transferencia->fresh()->estado);
+        $this->assertSame('2.000', (string) ArmazemStockSaldo::withoutGlobalScopes()
+            ->where('armazem_id', $destino->id)->where('produto_id', $produto->id)->value('quantidade'));
+    }
+
+    public function test_chave_de_idempotencia_nao_pode_ser_reutilizada_com_outros_dados(): void
+    {
+        [$empresa, $origem, $destino, $produto] = $this->preparar('630100213');
+        app(ArmazemStockService::class)->entrada($empresa, $origem, $produto, '5.000', 'Stock inicial');
+        $service = app(ArmazemTransferenciaService::class);
+        $transferencia = $this->criarTransferencia($empresa, $origem, $destino, $produto, '2.000');
+        $service->expedir($empresa, $transferencia);
+        $linhaId = (int) $transferencia->linhas->first()->id;
+
+        $service->registarRececaoParcial($empresa, $transferencia, [[
+            'linha_id' => $linhaId,
+            'quantidade_recebida' => '1.000',
+            'quantidade_em_falta' => '0.000',
+            'quantidade_danificada' => '0.000',
+        ]], false, 'teste-chave-reutilizada-213');
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('A chave de idempotência já foi utilizada com outros dados.');
+        $service->registarRececaoParcial($empresa, $transferencia, [[
+            'linha_id' => $linhaId,
+            'quantidade_recebida' => '0.500',
+            'quantidade_em_falta' => '0.000',
+            'quantidade_danificada' => '0.000',
+        ]], false, 'teste-chave-reutilizada-213');
+    }
+
 }
