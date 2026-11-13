@@ -123,6 +123,7 @@ class OrcamentoController extends Controller
                 $dados['observacoes'] ?? null,
             );
         } catch (\DomainException|\InvalidArgumentException $e) {
+
             return back()->withInput()->withErrors(['orcamento' => $e->getMessage()]);
         }
 
@@ -190,6 +191,7 @@ class OrcamentoController extends Controller
                 $dados['observacoes'] ?? null,
             );
         } catch (\DomainException|\InvalidArgumentException $e) {
+
             return back()->withInput()->withErrors(['orcamento' => $e->getMessage()]);
         }
 
@@ -225,6 +227,7 @@ class OrcamentoController extends Controller
         try {
             $novo = $service->duplicar($origem, $empresa, $cliente, $dados['data_validade'] ?? null);
         } catch (\DomainException|\InvalidArgumentException $e) {
+
             return back()->with('erro', $e->getMessage());
         }
 
@@ -242,6 +245,7 @@ class OrcamentoController extends Controller
         try {
             $service->alterarEstado($documento, $dados['estado']);
         } catch (\DomainException|\InvalidArgumentException $e) {
+
             return back()->with('erro', $e->getMessage());
         }
 
@@ -257,9 +261,11 @@ class OrcamentoController extends Controller
             $documento = Orcamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->findOrFail($orcamento);
             $fatura = $service->converter($documento, $empresa, $faturas);
         } catch (\DomainException|\InvalidArgumentException $e) {
+
             return back()->with('erro', $e->getMessage());
         } catch (Throwable $e) {
             report($e);
+
             return back()->with('erro', 'Não foi possível converter o orçamento. Tenta novamente.');
         }
 
