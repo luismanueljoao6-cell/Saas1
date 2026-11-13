@@ -151,6 +151,20 @@ class CompraController extends Controller
         return back()->with('sucesso', 'Pagamento registado.');
     }
 
+    public function cancelar(Request $request, int $compraId, CompraService $compras): RedirectResponse
+    {
+        $empresa = Empresa::query()->findOrFail($request->user()->empresa_id);
+        $compra = Compra::query()->findOrFail($compraId);
+
+        try {
+            $compras->cancelarRascunho($empresa, $compra);
+        } catch (DomainException $exception) {
+            return back()->withErrors(['compra' => $exception->getMessage()]);
+        }
+
+        return back()->with('sucesso', 'Compra cancelada. O stock não foi alterado.');
+    }
+
     public function receber(Request $request, int $compraId, CompraService $compras): RedirectResponse
     {
         $empresa = Empresa::query()->findOrFail($request->user()->empresa_id);
