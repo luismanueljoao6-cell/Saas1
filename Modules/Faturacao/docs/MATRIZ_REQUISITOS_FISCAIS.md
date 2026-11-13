@@ -20,7 +20,7 @@ Presidencial 71/25, Decreto Executivo 683/25) antes de se afirmar conformidade.
 | `operationType` por linha | `SG` fixo (config) | — | — | — | AgtSubmissaoTest | 🟡 |
 | `operationDate` (obrigatório em FG/GF) | — | — | — | — | — | ⛔ (tipos não suportados) |
 | IVA por linha (`taxes`) | taxa → código (`agt.codigos_taxa`) | taxa permitida + código AGT | — | `Tax` / `TaxTable` | NotaDebitoEIsencaoAgtTest, SafTEstruturaEVersoesTest | 🟡 só 14% mapeado |
-| Isenção / não sujeição (`taxExemptionCode`) | `motivo_isencao` (tabela `motivos_isencao`) | motivo da tabela; tabela por confirmar | — | `TaxExemptionCode` | IsencaoIvaTest | 🟡 tabela por confirmar |
+| Isenção / não sujeição (`taxExemptionCode`) | `motivo_isencao` (Anexo 6.4 oficial da AGT) | códigos ISE/NS validados; M00 reservado a enquadramento de regime | — | `TaxExemptionCode` | IsencaoIvaTest | 🟡 falta homologar o mapeamento e ativar explicitamente a confirmação |
 | Nota de débito sem imposto | taxa 0; sem `taxes` (ou NS com `nd_codigo_nao_sujeicao`) | recusa IVA | — | NS | NotaDebitoSemIvaTest, NotaDebitoEIsencaoAgtTest | 🟡 formato por confirmar na AGT |
 | Referência da NC à fatura (`referenceInfo`) | `fatura_id` obrigatório | origem da empresa; limite por taxa | — | — | RegrasDeNegocioTest, LimiteCreditoPorTaxaTest | ✅ |
 | Totais (`documentTotals`) | `valor_*` | IVA por excesso por linha | ✅ | `DocumentTotals` | DinheiroValidacaoTest | ✅ |
@@ -31,7 +31,7 @@ Presidencial 71/25, Decreto Executivo 683/25) antes de se afirmar conformidade.
 | Tipos FR, FA, FG, GF, AC, AR, TV, RG, RE, AF, RP, RA, CS, LD | — | — | — | — | — | ⛔ |
 | QR Code | `QrCodeAgt` | — | — | — | QrCodeAgtTest | ✅ |
 
-## Requisitos do Regime Jurídico das Facturas ainda por mapear
+## Motivos de isenção de IVA — Anexo 6.4\n\nA tabela de códigos e menções foi atualizada a partir do portal oficial de Facturação Electrónica da AGT: https://portaldoparceiro.minfin.gov.ao/doc-agt/doc-agt/2/anexos.html. M02 e M04 são tratados como não sujeição (NS); os códigos de isenção são tratados como IVA/ISE. M00 consta do anexo como enquadramento do Regime Simplificado, mas não é oferecido como motivo individual de linha a 0%. M94 foi removido por não constar da tabela oficial consultada. A flag `FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS` permanece falsa por omissão: a transcrição da tabela não substitui os testes de homologação da classificação `taxType`/`taxCode` na AGT.\n\nOs formulários de faturas, notas de crédito, orçamentos/proformas e as respetivas vistas de consulta apresentam ou preservam o código e a menção. O SAF-T e o payload AGT usam a mesma classificação central e recusam códigos que não sejam aplicáveis a uma linha.\n\n## Requisitos do Regime Jurídico das Facturas ainda por mapear
 
 A auditoria apontou como não demonstrados (não como infrações): data da operação quando
 diferente da emissão; local de disponibilização dos bens ou da prestação dos serviços;
