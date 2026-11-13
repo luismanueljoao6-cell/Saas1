@@ -2,7 +2,6 @@
 
 namespace Modules\Faturacao\Support;
 
-use Illuminate\Support\Collection;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\NotaCreditoDebito;
