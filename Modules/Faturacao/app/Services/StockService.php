@@ -67,8 +67,39 @@ class StockService
             throw new InvalidArgumentException('A quantidade deve ser superior a zero.');
         }
 
+        $motivo = trim($motivo);
+        if ($motivo === '' || mb_strlen($motivo) > 255) {
+            throw new InvalidArgumentException('Indica um motivo com até 255 caracteres.');
+        }
+
+        if ($chaveIdempotencia !== null && (trim($chaveIdempotencia) === '' || mb_strlen($chaveIdempotencia) > 100)) {
+            throw new InvalidArgumentException('A chave de idempotência deve ter entre 1 e 100 caracteres.');
+        }
+
         return DB::transaction(function () use ($empresa, $produto, $tipo, $unidades, $motivo, $utilizadorId, $chaveIdempotencia) {
             $saldo = $this->saldoBloqueado($empresa, $produto);
+
+            // Verificar a chave depois do lock do saldo e antes de calcular a nova saída.
+            // Assim, repetir uma operação já concluída não falha por falta de stock atual.
+            if ($chaveIdempotencia !== null) {
+                $existente = StockMovimento::withoutGlobalScopes()
+                    ->where('empresa_id', $empresa->id)
+                    ->where('chave_idempotencia', $chaveIdempotencia)
+                    ->first();
+
+                if ($existente) {
+                    $deltaEsperado = $tipo === 'entrada' ? $unidades : -$unidades;
+                    if ((int) $existente->produto_id !== (int) $produto->id
+                        || $existente->tipo !== $tipo
+                        || (string) $existente->quantidade !== $this->formatar($deltaEsperado)
+                        || $existente->motivo !== $motivo) {
+                        throw new DomainException('A chave de idempotência já foi utilizada noutro movimento.');
+                    }
+
+                    return $existente;
+                }
+            }
+
             $anterior = $this->emMilhares((string) $saldo->quantidade);
             $posterior = $tipo === 'entrada' ? $anterior + $unidades : $anterior - $unidades;
 

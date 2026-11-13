@@ -81,6 +81,21 @@ class StockServiceTest extends TestCase
         $this->assertSame('4.000', StockSaldo::withoutGlobalScopes()->where('produto_id', $produto->id)->value('quantidade'));
     }
 
+    public function test_repetir_saida_com_a_mesma_chave_nao_recalcula_saldo_atual(): void
+    {
+        [$empresa, $produto] = $this->criarProduto('630000307');
+        $service = app(StockService::class);
+        $service->entrada($empresa, $produto, '5.000', 'Stock inicial');
+
+        $primeiro = $service->saida($empresa, $produto, '4.000', 'Venda externa', null, 'saida-retry-001');
+        $service->entrada($empresa, $produto, '4.000', 'Reposição posterior');
+        $repetido = $service->saida($empresa, $produto, '4.000', 'Venda externa', null, 'saida-retry-001');
+
+        $this->assertSame($primeiro->id, $repetido->id);
+        $this->assertSame('5.000', StockSaldo::withoutGlobalScopes()->where('produto_id', $produto->id)->value('quantidade'));
+        $this->assertSame(3, StockMovimento::withoutGlobalScopes()->where('produto_id', $produto->id)->count());
+    }
+
     public function test_repetir_ajuste_com_a_mesma_chave_e_seguro_e_nao_duplica_movimento(): void
     {
         [$empresa, $produto] = $this->criarProduto('630000305');
