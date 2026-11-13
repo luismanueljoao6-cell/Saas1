@@ -8,7 +8,7 @@ use InvalidArgumentException;
 use Modules\Armazem\Models\Armazem;
 use Modules\Armazem\Models\ArmazemStockMovimento;
 use Modules\Armazem\Models\ArmazemStockSaldo;
-use Modules\Core\Models\Empresa;
+use Modules\Core\Models\Empresa;\nuse Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Produto;
 
