@@ -28,6 +28,8 @@ class ArmazemTransferenciaLinha extends Model
         return [
             'quantidade' => 'decimal:3',
             'quantidade_recebida' => 'decimal:3',
+            'quantidade_em_falta' => 'decimal:3',
+            'quantidade_danificada' => 'decimal:3',
         ];
     }
 
