@@ -71,7 +71,7 @@ class StockService
             'updated_at' => $agora,
         ]);
 
-        return StockSaldo::withoutGlobalScopes()
+        return StockSaldo::query()
             ->where('empresa_id', $empresa->id)
             ->where('produto_id', $produto->id)
             ->lockForUpdate()
@@ -86,16 +86,13 @@ class StockService
         }
 
         if ($chaveIdempotencia !== null) {
-            $existente = StockMovimento::withoutGlobalScopes()
+            $existente = StockMovimento::query()
                 ->where('empresa_id', $empresa->id)
                 ->where('chave_idempotencia', $chaveIdempotencia)
                 ->first();
 
             if ($existente) {
-                if ((int) $existente->produto_id !== (int) $produto->id
-                    || $existente->tipo !== $tipo
-                    || (string) $existente->quantidade !== $this->formatar($delta)
-                    || $existente->motivo !== $motivo) {
+                if ((int) $existente->produto_id !== (int) $produto->id || $existente->tipo !== $tipo) {
                     throw new DomainException('A chave de idempotência já foi utilizada noutro movimento.');
                 }
 
@@ -103,7 +100,7 @@ class StockService
             }
         }
 
-        $saldo = StockSaldo::withoutGlobalScopes()
+        $saldo = StockSaldo::query()
             ->where('empresa_id', $empresa->id)
             ->where('produto_id', $produto->id)
             ->lockForUpdate()

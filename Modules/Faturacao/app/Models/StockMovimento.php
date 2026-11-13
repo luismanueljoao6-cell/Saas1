@@ -4,7 +4,6 @@ namespace Modules\Faturacao\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Modules\Core\Models\User;
 use Modules\Core\Traits\BelongsToTenant;
 
 class StockMovimento extends Model
@@ -34,6 +33,6 @@ class StockMovimento extends Model
 
     public function utilizador(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'utilizador_id');
+        return $this->belongsTo(\App\Models\User::class, 'utilizador_id');
     }
 }
