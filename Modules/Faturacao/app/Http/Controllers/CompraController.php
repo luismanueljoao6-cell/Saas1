@@ -78,6 +78,20 @@ class CompraController extends Controller
             );
         }
 
+        $dados['linhas'] = collect($dados['linhas'])
+            ->filter(fn (array $linha): bool => ($linha['selecionado'] ?? null) === '1')
+            ->map(function (array $linha): array {
+                unset($linha['selecionado']);
+
+                return $linha;
+            })
+            ->values()
+            ->all();
+
+        if ($dados['linhas'] === []) {
+            return back()->withInput()->withErrors(['linhas' => 'Seleciona pelo menos um artigo para a compra.']);
+        }
+
         $compra = $compras->criarRascunho($empresa, $dados, (int) $request->user()->id);
 
         return to_route('faturacao.compras.mostrar', $compra)->with('sucesso', 'Compra registada como rascunho.');
