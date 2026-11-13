@@ -1,14 +1,14 @@
 <?php
 
-namespace Modules\\Core\\Http\\Controllers;
+namespace Modules\Core\Http\Controllers;
 
-use Illuminate\\Routing\\Controller;
-use Illuminate\\View\\View;
-use Modules\\Atelier\\Models\\Pedido;
-use Modules\\Core\\Models\\Empresa;
-use Modules\\Faturacao\\Models\\Fatura;
-use Modules\\EstudioMusica\\Models\\SessaoEstudio;
-use Modules\\Subscricoes\\Models\\Subscricao;
+use Illuminate\Routing\Controller;
+use Illuminate\View\View;
+use Modules\Atelier\Models\Pedido;
+use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Models\Fatura;
+use Modules\EstudioMusica\Models\SessaoEstudio;
+use Modules\Subscricoes\Models\Subscricao;
 
 class PainelController extends Controller
 {
