@@ -238,6 +238,13 @@ class ArmazemStockService
         ?int $utilizadorId,
         ?string $chaveIdempotencia
     ): ArmazemStockMovimento {
+        if ($utilizadorId !== null && ! User::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->whereKey($utilizadorId)
+            ->exists()) {
+            throw new DomainException('O utilizador do movimento não pertence à empresa.');
+        }
+
         $movimento = ArmazemStockMovimento::create([
             'empresa_id' => $empresa->id,
             'armazem_id' => $armazem->id,
