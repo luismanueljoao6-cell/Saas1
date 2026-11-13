@@ -221,6 +221,7 @@ class OrcamentoFluxoTest extends TestCase
         $this->assertSame((int) $empresa->id, (int) $copia->empresa_id);
         $this->assertSame((int) $cliente->id, (int) $copia->cliente_id);
         $this->assertSame('rascunho', $copia->estado);
+        $this->assertSame('aceite', $origem->fresh()->estado, 'A duplicação não deve alterar o documento original.');
         $this->assertNull($copia->fatura_id);
         $this->assertNull($copia->data_validade);
         $this->assertSame('342.00', $copia->valor_total);
