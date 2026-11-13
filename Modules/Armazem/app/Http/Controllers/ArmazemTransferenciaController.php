@@ -33,7 +33,7 @@ class ArmazemTransferenciaController extends Controller
             ->get(['id', 'nome']);
 
         $transferencias = ArmazemTransferencia::query()
-            ->with(['origem:id,nome,codigo', 'destino:id,nome,codigo', 'criador:id,name', 'expedidor:id,name', 'recebedor:id,name', 'linhas.produto', 'rececoes'])
+            ->with(['origem:id,nome,codigo', 'destino:id,nome,codigo', 'criador:id,name', 'expedidor:id,name', 'recebedor:id,name', 'linhas.produto', 'rececoes.utilizador', 'rececoes.linhas.linhaTransferencia.produto'])
             ->latest()
             ->paginate(15)
             ->withQueryString();
