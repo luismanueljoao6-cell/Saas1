@@ -64,6 +64,12 @@ class ArmazemService
                     if ($primeiroAtivo) {
                         $primeiroAtivo->forceFill(['principal' => true])->save();
                     } else {
+                        // Um principal antigo pode estar inativo. Ao criar
+                        // o primeiro armazém ativo, remove a marca antiga.
+                        Armazem::withoutGlobalScopes()
+                            ->where('empresa_id', $empresa->id)
+                            ->update(['principal' => false]);
+
                         $principal = true;
                     }
                 }
