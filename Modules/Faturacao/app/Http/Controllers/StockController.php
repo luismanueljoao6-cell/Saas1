@@ -14,8 +14,23 @@ use Modules\Faturacao\Services\StockService;
 
 class StockController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
+        $dados = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+
+        $movimentos = StockMovimento::query()
+            ->with('produto')
+            ->when($dados['q'] ?? null, function ($query, string $termo): void {
+                $termo = trim($termo);
+                $query->where(function ($subquery) use ($termo): void {
+                    $subquery->where('motivo', 'like', "%{$termo}%")
+                        ->orWhereHas('produto', fn ($produto) => $produto->where('nome', 'like', "%{$termo}%"));
+                });
+            })
+            ->latest('id')
+            ->paginate(25)
+            ->withQueryString();
+
         return view('faturacao::stock.index', [
             'chaveIdempotencia' => (string) Str::uuid(),
             'produtos' => Produto::query()
@@ -23,10 +38,7 @@ class StockController extends Controller
                 ->where('controla_stock', true)
                 ->orderBy('nome')
                 ->get(),
-            'movimentos' => StockMovimento::query()
-                ->with('produto')
-                ->latest('id')
-                ->paginate(25),
+            'movimentos' => $movimentos,
         ]);
     }
 
