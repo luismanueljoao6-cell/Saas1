@@ -24,11 +24,30 @@ class ReciboController extends Controller
 {
     public function __construct(protected ReciboService $recibos) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        return view('faturacao::recibos.index', [
-            'recibos' => Recibo::with('cliente', 'fatura', 'agtSubmissao')->latest('id')->paginate(20),
+        $dados = $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
+            'estado' => ['nullable', 'string', 'max:30'],
         ]);
+
+        $recibos = Recibo::query()
+            ->with('cliente', 'fatura', 'agtSubmissao')
+            ->when($dados['q'] ?? null, function ($query, string $termo): void {
+                $termo = trim($termo);
+                $query->where(function ($subquery) use ($termo): void {
+                    $subquery->where('numero_documento', 'like', "%{$termo}%")
+                        ->orWhere('meio_pagamento', 'like', "%{$termo}%")
+                        ->orWhereHas('cliente', fn ($cliente) => $cliente->where('nome', 'like', "%{$termo}%"))
+                        ->orWhereHas('fatura', fn ($fatura) => $fatura->where('numero_documento', 'like', "%{$termo}%"));
+                });
+            })
+            ->when($dados['estado'] ?? null, fn ($query, string $estado) => $query->where('estado', $estado))
+            ->latest('id')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('faturacao::recibos.index', compact('recibos'));
     }
 
     public function criar(Request $request): View|RedirectResponse
