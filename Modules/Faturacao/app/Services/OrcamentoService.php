@@ -90,7 +90,7 @@ class OrcamentoService
      */
     public function duplicar(Orcamento $origem, Empresa $empresa, ?Cliente $cliente = null, ?string $validade = null): Orcamento
     {
-        if ($validade !== null && \Illuminate\Support\Carbon::parse($validade)->startOfDay()->isBefore(today())) {
+        if ($validade !== null && Carbon::parse($validade)->startOfDay()->isBefore(today())) {
             throw new \DomainException('A data de validade não pode estar no passado.');
         }
 
