@@ -80,6 +80,7 @@ class StockServiceTest extends TestCase
         $this->assertSame(1, StockMovimento::withoutGlobalScopes()->where('produto_id', $produto->id)->count());
         $this->assertSame('4.000', StockSaldo::withoutGlobalScopes()->where('produto_id', $produto->id)->value('quantidade'));
     }
+
     public function test_repetir_ajuste_com_a_mesma_chave_e_seguro_e_nao_duplica_movimento(): void
     {
         [$empresa, $produto] = $this->criarProduto('630000305');
