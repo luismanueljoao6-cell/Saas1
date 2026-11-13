@@ -61,7 +61,7 @@
                             <select name="linhas[{{ $indice }}][motivo_isencao]" class="mt-1 w-full rounded-lg border-slate-300 dark:bg-zinc-800" @if($taxaLinha <= 0) required @endif>
                                 <option value="">Selecionar motivo</option>
                                 @foreach($motivosIsencao as $codigo => $descricao)
-                                    <option value="{{ $codigo }}" @selected(strtoupper($linha['motivo_isencao'] ?? '') === strtoupper((string) $codigo))>{{ $codigo }} — {{ $descricao['descricao'] ?? $codigo }}</option>
+                                    <option value="{{ $codigo }}" @selected(strtoupper($linha['motivo_isencao'] ?? '') === strtoupper((string) $codigo))>{{ $codigo }} — {{ $descricao['mencao'] ?? $codigo }}</option>
                                 @endforeach
                             </select>
                         </label>
@@ -163,7 +163,7 @@
         bloco.appendChild(campoOperacao);
 
         const motivos = {'': 'Selecionar motivo'};
-        Object.entries(motivosIsencao).forEach(([codigo, motivo]) => { motivos[codigo] = codigo + ' — ' + (motivo.descricao || codigo); });
+        Object.entries(motivosIsencao).forEach(([codigo, motivo]) => { motivos[codigo] = codigo + ' — ' + (motivo.mencao || codigo); });
         const campoMotivo = criarSelect('linhas[' + indice + '][motivo_isencao]', motivos, 'Motivo de isenção (obrigatório para IVA 0%)', 'campo-motivo-select');
         campoMotivo.classList.add('campo-motivo');
         campoMotivo.hidden = true;
