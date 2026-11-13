@@ -9,10 +9,12 @@
 @section('conteudo')
     <div class="mb-6 flex items-center justify-between">
         <h1 class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Pedidos de Costura</h1>
-        <a href="{{ route('atelier.pedidos.criar') }}"
-           class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500">
-            + Novo pedido
-        </a>
+        @if ($podeGerir)
+            <a href="{{ route('atelier.pedidos.criar') }}"
+               class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+                + Novo pedido
+            </a>
+        @endif
     </div>
 
     <form method="GET" action="{{ route('atelier.pedidos.index') }}" role="search" class="mb-4 flex flex-col gap-2 sm:flex-row">
