@@ -3,7 +3,7 @@
 @section('titulo', 'Notas de crédito e débito')
 
 @section('conteudo')
-    <div class="w-full max-w-3xl">
+    <div class="w-full max-w-7xl">
         <div class="flex items-center justify-between">
             <h1 class="text-xl font-semibold text-slate-900">Notas de crédito e débito</h1>
             <a href="{{ route('faturacao.notas.criar', ['tipo' => 'debito']) }}"
