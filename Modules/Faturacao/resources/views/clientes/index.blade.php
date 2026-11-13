@@ -3,7 +3,7 @@
 @section('titulo', 'Clientes')
 
 @section('conteudo')
-    <div class="w-full max-w-2xl">
+    <div class="w-full max-w-7xl">
         <h1 class="text-xl font-semibold text-slate-900">Clientes</h1>
 
         @if (session('sucesso'))
