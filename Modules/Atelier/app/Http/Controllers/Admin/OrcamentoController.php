@@ -27,9 +27,20 @@ class OrcamentoController extends Controller
     {
         abort_unless($request->user()?->hasAnyRole(['Administrador', 'Secretária']), 403);
 
-        return view('atelier::orcamentos.index', [
-            'orcamentos' => PedidoOrcamento::latest('id')->paginate(20),
-        ]);
+        $dados = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $orcamentos = PedidoOrcamento::query()
+            ->when($dados['q'] ?? null, fn ($query, string $termo) => $query->where(function ($filtro) use ($termo): void {
+                $termo = trim($termo);
+                $filtro->where('nome', 'like', "%{$termo}%")
+                    ->orWhere('contacto', 'like', "%{$termo}%")
+                    ->orWhere('categoria_interesse', 'like', "%{$termo}%")
+                    ->orWhere('mensagem', 'like', "%{$termo}%");
+            }))
+            ->latest('id')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('atelier::orcamentos.index', compact('orcamentos'));
     }
 
     public function atualizarEstado(Request $request, int $pedidoOrcamento): RedirectResponse

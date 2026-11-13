@@ -7,32 +7,32 @@
 @section('titulo', 'Equipa do Atelier')
 
 @section('conteudo')
-    <h1 class="mb-1 text-lg font-semibold text-slate-900">Equipa do Atelier</h1>
-    <p class="mb-6 text-sm text-slate-500">
+    <h1 class="mb-1 text-lg font-semibold text-slate-900 dark:text-zinc-100">Equipa do Atelier</h1>
+    <p class="mb-6 text-sm text-slate-500 dark:text-zinc-400">
         Atribui os papéis de Secretária/Costureira a utilizadores já existentes da tua empresa.
         Para criar um novo utilizador, contacta o suporte — a gestão de convites de equipa ainda não está disponível no Core.
     </p>
 
-    <div class="overflow-hidden rounded-md border border-slate-200 bg-white">
+    <div class="overflow-x-auto rounded-md border border-slate-200 bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <table class="w-full text-left text-sm">
-            <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+            <thead class="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-zinc-950 dark:text-zinc-400">
                 <tr>
                     <th class="px-4 py-3">Utilizador</th>
                     <th class="px-4 py-3">Papéis atuais</th>
                     <th class="px-4 py-3">Atribuir</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-zinc-800">
                 @foreach ($utilizadores as $utilizador)
                     <tr>
                         <td class="px-4 py-3">
-                            <div class="font-medium text-slate-800">{{ $utilizador->name }}</div>
-                            <div class="text-xs text-slate-500">{{ $utilizador->email }}</div>
+                            <div class="font-medium text-slate-800 dark:text-zinc-100">{{ $utilizador->name }}</div>
+                            <div class="text-xs text-slate-500 dark:text-zinc-400">{{ $utilizador->email }}</div>
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex flex-wrap gap-1">
                                 @forelse ($utilizador->roles as $papel)
-                                    <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700 dark:text-zinc-200">
                                         {{ $papel->name }}
                                         @if (in_array($papel->name, [$papelSecretaria, $papelCostureira]))
                                             <form method="POST" action="{{ route('atelier.equipa.remover') }}" class="inline">
@@ -52,7 +52,7 @@
                             <form method="POST" action="{{ route('atelier.equipa.atribuir') }}" class="flex gap-2">
                                 @csrf
                                 <input type="hidden" name="utilizador_id" value="{{ $utilizador->id }}">
-                                <select name="papel" class="rounded-md border-slate-300 text-xs">
+                                <select name="papel" class="rounded-md border-slate-300 text-xs dark:border-zinc-700">
                                     <option value="{{ $papelSecretaria }}">{{ $papelSecretaria }}</option>
                                     <option value="{{ $papelCostureira }}">{{ $papelCostureira }}</option>
                                 </select>

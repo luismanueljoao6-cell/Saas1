@@ -29,11 +29,25 @@ class ProjetoMusicalController extends Controller
 {
     public function __construct(protected FaturacaoEstudioService $faturacaoEstudio) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        return view('estudiomusica::projetos.index', [
-            'projetos' => ProjetoMusical::with('cliente')->latest()->paginate(20),
-        ]);
+        $dados = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $projetos = ProjetoMusical::query()
+            ->with('cliente')
+            ->when($dados['q'] ?? null, function ($query, string $termo): void {
+                $termo = trim($termo);
+                $query->where(function ($filtro) use ($termo): void {
+                    $filtro->where('nome', 'like', "%{$termo}%")
+                        ->orWhereHas('cliente', fn ($cliente) => $cliente
+                            ->where('nome', 'like', "%{$termo}%")
+                            ->orWhere('nome_artistico', 'like', "%{$termo}%"));
+                });
+            })
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('estudiomusica::projetos.index', compact('projetos'));
     }
 
     public function create(Request $request): View

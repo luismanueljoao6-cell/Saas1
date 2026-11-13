@@ -32,9 +32,18 @@ class CampanhaController extends Controller
     {
         $this->autorizar($request);
 
-        return view('atelier::campanhas.index', [
-            'campanhas' => Campanha::latest('id')->paginate(20),
-        ]);
+        $dados = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $campanhas = Campanha::query()
+            ->when($dados['q'] ?? null, fn ($query, string $termo) => $query->where(function ($filtro) use ($termo): void {
+                $filtro->where('nome', 'like', '%'.trim($termo).'%')
+                    ->orWhere('canal', 'like', '%'.trim($termo).'%')
+                    ->orWhere('estado', 'like', '%'.trim($termo).'%');
+            }))
+            ->latest('id')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('atelier::campanhas.index', compact('campanhas'));
     }
 
     public function criar(Request $request): View

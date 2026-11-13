@@ -46,31 +46,32 @@ class Navegacao
             [
                 'id' => 'faturacao', 'rotulo' => 'Faturação e SAF-T', 'servico' => 'faturacao',
                 'itens' => [
+                    ['rota' => 'faturacao.painel', 'rotulo' => 'Visão geral da faturação', 'icone' => 'painel', 'ativo' => 'faturacao.painel'],
                     ['rota' => 'faturacao.faturas.index', 'rotulo' => 'Faturas', 'icone' => 'fatura', 'ativo' => 'faturacao.faturas.*'],
+                    ['rota' => 'faturacao.orcamentos.index', 'rotulo' => 'Orçamentos e proformas', 'icone' => 'orcamento', 'ativo' => 'faturacao.orcamentos.*'],
                     ['rota' => 'faturacao.notas.index', 'rotulo' => 'Notas de crédito e débito', 'icone' => 'fatura', 'ativo' => 'faturacao.notas.*'],
                     ['rota' => 'faturacao.recibos.index', 'rotulo' => 'Recibos', 'icone' => 'recibo', 'ativo' => 'faturacao.recibos.*'],
                     ['rota' => 'faturacao.clientes.index', 'rotulo' => 'Clientes', 'icone' => 'cliente', 'ativo' => 'faturacao.clientes.*'],
-                    ['rota' => 'faturacao.produtos.index', 'rotulo' => 'Produtos', 'icone' => 'pacote', 'ativo' => 'faturacao.produtos.*'],
+                    ['rota' => 'faturacao.produtos.index', 'rotulo' => 'Produtos e serviços', 'icone' => 'pacote', 'ativo' => 'faturacao.produtos.*'],
+                    ['rota' => 'faturacao.stock.index', 'rotulo' => 'Movimentos de stock', 'icone' => 'pacote', 'ativo' => 'faturacao.stock.*', 'admin' => true],
                     ['rota' => 'faturacao.saft.criar', 'rotulo' => 'Exportação SAF-T', 'icone' => 'exportar', 'ativo' => 'faturacao.saft.*', 'admin' => true],
                 ],
             ],
             [
                 'id' => 'subscricoes', 'rotulo' => 'Subscrições e planos', 'servico' => null,
                 'itens' => [
-                    ['rota' => 'subscricoes.faturacao', 'rotulo' => 'Faturação do SaaS', 'icone' => 'recibo', 'ativo' => 'subscricoes.faturacao'],
                     ['rota' => 'subscricoes.planos', 'rotulo' => 'Plano atual', 'icone' => 'plano', 'ativo' => ['subscricoes.planos', 'subscricoes.iniciar', 'subscricoes.renovacao']],
-                    ['rota' => 'subscricoes.pagamentos', 'rotulo' => 'Pagamentos ProxyPay', 'icone' => 'cartao', 'ativo' => ['subscricoes.pagamentos', 'subscricoes.pendente']],
                 ],
             ],
             [
                 'id' => 'atelier', 'rotulo' => 'Atelier', 'servico' => 'atelier',
                 'itens' => [
                     ['rota' => 'atelier.pedidos.index', 'rotulo' => 'Pedidos', 'icone' => 'pedidos', 'ativo' => 'atelier.pedidos.*'],
-                    ['rota' => 'atelier.provas.index', 'rotulo' => 'Provas', 'icone' => 'prova', 'ativo' => 'atelier.provas.*'],
-                    // A rota existente (atelier.medidas.historico) exige {cliente}; esta é a listagem geral por criar.
-                    ['rota' => 'atelier.medidas.index', 'rotulo' => 'Medidas dos clientes', 'icone' => 'medidas', 'ativo' => 'atelier.medidas.*'],
-                    ['rota' => 'atelier.orcamentos.index', 'rotulo' => 'Orçamentos', 'icone' => 'orcamento', 'ativo' => 'atelier.orcamentos.*'],
-                    ['rota' => 'atelier.portfolio.index', 'rotulo' => 'Portfólio', 'icone' => 'imagem', 'ativo' => 'atelier.portfolio.*'],
+                    ['rota' => 'atelier.orcamentos.index', 'rotulo' => 'Orçamentos recebidos', 'icone' => 'orcamento', 'ativo' => 'atelier.orcamentos.*', 'papeis' => ['Administrador', 'Secretária']],
+                    ['rota' => 'atelier.campanhas.index', 'rotulo' => 'Campanhas', 'icone' => 'campanha', 'ativo' => 'atelier.campanhas.*', 'admin' => true],
+                    ['rota' => 'atelier.equipa.index', 'rotulo' => 'Equipa', 'icone' => 'utilizadores', 'ativo' => 'atelier.equipa.*', 'admin' => true],
+                    ['rota' => 'atelier.perfil.editar', 'rotulo' => 'Perfil do atelier', 'icone' => 'empresa', 'ativo' => 'atelier.perfil.*', 'admin' => true],
+                    ['rota' => 'atelier.portfolio.index', 'rotulo' => 'Portfólio', 'icone' => 'imagem', 'ativo' => 'atelier.portfolio.*', 'admin' => true],
                 ],
             ],
             [
@@ -79,7 +80,10 @@ class Navegacao
                     ['rota' => 'estudiomusica.projetos.index', 'rotulo' => 'Projetos musicais', 'icone' => 'musica', 'ativo' => 'estudiomusica.projetos.*'],
                     ['rota' => 'estudiomusica.salas.index', 'rotulo' => 'Salas de gravação', 'icone' => 'microfone', 'ativo' => 'estudiomusica.salas.*'],
                     ['rota' => 'estudiomusica.sessoes.index', 'rotulo' => 'Agendamento de sessões', 'icone' => 'calendario', 'ativo' => 'estudiomusica.sessoes.*'],
-                    ['rota' => 'estudiomusica.versoes.index', 'rotulo' => 'Versões de áudio', 'icone' => 'audio', 'ativo' => 'estudiomusica.versoes.*'],
+                    ['rota' => 'estudiomusica.solicitacoes.index', 'rotulo' => 'Pedidos de orçamento', 'icone' => 'orcamento', 'ativo' => 'estudiomusica.solicitacoes.*', 'permissao' => 'estudiomusica.gerir-sessoes'],
+                    ['rota' => 'estudiomusica.reclamacoes.index', 'rotulo' => 'Reclamações', 'icone' => 'aviso', 'ativo' => 'estudiomusica.reclamacoes.*'],
+                    ['rota' => 'estudiomusica.equipa.index', 'rotulo' => 'Equipa do estúdio', 'icone' => 'utilizadores', 'ativo' => 'estudiomusica.equipa.*', 'admin' => true],
+                    ['rota' => 'estudiomusica.termos.index', 'rotulo' => 'Termos e privacidade', 'icone' => 'documento', 'ativo' => 'estudiomusica.termos.*', 'admin' => true],
                 ],
             ],
         ];
@@ -96,6 +100,14 @@ class Navegacao
                 $disponivel = Route::has($item['rota']) && ! in_array(null, $params, true);
 
                 if (($item['admin'] ?? false) && ! $administrador) {
+                    continue;
+                }
+
+                if (! empty($item['permissao']) && ! $utilizador?->can($item['permissao'])) {
+                    continue;
+                }
+
+                if (! empty($item['papeis']) && ! $utilizador?->hasAnyRole($item['papeis'])) {
                     continue;
                 }
 
