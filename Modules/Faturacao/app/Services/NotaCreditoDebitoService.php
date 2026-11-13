@@ -141,6 +141,9 @@ class NotaCreditoDebitoService
             $empresaId,
             verificarTaxas: $tipo === 'debito' && ! $debitoSemIva,
             exigirMotivoIsencao: $tipo === 'credito' || ($tipo === 'debito' && ! $debitoSemIva),
+            // Uma NC herda o fundamento histórico da fatura; não pode ser bloqueada
+            // porque a empresa desativou entretanto esse motivo nos novos documentos.
+            verificarMotivoAtivo: $tipo !== 'credito',
         );
 
         if ($debitoSemIva) {
