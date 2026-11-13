@@ -346,7 +346,6 @@ class CompraFornecedorTest extends TestCase
         ]);
     }
 
-
     public function test_nao_permite_receber_compra_de_outra_empresa(): void
     {
         $outraEmpresa = Empresa::create([
@@ -410,5 +409,4 @@ class CompraFornecedorTest extends TestCase
             'produto_id' => $produto->id,
         ]);
     }
-
 }
