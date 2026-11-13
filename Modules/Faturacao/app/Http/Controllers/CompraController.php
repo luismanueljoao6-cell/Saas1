@@ -20,6 +20,7 @@ class CompraController extends Controller
         $dados = $request->validate([
             'q' => ['nullable', 'string', 'max:100'],
             'estado' => ['nullable', 'in:rascunho,recebida,cancelada'],
+            'pagamento' => ['nullable', 'in:pendente,parcial,pago'],
         ]);
 
         $compras = Compra::query()
@@ -32,6 +33,7 @@ class CompraController extends Controller
                 });
             })
             ->when($dados['estado'] ?? null, fn ($query, string $estado) => $query->where('estado', $estado))
+            ->when($dados['pagamento'] ?? null, fn ($query, string $estado) => $query->where('estado_pagamento', $estado))
             ->latest('id')
             ->paginate(20)
             ->withQueryString();
