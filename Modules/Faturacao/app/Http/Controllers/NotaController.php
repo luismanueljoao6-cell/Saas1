@@ -75,6 +75,10 @@ class NotaController extends Controller
             'clientes' => $fatura ? collect() : Cliente::orderBy('nome')->get(['id', 'nome', 'nif']),
             'linhasIniciais' => $linhasAntigas !== [] ? $linhasAntigas : $linhasDaFatura,
             'taxaNaInterface' => $tipo === 'credito' || (bool) config('faturacao.nota_debito_liquida_iva', false),
+            'motivosIsencao' => collect((array) config('faturacao.motivos_isencao', []))
+                ->filter(fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true))
+                ->map(fn (array $motivo, string $codigo) => "{$codigo} — {$motivo['mencao']}")
+                ->all(),
         ]);
     }
 
