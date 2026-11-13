@@ -169,6 +169,47 @@ class ArmazemService
         }, attempts: 3);
     }
 
+    public function alternarEstado(Empresa $empresa, Armazem $armazem): Armazem
+    {
+        return DB::transaction(function () use ($empresa, $armazem): Armazem {
+            $this->validarTenant($empresa);
+            Empresa::query()->whereKey($empresa->id)->lockForUpdate()->firstOrFail();
+
+            $alvo = Armazem::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->whereKey($armazem->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($alvo->ativo && $alvo->principal) {
+                throw new DomainException('Define outro armazém como principal antes de inativar este.');
+            }
+
+            if ($alvo->ativo) {
+                $temTransferenciaEmTransito = DB::table('armazem_transferencias')
+                    ->where('empresa_id', $empresa->id)
+                    ->where('estado', 'em_transito')
+                    ->where(function ($query) use ($alvo): void {
+                        $query->where('armazem_origem_id', $alvo->id)
+                            ->orWhere('armazem_destino_id', $alvo->id);
+                    })
+                    ->exists();
+
+                if ($temTransferenciaEmTransito) {
+                    throw new DomainException('Não é possível inativar este armazém enquanto existir uma transferência em trânsito associada.');
+                }
+
+                $alvo->forceFill(['ativo' => false])->save();
+
+                return $alvo;
+            }
+
+            $alvo->forceFill(['ativo' => true])->save();
+
+            return $alvo;
+        }, attempts: 3);
+    }
+
     private function validarTenant(Empresa $empresa): void
     {
         $tenant = app(TenantManager::class);
