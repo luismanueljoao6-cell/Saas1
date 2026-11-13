@@ -230,7 +230,7 @@ class OrcamentoFluxoTest extends TestCase
     public function test_duplicacao_nao_permite_cliente_de_outra_empresa(): void
     {
         [$empresaA, $clienteA] = $this->criarContexto('630000212');
-        [$empresaB, $clienteB] = $this->criarContexto('630000213');
+        app(TenantManager::class)->set((int) $empresaA->id);
         $origem = app(OrcamentoService::class)->criar($empresaA, $clienteA, [[
             'descricao' => 'Serviço',
             'quantidade' => '1',
@@ -239,7 +239,10 @@ class OrcamentoFluxoTest extends TestCase
             'operation_type' => 'SG',
         ]], null, null);
 
-        $this->expectException(\DomainException::class);
+        [$empresaB, $clienteB] = $this->criarContexto('630000213');
+        app(TenantManager::class)->set((int) $empresaB->id);
+
+        $this->expectException(\\DomainException::class);
         app(OrcamentoService::class)->duplicar($origem, $empresaA, $clienteB);
     }
 
