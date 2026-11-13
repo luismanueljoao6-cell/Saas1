@@ -20,7 +20,7 @@ class CompraController extends Controller
         $dados = $request->validate([
             'q' => ['nullable', 'string', 'max:100'],
             'estado' => ['nullable', 'in:rascunho,recebida,cancelada'],
-            'pagamento' => ['nullable', 'in:pendente,parcial,pago'],
+            'pagamento' => ['nullable', 'in:pendente,parcial,pago'],\n            'vencimento' => ['nullable', 'in:vencidas,em_dia'],
         ]);
 
         $compras = Compra::query()
@@ -33,12 +33,19 @@ class CompraController extends Controller
                 });
             })
             ->when($dados['estado'] ?? null, fn ($query, string $estado) => $query->where('estado', $estado))
-            ->when($dados['pagamento'] ?? null, fn ($query, string $estado) => $query->where('estado_pagamento', $estado))
+            ->when($dados['pagamento'] ?? null, fn ($query, string $estado) => $query->where('estado_pagamento', $estado))\n            ->when(($dados['vencimento'] ?? null) === 'vencidas', fn ($query) => $query->where('estado', 'recebida')->whereColumn('total_pago', '<', 'total')->whereNotNull('data_vencimento')->whereDate('data_vencimento', '<', today()))\n            ->when(($dados['vencimento'] ?? null) === 'em_dia', fn ($query) => $query->where(function ($subquery) { $subquery->whereNull('data_vencimento')->orWhereDate('data_vencimento', '>=', today()); }))
             ->latest('id')
             ->paginate(20)
             ->withQueryString();
 
-        return view('faturacao::compras.index', compact('compras'));
+        $baseFinanceira = Compra::query()->where('estado', 'recebida')->whereColumn('total_pago', '<', 'total');
+        $indicadores = [
+            'saldo_em_divida' => (string) ($baseFinanceira->sum(DB::raw('total - total_pago')) ?? '0.00'),
+            'compras_vencidas' => (clone $baseFinanceira)->whereNotNull('data_vencimento')->whereDate('data_vencimento', '<', today())->count(),
+            'saldo_vencido' => (string) ((clone $baseFinanceira)->whereNotNull('data_vencimento')->whereDate('data_vencimento', '<', today())->sum(DB::raw('total - total_pago')) ?? '0.00'),
+        ];
+
+        return view('faturacao::compras.index', compact('compras', 'indicadores'));
     }
 
     public function criar(): View
