@@ -3,6 +3,7 @@
 namespace Modules\Faturacao\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
@@ -65,6 +66,7 @@ class StockInterfaceTest extends TestCase
                 'tipo' => 'entrada',
                 'quantidade' => '5.000',
                 'motivo' => 'Receção inicial',
+                'chave_idempotencia' => (string) Str::uuid(),
             ])
             ->assertRedirect(route('faturacao.stock.index'))
             ->assertSessionHasNoErrors();
@@ -103,6 +105,7 @@ class StockInterfaceTest extends TestCase
                 'tipo' => 'entrada',
                 'quantidade' => '1.000',
                 'motivo' => 'Tentativa cruzada',
+                'chave_idempotencia' => (string) Str::uuid(),
             ])
             ->assertNotFound();
 
