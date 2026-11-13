@@ -5,6 +5,7 @@ namespace Modules\Faturacao\Http\Controllers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Produto;
@@ -16,6 +17,7 @@ class StockController extends Controller
     public function index(): View
     {
         return view('faturacao::stock.index', [
+            'chaveIdempotencia' => (string) Str::uuid(),
             'produtos' => Produto::query()
                 ->with('stockSaldo')
                 ->where('controla_stock', true)
@@ -41,6 +43,7 @@ class StockController extends Controller
             'tipo' => ['required', 'in:entrada,saida,ajuste'],
             'quantidade' => $regrasQuantidade,
             'motivo' => ['required', 'string', 'min:2', 'max:255'],
+            'chave_idempotencia' => ['required', 'uuid', 'max:100'],
         ]);
 
         $produto = Produto::query()
@@ -53,9 +56,9 @@ class StockController extends Controller
         $utilizadorId = (int) $request->user()->id;
 
         match ($dados['tipo']) {
-            'entrada' => $stock->entrada($empresa, $produto, $quantidade, $motivo, $utilizadorId),
-            'saida' => $stock->saida($empresa, $produto, $quantidade, $motivo, $utilizadorId),
-            'ajuste' => $stock->ajustar($empresa, $produto, $quantidade, $motivo, $utilizadorId),
+            'entrada' => $stock->entrada($empresa, $produto, $quantidade, $motivo, $utilizadorId, $dados['chave_idempotencia']),
+            'saida' => $stock->saida($empresa, $produto, $quantidade, $motivo, $utilizadorId, $dados['chave_idempotencia']),
+            'ajuste' => $stock->ajustar($empresa, $produto, $quantidade, $motivo, $utilizadorId, $dados['chave_idempotencia']),
         };
 
         return to_route('faturacao.stock.index')->with('sucesso', 'Movimento de stock registado.');
