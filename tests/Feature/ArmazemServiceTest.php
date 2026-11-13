@@ -46,6 +46,37 @@ class ArmazemServiceTest extends TestCase
         ]);
     }
 
+    public function test_primeiro_armazem_criado_torna_se_principal_automaticamente(): void
+    {
+        $empresa = $this->criarEmpresa('630100006');
+
+        $armazem = app(ArmazemService::class)->criar($empresa, 'A1', 'Armazém inicial');
+
+        $this->assertTrue($armazem->principal);
+        $this->assertSame(1, Armazem::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->where('principal', true)
+            ->count());
+    }
+
+    public function test_obter_principal_reutiliza_armazem_ativo_existente_sem_principal(): void
+    {
+        $empresa = $this->criarEmpresa('630100007');
+        $existente = Armazem::withoutGlobalScopes()->create([
+            'empresa_id' => $empresa->id,
+            'codigo' => 'LEGADO',
+            'nome' => 'Local legado',
+            'principal' => false,
+            'ativo' => true,
+        ]);
+
+        $principal = app(ArmazemService::class)->obterPrincipal($empresa);
+
+        $this->assertSame($existente->id, $principal->id);
+        $this->assertTrue($principal->principal);
+        $this->assertDatabaseCount('armazens', 1);
+    }
+
     public function test_so_existe_um_armazem_principal_apos_nova_definicao(): void
     {
         $empresa = $this->criarEmpresa('630100002');
