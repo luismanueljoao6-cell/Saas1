@@ -9,6 +9,7 @@ use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Compra;
 use Modules\Faturacao\Models\Fornecedor;
 use Modules\Faturacao\Models\Produto;
+use Modules\Faturacao\Support\Dinheiro;
 
 class CompraService
 {
@@ -21,8 +22,8 @@ class CompraService
                 ->findOrFail($dados['fornecedor_id']);
 
             $linhasCalculadas = [];
-            $subtotal = 0;
-            $totalIva = 0;
+            $subtotalCentimos = 0;
+            $ivaCentimos = 0;
 
             foreach ($dados['linhas'] as $linha) {
                 $produto = Produto::query()
@@ -30,23 +31,23 @@ class CompraService
                     ->where('controla_stock', true)
                     ->findOrFail($linha['produto_id']);
 
-                $quantidade = (float) $linha['quantidade'];
-                $preco = (float) $linha['preco_unitario'];
-                $base = round($quantidade * $preco, 2);
-                $iva = round($base * ((float) ($linha['taxa_iva'] ?? 0) / 100), 2);
+                $quantidade = (string) $linha['quantidade'];
+                $preco = (string) $linha['preco_unitario'];
+                $taxaIva = (string) ($linha['taxa_iva'] ?? '0.00');
+                $valores = Dinheiro::calcularLinha($quantidade, $preco, $taxaIva);
                 $linhasCalculadas[] = [
                     'empresa_id' => $empresa->id,
                     'produto_id' => $produto->id,
                     'descricao' => $produto->nome,
-                    'quantidade' => number_format($quantidade, 3, '.', ''),
-                    'preco_unitario' => number_format($preco, 2, '.', ''),
-                    'taxa_iva' => number_format((float) ($linha['taxa_iva'] ?? 0), 2, '.', ''),
-                    'subtotal' => number_format($base, 2, '.', ''),
-                    'valor_iva' => number_format($iva, 2, '.', ''),
-                    'total' => number_format($base + $iva, 2, '.', ''),
+                    'quantidade' => $quantidade,
+                    'preco_unitario' => Dinheiro::formatar(Dinheiro::centimos($preco)),
+                    'taxa_iva' => Dinheiro::formatar(Dinheiro::centimos($taxaIva)),
+                    'subtotal' => $valores['sem_iva'],
+                    'valor_iva' => $valores['iva'],
+                    'total' => $valores['total'],
                 ];
-                $subtotal += $base;
-                $totalIva += $iva;
+                $subtotalCentimos += Dinheiro::centimos($valores['sem_iva']);
+                $ivaCentimos += Dinheiro::centimos($valores['iva']);
             }
 
             $compra = Compra::create([
@@ -57,9 +58,9 @@ class CompraService
                 'data_vencimento' => $dados['data_vencimento'] ?? null,
                 'referencia_fornecedor' => $dados['referencia_fornecedor'] ?? null,
                 'estado' => 'rascunho',
-                'subtotal' => number_format($subtotal, 2, '.', ''),
-                'total_iva' => number_format($totalIva, 2, '.', ''),
-                'total' => number_format($subtotal + $totalIva, 2, '.', ''),
+                'subtotal' => Dinheiro::formatar($subtotalCentimos),
+                'total_iva' => Dinheiro::formatar($ivaCentimos),
+                'total' => Dinheiro::formatar($subtotalCentimos + $ivaCentimos),
                 'observacoes' => $dados['observacoes'] ?? null,
                 'criado_por' => $utilizadorId,
             ]);
