@@ -127,4 +127,77 @@ class OrcamentoFluxoTest extends TestCase
         $this->expectException(\DomainException::class);
         $service->alterarEstado($orcamento->fresh(), 'enviado');
     }
+
+    public function test_rascunho_pode_ser_editado_e_recalcula_totais(): void
+    {
+        [$empresa, $cliente] = $this->criarContexto('630000207');
+        $service = app(OrcamentoService::class);
+        $orcamento = $service->criar($empresa, $cliente, [[
+            'descricao' => 'Serviço inicial',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+
+        $atualizado = $service->atualizarRascunho($orcamento, $cliente, [[
+            'descricao' => 'Serviço atualizado',
+            'quantidade' => '2',
+            'preco_unitario' => '250.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], today()->addDays(20)->toDateString(), 'Condições revistas');
+
+        $this->assertSame('rascunho', $atualizado->estado);
+        $this->assertSame('570.00', $atualizado->valor_total);
+        $this->assertSame('Condições revistas', $atualizado->observacoes);
+        $this->assertSame('Serviço atualizado', $atualizado->linhas[0]['descricao']);
+        $this->assertSame(today()->addDays(20)->toDateString(), $atualizado->data_validade->toDateString());
+    }
+
+    public function test_orcamento_aceite_nao_pode_ser_editado(): void
+    {
+        [$empresa, $cliente] = $this->criarContexto('630000208');
+        $service = app(OrcamentoService::class);
+        $orcamento = $service->criar($empresa, $cliente, [[
+            'descricao' => 'Serviço',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+        $service->alterarEstado($orcamento, 'aceite');
+
+        $this->expectException(\\DomainException::class);
+        $service->atualizarRascunho($orcamento->fresh(), $cliente, [[
+            'descricao' => 'Tentativa de alteração',
+            'quantidade' => '1',
+            'preco_unitario' => '200.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+    }
+
+    public function test_edicao_nao_pode_trocar_cliente_por_cliente_de_outra_empresa(): void
+    {
+        [$empresaA, $clienteA] = $this->criarContexto('630000209');
+        [$empresaB, $clienteB] = $this->criarContexto('630000210');
+        $orcamento = app(OrcamentoService::class)->criar($empresaA, $clienteA, [[
+            'descricao' => 'Serviço',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+
+        $this->expectException(\\DomainException::class);
+        app(OrcamentoService::class)->atualizarRascunho($orcamento, $clienteB, [[
+            'descricao' => 'Serviço',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+    }
+
 }
