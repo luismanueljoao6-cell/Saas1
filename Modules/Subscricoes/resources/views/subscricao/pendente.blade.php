@@ -15,11 +15,11 @@
         $montante = number_format((float) $pagamento->valor, 2, ',', ' ').' '.$pagamento->moeda;
     @endphp
 
-    <div class="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm" x-data="{ copiado: null }">
-        <h1 class="text-xl font-semibold text-slate-900">
+    <div class="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:bg-zinc-900 dark:border-zinc-800" x-data="{ copiado: null }">
+        <h1 class="text-xl font-semibold text-slate-900 dark:text-zinc-100">
             {{ $pagamento->estado === 'confirmado' ? 'Pagamento confirmado' : 'Falta só o pagamento' }}
         </h1>
-        <p class="mt-1 text-sm text-slate-500">
+        <p class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
             Plano <strong>{{ $pagamento->subscricao->plano->nome }}</strong>
         </p>
 
@@ -30,46 +30,46 @@
             </div>
         @endif
 
-        <dl class="mt-6 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-slate-50 text-left">
+        <dl class="mt-6 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-slate-50 text-left dark:bg-zinc-950 dark:border-zinc-800 dark:divide-zinc-800">
             <div class="flex items-center justify-between gap-4 p-4">
-                <dt class="text-xs uppercase tracking-wide text-slate-500">Entidade</dt>
-                <dd class="font-mono text-xl font-semibold text-slate-900"
+                <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">Entidade</dt>
+                <dd class="font-mono text-xl font-semibold text-slate-900 dark:text-zinc-100"
                     @click="navigator.clipboard.writeText(@js((string) $entidade)); copiado = 'entidade'">
                     {{ $entidade ?? '—' }}
                     <span x-show="copiado === 'entidade'" class="ml-2 text-xs font-normal text-emerald-600">copiado</span>
                 </dd>
             </div>
             <div class="flex items-center justify-between gap-4 p-4">
-                <dt class="text-xs uppercase tracking-wide text-slate-500">Referência</dt>
-                <dd class="font-mono text-xl font-semibold text-slate-900"
+                <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">Referência</dt>
+                <dd class="font-mono text-xl font-semibold text-slate-900 dark:text-zinc-100"
                     @click="navigator.clipboard.writeText(@js($referencia)); copiado = 'referencia'">
                     {{ trim(chunk_split($referencia, 3, ' ')) }}
                     <span x-show="copiado === 'referencia'" class="ml-2 text-xs font-normal text-emerald-600">copiado</span>
                 </dd>
             </div>
             <div class="flex items-center justify-between gap-4 p-4">
-                <dt class="text-xs uppercase tracking-wide text-slate-500">Montante exato</dt>
-                <dd class="text-lg font-semibold text-slate-900">{{ $montante }}</dd>
+                <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">Montante exato</dt>
+                <dd class="text-lg font-semibold text-slate-900 dark:text-zinc-100">{{ $montante }}</dd>
             </div>
             <div class="flex items-center justify-between gap-4 p-4">
-                <dt class="text-xs uppercase tracking-wide text-slate-500">Válida até</dt>
-                <dd class="text-sm text-slate-900">{{ $pagamento->expira_em?->format('d/m/Y H:i') ?? '—' }}</dd>
+                <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">Válida até</dt>
+                <dd class="text-sm text-slate-900 dark:text-zinc-100">{{ $pagamento->expira_em?->format('d/m/Y H:i') ?? '—' }}</dd>
             </div>
             <div class="flex items-center justify-between gap-4 p-4">
-                <dt class="text-xs uppercase tracking-wide text-slate-500">Estado</dt>
-                <dd class="text-sm font-medium text-slate-900">{{ $rotulos[$pagamento->estado] ?? $pagamento->estado }}</dd>
+                <dt class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">Estado</dt>
+                <dd class="text-sm font-medium text-slate-900 dark:text-zinc-100">{{ $rotulos[$pagamento->estado] ?? $pagamento->estado }}</dd>
             </div>
         </dl>
 
-        <p class="mt-2 text-xs text-slate-500">Toca num valor para o copiar. Paga o montante exato indicado.</p>
+        <p class="mt-2 text-xs text-slate-500 dark:text-zinc-400">Toca num valor para o copiar. Paga o montante exato indicado.</p>
 
         @if ($pagamento->estado === 'pendente')
-            <p class="mt-6 text-sm text-slate-500">
+            <p class="mt-6 text-sm text-slate-500 dark:text-zinc-400">
                 Assim que o banco confirmar o pagamento, a subscrição fica ativa automaticamente.
                 Se já pagaste, atualiza esta página dentro de instantes.
             </p>
         @elseif ($pagamento->estado === 'expirado' || $pagamento->estado === 'falhado')
-            <p class="mt-6 text-sm text-slate-500">
+            <p class="mt-6 text-sm text-slate-500 dark:text-zinc-400">
                 Esta referência já não pode ser usada.
                 <a href="{{ route('subscricoes.planos') }}" class="font-medium text-indigo-600 hover:text-indigo-500">Gerar uma nova</a>.
                 Se já pagaste esta referência, contacta o suporte — o pagamento será reconciliado.
