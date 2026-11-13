@@ -3,5 +3,6 @@
     "Faturacao": true,
     "Subscricoes": true,
     "Atelier": true,
-    "EstudioMusica": true
+    "EstudioMusica": true,
+    "Armazem": true
 }
