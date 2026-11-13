@@ -17,7 +17,7 @@
         <label class="text-sm">Estado
             <select name="estado" class="mt-1 w-full rounded-lg border-slate-300 dark:border-zinc-700 dark:bg-zinc-800">
                 <option value="">Todos os estados</option>
-                @foreach(['rascunho'=>'Rascunho','enviado'=>'Enviado','aceite'=>'Aceite','recusado'=>'Recusado','convertido'=>'Convertido'] as $valor=>$rotulo)
+                @foreach(['rascunho'=>'Rascunho','enviado'=>'Enviado','aceite'=>'Aceite','recusado'=>'Recusado','expirado'=>'Expirado','convertido'=>'Convertido'] as $valor=>$rotulo)
                     <option value="{{ $valor }}" @selected(($filtros['estado'] ?? '') === $valor)>{{ $rotulo }}</option>
                 @endforeach
             </select>
@@ -45,8 +45,8 @@
             <tbody class="divide-y divide-slate-100 dark:divide-zinc-800">
             @forelse($orcamentos as $orcamento)
                 @php
-                    $expirado = $orcamento->data_validade && $orcamento->data_validade->isBefore(today()) && !in_array($orcamento->estado, ['convertido','recusado']);
-                    $estadoClasses = ['rascunho'=>'bg-slate-100 text-slate-700','enviado'=>'bg-blue-100 text-blue-800','aceite'=>'bg-emerald-100 text-emerald-800','recusado'=>'bg-red-100 text-red-800','convertido'=>'bg-violet-100 text-violet-800'];
+                    $expirado = $orcamento->estado === 'expirado' || ($orcamento->data_validade && $orcamento->data_validade->isBefore(today()) && !in_array($orcamento->estado, ['convertido', 'recusado']));
+                    $estadoClasses = ['rascunho'=>'bg-slate-100 text-slate-700','enviado'=>'bg-blue-100 text-blue-800','aceite'=>'bg-emerald-100 text-emerald-800','recusado'=>'bg-red-100 text-red-800','expirado'=>'bg-orange-100 text-orange-800','convertido'=>'bg-violet-100 text-violet-800'];
                 @endphp
                 <tr>
                     <td class="px-4 py-3"><span class="font-medium">{{ $orcamento->numero }}</span><span class="block text-xs text-slate-500">{{ $orcamento->created_at?->format('d/m/Y') }}</span></td>
@@ -55,7 +55,11 @@
                         {{ $orcamento->data_validade?->format('d/m/Y') ?? '—' }}
                         @if($expirado)<span class="mt-1 block text-xs font-semibold text-red-600">Expirado</span>@endif
                     </td>
-                    <td class="px-4 py-3 text-right font-medium">{{ number_format((float)$orcamento->valor_total,2,',',' ') }} AOA</td>
+                    @php
+                        $total = \Modules\Faturacao\Support\Dinheiro::formatar(\Modules\Faturacao\Support\Dinheiro::centimos($orcamento->valor_total));
+                        [$inteira, $decimal] = explode('.', $total);
+                    @endphp
+                    <td class="px-4 py-3 text-right font-medium">{{ number_format((int) $inteira, 0, ',', ' ') }},{{ $decimal }} AOA</td>
                     <td class="px-4 py-3"><span class="rounded-full px-2 py-1 text-xs font-semibold {{ $estadoClasses[$orcamento->estado] ?? 'bg-slate-100 text-slate-700' }}">{{ ucfirst($orcamento->estado) }}</span></td>
                     <td class="px-4 py-3">
                         <div class="flex min-w-44 flex-wrap gap-x-3 gap-y-2">
