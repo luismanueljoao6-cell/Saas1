@@ -112,3 +112,11 @@ Na atualização da branch, o painel principal deixou de ser servido diretamente
 - A chave do limite de utilizadores é lida de forma compatível com `max_utilizadores` ou `utilizadores`; outros nomes de limite ainda não são interpretados.
 - A CI detetou e ajudou a corrigir três problemas sucessivos: namespace/import PSR-4 do controller, apresentação dos limites ilimitados e estilo Pint (formatação do match e consistência do operador lógico NOT com a regra Pint). O código foi corrigido; a execução de CI do head mais recente deve confirmar Pint e os testes MySQL/SQLite.
 - A validação visual e a criação de testes específicos de regressão para estes indicadores continuam pendentes.
+
+## Atualização — filtros de documentos (13/11/2026)
+
+- Faturas: a lista expõe filtro de estado para rascunhos e documentos emitidos, em conjunto com a pesquisa.
+- Notas de crédito/débito: a lista expõe filtros independentes de tipo (crédito/débito) e estado (rascunho/emitida).
+- Recibos: a lista expõe o estado emitido. O modelo de domínio confirma que o recibo é emitido diretamente e não possui fluxo de rascunho.
+- Os formulários usam GET, preservam os parâmetros na paginação e disponibilizam ação para limpar todos os filtros.
+- A validação final destes ajustes depende da CI executada sobre o commit mais recente e de verificação no browser; não se afirma validação visual concluída.
