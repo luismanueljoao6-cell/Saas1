@@ -173,5 +173,4 @@ class ProdutoCatalogoTest extends TestCase
             ->get(route('faturacao.produtos.index', ['categoria_id' => $categoriaAlheia->id]))
             ->assertSessionHasErrors(['categoria_id']);
     }
-
 }
