@@ -200,4 +200,62 @@ class OrcamentoFluxoTest extends TestCase
         ]], null, null);
     }
 
+
+    public function test_duplicacao_cria_novo_rascunho_sem_reutilizar_fatura_ou_numero(): void
+    {
+        [$empresa, $cliente] = $this->criarContexto('630000211');
+        $service = app(OrcamentoService::class);
+        $origem = $service->criar($empresa, $cliente, [[
+            'descricao' => 'Serviço para duplicar',
+            'quantidade' => '2',
+            'preco_unitario' => '150.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], today()->addDays(10)->toDateString(), 'Condições originais');
+        $service->alterarEstado($origem, 'aceite');
+
+        $copia = $service->duplicar($origem, $empresa);
+
+        $this->assertNotSame($origem->id, $copia->id);
+        $this->assertNotSame($origem->numero, $copia->numero);
+        $this->assertSame((int) $empresa->id, (int) $copia->empresa_id);
+        $this->assertSame((int) $cliente->id, (int) $copia->cliente_id);
+        $this->assertSame('rascunho', $copia->estado);
+        $this->assertNull($copia->fatura_id);
+        $this->assertNull($copia->data_validade);
+        $this->assertSame('342.00', $copia->valor_total);
+        $this->assertSame('Condições originais', $copia->observacoes);
+    }
+
+    public function test_duplicacao_nao_permite_cliente_de_outra_empresa(): void
+    {
+        [$empresaA, $clienteA] = $this->criarContexto('630000212');
+        [$empresaB, $clienteB] = $this->criarContexto('630000213');
+        $origem = app(OrcamentoService::class)->criar($empresaA, $clienteA, [[
+            'descricao' => 'Serviço',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+
+        $this->expectException(\\DomainException::class);
+        app(OrcamentoService::class)->duplicar($origem, $empresaA, $clienteB);
+    }
+
+    public function test_orcamento_com_estado_expirado_nao_pode_mudar_de_estado(): void
+    {
+        [$empresa, $cliente] = $this->criarContexto('630000214');
+        $orcamento = app(OrcamentoService::class)->criar($empresa, $cliente, [[
+            'descricao' => 'Serviço expirado',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+        $orcamento->update(['estado' => 'expirado']);
+
+        $this->expectException(\\DomainException::class);
+        app(OrcamentoService::class)->alterarEstado($orcamento->fresh(), 'aceite');
+    }
 }
