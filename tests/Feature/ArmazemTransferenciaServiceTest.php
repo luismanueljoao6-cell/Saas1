@@ -216,5 +216,4 @@ class ArmazemTransferenciaServiceTest extends TestCase
 
         $this->assertFalse($inativo->ativo);
     }
-
 }
