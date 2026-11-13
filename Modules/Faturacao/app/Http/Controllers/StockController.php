@@ -31,10 +31,15 @@ class StockController extends Controller
     public function store(Request $request, StockService $stock): RedirectResponse
     {
         $empresa = Empresa::query()->findOrFail($request->user()->empresa_id);
+        $regrasQuantidade = ['required', 'numeric', 'min:0', 'max:99999999999.999', 'decimal:0,3'];
+        if ($request->input('tipo') !== 'ajuste') {
+            $regrasQuantidade[] = 'gt:0';
+        }
+
         $dados = $request->validate([
             'produto_id' => ['required', 'integer', 'exists:produtos,id'],
             'tipo' => ['required', 'in:entrada,saida,ajuste'],
-            'quantidade' => ['required', 'numeric', 'min:0', 'max:99999999999.999', 'decimal:0,3'],
+            'quantidade' => $regrasQuantidade,
             'motivo' => ['required', 'string', 'min:2', 'max:255'],
         ]);
 
