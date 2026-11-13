@@ -10,6 +10,7 @@ use Illuminate\View\View;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Compra;
 use Modules\Faturacao\Models\Fornecedor;
+use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Services\CompraService;
 
 class CompraController extends Controller
@@ -42,7 +43,7 @@ class CompraController extends Controller
     {
         return view('faturacao::compras.criar', [
             'fornecedores' => Fornecedor::query()->where('ativo', true)->orderBy('nome')->get(),
-            'produtos' => \Modules\Faturacao\Models\Produto::query()
+            'produtos' => Produto::query()
                 ->where('ativo', true)->where('controla_stock', true)->orderBy('nome')->get(),
         ]);
     }
