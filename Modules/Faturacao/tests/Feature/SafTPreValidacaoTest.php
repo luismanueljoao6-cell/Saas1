@@ -9,12 +9,13 @@ use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
+use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
-use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\SafTExportService;
 use Modules\Faturacao\Services\SafTPreValidacao;
+use Modules\Faturacao\Support\Dinheiro;
 use Tests\TestCase;
 
 /** Fase 3: regras fiscais do SAF-T que não dependem do XSD, tipo de documento e namespace. */
@@ -186,7 +187,7 @@ class SafTPreValidacaoTest extends TestCase
 
     public function test_calculo_proporcional_usa_divisao_inteira_segura(): void
     {
-        $resultado = \Modules\Faturacao\Support\Dinheiro::multiplicarDividirPorExcesso(
+        $resultado = Dinheiro::multiplicarDividirPorExcesso(
             123456789012345,
             23456789,
             123456789,
