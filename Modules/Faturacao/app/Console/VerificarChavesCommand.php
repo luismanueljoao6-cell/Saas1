@@ -73,7 +73,7 @@ class VerificarChavesCommand extends Command
                 continue;
             }
 
-            $verificadas++;
+            $verificadas += 1;
 
             if (isset($utilizadores[$impressao])) {
                 $problemas[] = [$rotulo, "usa a mesma chave que {$utilizadores[$impressao]}"];
