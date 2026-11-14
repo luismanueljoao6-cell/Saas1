@@ -8,6 +8,7 @@ use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
 use Modules\Faturacao\Models\NotaCreditoDebito;
+use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
 use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
 
@@ -400,7 +401,7 @@ class SafTPreValidacao
         }
 
         // Os valores gravados têm de bater com o recálculo (quantidade × preço; IVA por excesso).
-        if ($linha instanceof FaturaLinha) {
+        if ($linha instanceof FaturaLinha || $linha instanceof NotaCreditoDebitoLinha) {
             try {
                 $v = Dinheiro::calcularLinha($linha->quantidade, $linha->preco_unitario, $linha->taxa_iva);
 

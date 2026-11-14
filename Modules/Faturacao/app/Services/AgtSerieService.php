@@ -89,10 +89,14 @@ class AgtSerieService
     /** @param  array<string, mixed>  $resultado  seriesFEResult */
     protected function guardar(Empresa $empresa, string $tipoDocumento, int $ano, string $estabelecimento, string $contingencia, array $resultado): Serie
     {
-        $codigo = (string) $resultado['seriesCode'];
+        $codigo = trim((string) $resultado['seriesCode']);
         $primeiro = $this->numeroDe($resultado['firstDocumentNo'] ?? null);
         $ultimo = $this->numeroDe($resultado['lastDocumentNo'] ?? null);
         $quantidade = $this->numeroDe($resultado['authorizedQuantity'] ?? null, obrigatorio: false) ?? max(0, $ultimo - $primeiro + 1);
+
+        if ($codigo === '' || $primeiro < 1 || $ultimo < $primeiro || $quantidade < 1) {
+            throw AgtException::configuracaoInvalida('a AGT devolveu um código ou intervalo de numeração inválido para a série.');
+        }
 
         return $this->tenantManager->semTenant(fn () => DB::transaction(function () use ($empresa, $tipoDocumento, $ano, $estabelecimento, $contingencia, $codigo, $primeiro, $ultimo, $quantidade) {
             $serie = Serie::query()

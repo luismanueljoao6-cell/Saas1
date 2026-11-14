@@ -5,6 +5,7 @@ namespace Modules\Faturacao\Support;
 use DomainException;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Exceptions\EmissaoNaoPermitidaException;
 use Modules\Faturacao\Models\Fatura;
 
@@ -16,6 +17,8 @@ final class GuardaEmissao
 {
     public static function garantir(int $empresaId): void
     {
+        self::garantirTenant($empresaId);
+
         $empresa = Empresa::query()->find($empresaId);
 
         if (! $empresa) {
@@ -24,6 +27,16 @@ final class GuardaEmissao
 
         if (! $empresa->podeEmitirFaturas()) {
             throw EmissaoNaoPermitidaException::subscricaoInativa();
+        }
+    }
+
+    /** Impede que um serviço opere sobre outra empresa quando existe tenant HTTP ativo. */
+    public static function garantirTenant(int $empresaId): void
+    {
+        $tenant = app(TenantManager::class);
+
+        if ($tenant->has() && (int) $tenant->id() !== $empresaId) {
+            throw new DomainException('A operação não pertence à empresa do contexto atual.');
         }
     }
 

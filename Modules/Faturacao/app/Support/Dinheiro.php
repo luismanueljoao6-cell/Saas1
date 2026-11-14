@@ -77,6 +77,89 @@ final class Dinheiro
         ];
     }
 
+    /**
+     * Calcula ceil(($a * $b) / $divisor) sem permitir overflow silencioso.
+     * Reduz fatores comuns antes da multiplicação; se o produto continuar
+     * fora do intervalo inteiro suportado pelo PHP, rejeita a operação.
+     */
+    public static function multiplicarDividirPorExcesso(int $a, int $b, int $divisor): int
+    {
+        if ($a < 0 || $b < 0 || $divisor <= 0) {
+            throw new \InvalidArgumentException('Os valores do cálculo proporcional têm de ser não negativos e o divisor positivo.');
+        }
+
+        if ($a === 0 || $b === 0) {
+            return 0;
+        }
+
+        $parteInteira = intdiv($a, $divisor);
+
+        if ($parteInteira > intdiv(PHP_INT_MAX, $b)) {
+            throw new \InvalidArgumentException('O cálculo proporcional excede o limite inteiro seguro.');
+        }
+
+        $resultado = $parteInteira * $b;
+        $parteFracionaria = $a % $divisor;
+        [$quociente, $resto] = self::multiplicarModuloComQuociente($parteFracionaria, $b, $divisor);
+
+        if ($resultado > PHP_INT_MAX - $quociente) {
+            throw new \InvalidArgumentException('O cálculo proporcional excede o limite inteiro seguro.');
+        }
+
+        $resultado += $quociente;
+
+        if ($resto !== 0) {
+            if ($resultado === PHP_INT_MAX) {
+                throw new \InvalidArgumentException('O arredondamento proporcional excede o limite inteiro seguro.');
+            }
+
+            $resultado++;
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * Devolve quociente e resto de ($a * $b) / $divisor, sem construir o produto.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private static function multiplicarModuloComQuociente(int $a, int $b, int $divisor): array
+    {
+        $quociente = 0;
+        $resto = 0;
+
+        foreach (str_split(decbin($b)) as $bit) {
+            // Duplica o valor acumulado sem deixar o resto ultrapassar o divisor.
+            $carry = 0;
+
+            if ($resto >= $divisor - $resto) {
+                $resto -= $divisor - $resto;
+                $carry = 1;
+            } else {
+                $resto += $resto;
+            }
+
+            // Soma 'a' quando o bit atual é 1, novamente sem overflow.
+            if ($bit === '1' && $a !== 0) {
+                if ($resto >= $divisor - $a) {
+                    $resto -= $divisor - $a;
+                    $carry++;
+                } else {
+                    $resto += $a;
+                }
+            }
+
+            if ($quociente > intdiv(PHP_INT_MAX - $carry, 2)) {
+                throw new \InvalidArgumentException('O cálculo proporcional excede o limite inteiro seguro.');
+            }
+
+            $quociente = ($quociente * 2) + $carry;
+        }
+
+        return [$quociente, $resto];
+    }
+
     /** Converte um decimal em inteiro com $casas casas, half-up, sem float. */
     private static function escalar(mixed $valor, int $casas): int
     {

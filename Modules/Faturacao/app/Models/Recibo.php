@@ -117,7 +117,11 @@ class Recibo extends Model implements DocumentoFiscalInterface
 
         if ($fatura && Dinheiro::centimos($fatura->valor_total) > 0) {
             $totalFatura = Dinheiro::centimos($fatura->valor_total);
-            $imposto = intdiv($bruto * Dinheiro::centimos($fatura->valor_iva) + $totalFatura - 1, $totalFatura);
+            $imposto = Dinheiro::multiplicarDividirPorExcesso(
+                $bruto,
+                Dinheiro::centimos($fatura->valor_iva),
+                $totalFatura,
+            );
         }
 
         return $this->payloadAgtJson($imposto, $bruto - $imposto, $bruto);
