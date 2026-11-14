@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use DomainException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Armazem\Models\ArmazemStockMovimento;
 use Modules\Armazem\Models\ArmazemStockSaldo;
@@ -361,5 +362,36 @@ class ArmazemTransferenciaServiceTest extends TestCase
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage('Não é possível inativar este armazém enquanto existir uma transferência em trânsito associada.');
         app(ArmazemService::class)->alternarEstado($empresa, $destino);
+    }
+
+    public function test_nao_permite_criar_transferencia_com_produto_inativo(): void
+    {
+        [$empresa, $origem, $destino, $produto] = $this->preparar('630100215');
+        $produto->forceFill(['ativo' => false])->save();
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Um ou mais produtos não pertencem à empresa ou não controlam stock.');
+
+        $this->criarTransferencia($empresa, $origem, $destino, $produto);
+    }
+
+    public function test_expedição_rejeita_produto_desativado_depois_da_criacao_e_faz_rollback(): void
+    {
+        [$empresa, $origem, $destino, $produto] = $this->preparar('630100216');
+        app(ArmazemStockService::class)->entrada($empresa, $origem, $produto, '5.000', 'Stock inicial');
+        $transferencia = $this->criarTransferencia($empresa, $origem, $destino, $produto, '2.000');
+
+        $produto->forceFill(['ativo' => false])->save();
+
+        try {
+            app(ArmazemTransferenciaService::class)->expedir($empresa, $transferencia);
+            $this->fail('Não deve expedir um produto que foi desativado.');
+        } catch (ModelNotFoundException) {
+            $this->assertSame('rascunho', $transferencia->fresh()->estado);
+            $this->assertSame('5.000', (string) ArmazemStockSaldo::withoutGlobalScopes()
+                ->where('armazem_id', $origem->id)
+                ->where('produto_id', $produto->id)
+                ->value('quantidade'));
+        }
     }
 }

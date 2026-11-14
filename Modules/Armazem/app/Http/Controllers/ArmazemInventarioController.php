@@ -28,7 +28,7 @@ class ArmazemInventarioController extends Controller
                 ->orderBy('nome')
                 ->get(['id', 'nome']),
             'inventarios' => ArmazemInventario::query()
-                ->with(['armazem:id,nome,codigo', 'utilizadorAbertura:id,name', 'linhas.produto:id,nome'])
+                ->with(['armazem:id,nome,codigo', 'utilizadorAbertura:id,name', 'linhas.produto:id,nome', 'linhas.utilizadorContagem:id,name'])
                 ->where('empresa_id', $empresaId)
                 ->latest()
                 ->paginate(10)
@@ -91,6 +91,7 @@ class ArmazemInventarioController extends Controller
                 $this->obterInventario($request, $inventario),
                 $linha,
                 (string) $dados['quantidade_contada'],
+                (int) $request->user()->id,
             );
         } catch (DomainException|InvalidArgumentException $exception) {
             return back()->withInput()->with('erro', $exception->getMessage());

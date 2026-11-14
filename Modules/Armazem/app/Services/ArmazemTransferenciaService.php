@@ -99,6 +99,7 @@ class ArmazemTransferenciaService
             $produtos = Produto::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
                 ->whereIn('id', array_keys($normalizadas))
+                ->where('ativo', true)
                 ->where('controla_stock', true)
                 ->get()
                 ->keyBy('id');
@@ -501,6 +502,7 @@ class ArmazemTransferenciaService
     {
         return Produto::withoutGlobalScopes()
             ->where('empresa_id', $empresa->id)
+            ->where('ativo', true)
             ->where('controla_stock', true)
             ->whereKey($id)
             ->firstOrFail();
