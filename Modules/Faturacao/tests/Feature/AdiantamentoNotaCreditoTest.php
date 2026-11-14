@@ -85,7 +85,6 @@ class AdiantamentoNotaCreditoTest extends TestCase
         return [['descricao' => 'Correção', 'quantidade' => 1, 'preco_unitario' => $preco, 'taxa_iva' => 14]];
     }
 
-
     public function test_operacoes_sobre_notas_recusam_empresa_fora_do_tenant_ativo(): void
     {
         $fatura = $this->faturaFinal();
