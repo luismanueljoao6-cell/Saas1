@@ -85,7 +85,7 @@ final class Dinheiro
     public static function multiplicarDividirPorExcesso(int $a, int $b, int $divisor): int
     {
         if ($a < 0 || $b < 0 || $divisor <= 0) {
-            throw new \\InvalidArgumentException('Os valores do cálculo proporcional têm de ser não negativos e o divisor positivo.');
+            throw new \InvalidArgumentException('Os valores do cálculo proporcional têm de ser não negativos e o divisor positivo.');
         }
 
         if ($a === 0 || $b === 0) {
@@ -101,7 +101,7 @@ final class Dinheiro
         $divisor = intdiv($divisor, $fator);
 
         if ($a > intdiv(PHP_INT_MAX, $b)) {
-            throw new \\InvalidArgumentException('O cálculo proporcional excede o limite inteiro seguro.');
+            throw new \InvalidArgumentException('O cálculo proporcional excede o limite inteiro seguro.');
         }
 
         $produto = $a * $b;
