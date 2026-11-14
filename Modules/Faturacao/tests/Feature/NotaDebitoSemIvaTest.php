@@ -113,6 +113,25 @@ class NotaDebitoSemIvaTest extends TestCase
         app(AgtDocumentoBuilder::class)->construir($nota);
     }
 
+
+    public function test_pedido_agt_recusa_dados_fiscais_divergentes_do_payload_assinado(): void
+    {
+        [$empresa, $cliente] = $this->cenario('610000009');
+        $servico = app(NotaCreditoDebitoService::class);
+        $nota = $servico->emitir($servico->criarRascunho(
+            $empresa->id,
+            $cliente->id,
+            'debito',
+            'Juros de mora',
+            $this->linha(1000, 0),
+        ));
+        $nota->numero_documento = 'ND ALTERADA';
+
+        $this->expectException(AgtException::class);
+        $this->expectExceptionMessage('divergem do payload originalmente assinado');
+        app(AgtDocumentoBuilder::class)->construir($nota);
+    }
+
     public function test_pedido_agt_bloqueia_documento_sem_chave_publica_historica(): void
     {
         [$empresa, $cliente] = $this->cenario('610000008');
