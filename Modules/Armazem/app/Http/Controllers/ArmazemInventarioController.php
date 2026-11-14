@@ -91,6 +91,7 @@ class ArmazemInventarioController extends Controller
                 $this->obterInventario($request, $inventario),
                 $linha,
                 (string) $dados['quantidade_contada'],
+                (int) $request->user()->id,
             );
         } catch (DomainException|InvalidArgumentException $exception) {
             return back()->withInput()->with('erro', $exception->getMessage());
