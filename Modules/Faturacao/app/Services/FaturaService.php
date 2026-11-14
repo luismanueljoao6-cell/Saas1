@@ -47,6 +47,8 @@ class FaturaService
      */
     protected function criarRascunhoTipo(string $tipo, Empresa $empresa, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
     {
+        GuardaEmissao::garantirTenant((int) $empresa->id);
+
         if (empty($linhas)) {
             throw new \InvalidArgumentException('Uma fatura precisa de pelo menos uma linha.');
         }
