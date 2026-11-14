@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Modules\Armazem\Http\Controllers\ArmazemController;
 use Modules\Armazem\Http\Controllers\ArmazemInventarioController;
+use Modules\Armazem\Http\Controllers\ArmazemStockRelatorioController;
 use Modules\Armazem\Http\Controllers\ArmazemTransferenciaController;
 
 Route::middleware(['auth', 'tenant', 'subscricao.ativa'])
@@ -12,6 +13,13 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa'])
         Route::middleware('permission:armazem.ver')->group(function (): void {
             Route::get('/', [ArmazemController::class, 'index'])->name('index');
         });
+
+        Route::get('/relatorios/stock', [ArmazemStockRelatorioController::class, 'index'])
+            ->middleware('permission:armazem.stock.relatorios.ver')
+            ->name('relatorios.stock');
+        Route::post('/stock/minimos', [ArmazemStockRelatorioController::class, 'guardarMinimo'])
+            ->middleware(['permission:armazem.stock.minimos.gerir', 'throttle:30,1'])
+            ->name('stock.minimos.guardar');
 
         Route::middleware('permission:armazem.gerir')->group(function (): void {
             Route::post('/', [ArmazemController::class, 'store'])->middleware('throttle:20,1')->name('store');
