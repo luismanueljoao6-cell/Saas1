@@ -4,9 +4,9 @@ namespace Modules\Core\Services;
 
 /**
  * Guarda, durante o ciclo de vida de um pedido (ou de um comando artisan/job),
- * qual é a empresa "atual". É ligado como singleton no CoreServiceProvider,
- * pelo que app(TenantManager::class) devolve sempre a mesma instância dentro
- * do mesmo pedido.
+ * qual é a empresa "atual". É registado como scoped no CoreServiceProvider,
+ * pelo que a mesma instância é partilhada durante o ciclo de vida atual e
+ * renovada entre pedidos/jobs em runtimes persistentes.
  *
  * Propositadamente simples e sem dependência direta de Auth ou de sessão:
  * quem decide QUANDO definir o tenant é o middleware IdentificarTenant (ou,
