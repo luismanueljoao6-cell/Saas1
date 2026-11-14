@@ -106,7 +106,7 @@ class ArmazemTransferenciaController extends Controller
             $dados['linhas'],
             $dados['motivo'],
             (int) $request->user()->id,
-            $dados['observacoes'] ?? null
+            $dados['observacoes'] ?? null,
         );
 
         return back()->with('sucesso', 'Transferência criada em rascunho.');
@@ -115,7 +115,7 @@ class ArmazemTransferenciaController extends Controller
     public function expedir(
         Request $request,
         int $transferencia,
-        ArmazemTransferenciaService $service
+        ArmazemTransferenciaService $service,
     ): RedirectResponse {
         $alvo = $this->obterTransferencia($request, $transferencia);
 
@@ -127,14 +127,14 @@ class ArmazemTransferenciaController extends Controller
 
         return back()->with(
             'sucesso',
-            'Transferência expedida. O stock saiu da origem e está em trânsito.'
+            'Transferência expedida. O stock saiu da origem e está em trânsito.',
         );
     }
 
     public function receber(
         Request $request,
         int $transferencia,
-        ArmazemTransferenciaService $service
+        ArmazemTransferenciaService $service,
     ): RedirectResponse {
         $alvo = $this->obterTransferencia($request, $transferencia);
 
@@ -150,7 +150,7 @@ class ArmazemTransferenciaController extends Controller
     public function rececaoParcial(
         Request $request,
         int $transferencia,
-        ArmazemTransferenciaService $service
+        ArmazemTransferenciaService $service,
     ): RedirectResponse {
         $alvo = $this->obterTransferencia($request, $transferencia);
         $dados = $request->validate([
@@ -170,7 +170,7 @@ class ArmazemTransferenciaController extends Controller
                 $dados['linhas'],
                 (bool) ($dados['finalizar'] ?? false),
                 $dados['chave_idempotencia'],
-                (int) $request->user()->id
+                (int) $request->user()->id,
             );
         } catch (DomainException | InvalidArgumentException $exception) {
             return back()->with('erro', $exception->getMessage());
@@ -179,20 +179,20 @@ class ArmazemTransferenciaController extends Controller
         if ((bool) ($dados['finalizar'] ?? false)) {
             return back()->with(
                 'sucesso',
-                'Receção finalizada. As divergências ficaram registadas e não foram adicionadas ao stock.'
+                'Receção finalizada. As divergências ficaram registadas e não foram adicionadas ao stock.',
             );
         }
 
         return back()->with(
             'sucesso',
-            'Receção parcial registada. Podes continuar a receber as quantidades em falta.'
+            'Receção parcial registada. Podes continuar a receber as quantidades em falta.',
         );
     }
 
     public function cancelar(
         Request $request,
         int $transferencia,
-        ArmazemTransferenciaService $service
+        ArmazemTransferenciaService $service,
     ): RedirectResponse {
         $alvo = $this->obterTransferencia($request, $transferencia);
 
