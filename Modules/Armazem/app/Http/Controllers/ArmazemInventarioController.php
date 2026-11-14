@@ -39,9 +39,9 @@ class ArmazemInventarioController extends Controller
     {
         $empresaId = (int) $request->user()->empresa_id;
         $dados = $request->validate([
-            'armazem_id' => ['required', 'integer', 'exists:armazens,id,empresa_id,'.$empresaId.',ativo,1'],
+            'armazem_id' => ['required', 'integer', 'exists:armazens,id,empresa_id,' . $empresaId . ',ativo,1'],
             'produto_ids' => ['required', 'array', 'min:1'],
-            'produto_ids.*' => ['required', 'integer', 'distinct', 'exists:produtos,id,empresa_id,'.$empresaId.',ativo,1,controla_stock,1'],
+            'produto_ids.*' => ['required', 'integer', 'distinct', 'exists:produtos,id,empresa_id,' . $empresaId . ',ativo,1,controla_stock,1'],
             'observacoes' => ['nullable', 'string', 'max:2000'],
         ]);
 
