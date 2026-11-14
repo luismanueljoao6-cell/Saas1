@@ -12,13 +12,19 @@
             <directory>tests/Feature</directory>
         </testsuite>
         <testsuite name="Modules">
-    <directory>Modules/*/tests/Feature</directory>
-    <directory>Modules/*/tests/Unit</directory>
-</testsuite>
+            <directory>Modules/*/tests/Feature</directory>
+            <directory>Modules/*/tests/Unit</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
-            <directory>app</directory>
+            <directory suffix=".php">app</directory>
+            <directory suffix=".php">Modules/Core/app</directory>
+            <directory suffix=".php">Modules/Subscricoes/app</directory>
+            <directory suffix=".php">Modules/Faturacao/app</directory>
+            <directory suffix=".php">Modules/Atelier/app</directory>
+            <directory suffix=".php">Modules/EstudioMusica/app</directory>
+            <directory suffix=".php">Modules/Armazem/app</directory>
         </include>
     </source>
     <php>
