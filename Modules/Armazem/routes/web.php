@@ -1,9 +1,9 @@
 <?php
 
-use Illuminate\\Support\\Facades\\Route;
-use Modules\\Armazem\\Http\\Controllers\\ArmazemController;
-use Modules\\Armazem\\Http\\Controllers\\ArmazemInventarioController;
-use Modules\\Armazem\\Http\\Controllers\\ArmazemTransferenciaController;
+use Illuminate\Support\Facades\Route;
+use Modules\Armazem\Http\Controllers\ArmazemController;
+use Modules\Armazem\Http\Controllers\ArmazemInventarioController;
+use Modules\Armazem\Http\Controllers\ArmazemTransferenciaController;
 
 Route::middleware(['auth', 'tenant', 'subscricao.ativa'])
     ->prefix('armazem')
