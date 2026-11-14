@@ -370,6 +370,15 @@ class SafTPreValidacao
             if (! $assinaturas->verificarComPem($payload, $jws, $chavePublica)) {
                 return "{$referencia}: a assinatura criptográfica JWS é inválida ou o payload foi adulterado.";
             }
+
+            // A assinatura tem de corresponder aos dados fiscais actualmente
+            // persistidos; validar apenas a assinatura não detecta alterações
+            // directas na BD posteriores à emissão.
+            $payloadEsperado = $documento->construirStringParaAssinar();
+
+            if (! hash_equals($payloadEsperado, $payload)) {
+                return "{$referencia}: os dados fiscais persistidos divergem do payload originalmente assinado.";
+            }
         } catch (AssinaturaFiscalException|InvalidArgumentException $e) {
             return "{$referencia}: falha ao verificar a assinatura JWS: ".$e->getMessage();
         }
