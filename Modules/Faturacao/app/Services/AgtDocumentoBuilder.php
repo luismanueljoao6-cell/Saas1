@@ -2,7 +2,9 @@
 
 namespace Modules\Faturacao\Services;
 
+use InvalidArgumentException;
 use Modules\Faturacao\Exceptions\AgtException;
+use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\Produto;
@@ -48,7 +50,7 @@ class AgtDocumentoBuilder
             if (! $servicoAssinatura->verificarComPem($payload, $assinatura, $chavePublica)) {
                 throw AgtException::configuracaoInvalida("a assinatura criptográfica do documento {$documento->numero_documento} é inválida ou foi adulterada.");
             }
-        } catch (\Modules\Faturacao\Exceptions\AssinaturaFiscalException|\InvalidArgumentException $e) {
+        } catch (AssinaturaFiscalException|InvalidArgumentException $e) {
             throw AgtException::configuracaoInvalida("não foi possível verificar a assinatura do documento {$documento->numero_documento}: ".$e->getMessage());
         }
 
