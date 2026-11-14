@@ -23,9 +23,6 @@ use OpenSSLAsymmetricKey;
  */
 class AssinaturaFiscalService
 {
-    /** @var array<string, OpenSSLAsymmetricKey> */
-    protected array $chaves = [];
-
     /**
      * Orquestra as duas fases do model: prepara os campos de emissão,
      * constrói o objecto a assinar, assina, e só então confirma a emissão.
@@ -45,9 +42,24 @@ class AssinaturaFiscalService
         }
 
         $versao = (int) config('faturacao.chave_versao', 1);
-        $jws = $this->assinar($documento->construirStringParaAssinar(), $documento->getEmpresaId());
+        $empresaId = $documento->getEmpresaId();
+        $caminhoChaveEmpresa = $this->caminhoDaChaveDaEmpresa($empresaId);
+        $chavePrivada = $this->carregarChavePrivada($empresaId);
 
-        $this->arquivarChavePublicaDaEmpresa($documento->getEmpresaId(), $versao);
+        try {
+            $jws = Jws::assinar($documento->construirStringParaAssinar(), $chavePrivada);
+        } catch (\\InvalidArgumentException $e) {
+            throw AssinaturaFiscalException::falhaAoAssinar($e->getMessage());
+        }
+
+        // Arquivar a chave exacta usada na assinatura, não voltar a ler o
+        // ficheiro: evita atribuir uma chave antiga à nova versão durante rotação.
+        if (is_file($caminhoChaveEmpresa)) {
+            $this->arquivarChavePublicaDaEmpresa($empresaId, $versao, $chavePrivada);
+        } else {
+            // Apenas local/testing com chave genérica; nunca cria arquivo por empresa.
+            $this->arquivarChavePublicaDaEmpresa($empresaId, $versao);
+        }
 
         $documento->confirmarEmissao($jws, $versao);
     }
@@ -118,13 +130,15 @@ class AssinaturaFiscalService
      * Guarda a chave pública usada nesta versão. O registo é imutável:
      * reutilizar uma versão com outra chave é um erro de configuração.
      */
-    public function arquivarChavePublicaDaEmpresa(int $empresaId, int $versao): void
+    public function arquivarChavePublicaDaEmpresa(int $empresaId, int $versao, ?OpenSSLAsymmetricKey $chavePrivada = null): void
     {
         if ($versao < 1) {
             throw AssinaturaFiscalException::dadosEmFalta('a versão da chave tem de ser positiva.');
         }
 
-        $pem = $this->chavePublicaDaEmpresa($empresaId);
+        $pem = $chavePrivada === null
+            ? $this->chavePublicaDaEmpresa($empresaId)
+            : ((openssl_pkey_get_details($chavePrivada) ?: [])['key'] ?? null);
 
         // Em desenvolvimento/testes pode ser usada a chave genérica. Nunca
         // se arquiva uma chave que não esteja associada inequivocamente à empresa.
@@ -200,10 +214,6 @@ class AssinaturaFiscalService
     {
         $caminho = $this->caminhoDaChave($empresaId);
 
-        if (isset($this->chaves[$caminho])) {
-            return $this->chaves[$caminho];
-        }
-
         if (! is_file($caminho)) {
             throw AssinaturaFiscalException::chavePrivadaNaoEncontrada($caminho);
         }
@@ -225,7 +235,7 @@ class AssinaturaFiscalService
             throw AssinaturaFiscalException::chaveFraca((int) ($detalhes['bits'] ?? 0), $minimo);
         }
 
-        return $this->chaves[$caminho] = $chave;
+        return $chave;
     }
 
     protected function caminhoDaChave(?int $empresaId): string
