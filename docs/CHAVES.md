@@ -65,6 +65,17 @@ Não reutilizes uma versão. Se a aplicação encontrar a mesma versão associad
 
 Documentos emitidos antes da migration `faturacao_chaves_publicas` podem não ter uma chave pública histórica registada. Não é seguro associar-lhes automaticamente a chave actualmente instalada. Recupera a chave original e confirma a versão antes de qualquer procedimento de arquivo. Até lá, esses documentos ficam bloqueados para submissão/exportação fiscal.
 
+## Verificação operacional
+
+Executa a auditoria antes de activar a comunicação AGT e depois de qualquer rotação:
+
+```bash
+php artisan faturacao:verificar-chaves
+php artisan faturacao:verificar-chaves --empresa=ID
+```
+
+O comando verifica os ficheiros privados, partilha indevida de chaves, versões históricas em falta ou com fingerprint inválido e divergência entre a chave instalada e a chave arquivada na versão actual.
+
 ## Limite de homologação
 
 A implementação actual resolve chaves por empresa/NIF, mas a documentação técnica vigente da AGT tem de confirmar se a chave de assinatura deve pertencer ao produtor do software ou à empresa emitente, bem como o processo de comunicação e rotação. Não activar produção nem declarar conformidade com base apenas nos testes internos.
