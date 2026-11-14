@@ -128,7 +128,7 @@ class OrcamentoService
 
     public function alterarEstado(Orcamento $orcamento, string $estado): Orcamento
     {
-        if (! in_array($estado, ['enviado', 'aceite', 'recusado'], true)) {
+        if (in_array($estado, ['enviado', 'aceite', 'recusado'], true) === false) {
             throw new \InvalidArgumentException('Estado de orçamento inválido.');
         }
 
@@ -151,7 +151,7 @@ class OrcamentoService
                 'enviado' => ['aceite', 'recusado'],
             ];
 
-            if (! in_array($estado, $transicoesPermitidas[$atual->estado] ?? [], true)) {
+            if (in_array($estado, $transicoesPermitidas[$atual->estado] ?? [], true) === false) {
                 throw new \DomainException('Transição de estado do orçamento não permitida.');
             }
 
