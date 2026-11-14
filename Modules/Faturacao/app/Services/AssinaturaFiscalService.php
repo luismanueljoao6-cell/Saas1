@@ -7,6 +7,7 @@ use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Contracts\DocumentoFiscalInterface;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Support\Jws;
+use Illuminate\Support\Facades\DB;
 use OpenSSLAsymmetricKey;
 
 /**
@@ -43,9 +44,12 @@ class AssinaturaFiscalService
             $documento->congelarCliente();
         }
 
+        $versao = (int) config('faturacao.chave_versao', 1);
         $jws = $this->assinar($documento->construirStringParaAssinar(), $documento->getEmpresaId());
 
-        $documento->confirmarEmissao($jws, (int) config('faturacao.chave_versao'));
+        $this->arquivarChavePublicaDaEmpresa($documento->getEmpresaId(), $versao);
+
+        $documento->confirmarEmissao($jws, $versao);
     }
 
     /**
@@ -111,6 +115,75 @@ class AssinaturaFiscalService
         $publica = (openssl_pkey_get_details($chave) ?: [])['key'] ?? null;
 
         return is_string($publica) ? $publica : null;
+    }
+
+
+    /**
+     * Guarda a chave pública usada nesta versão. O registo é imutável:
+     * reutilizar uma versão com outra chave é um erro de configuração.
+     */
+    public function arquivarChavePublicaDaEmpresa(int $empresaId, int $versao): void
+    {
+        if ($versao < 1) {
+            throw AssinaturaFiscalException::dadosEmFalta('a versão da chave tem de ser positiva.');
+        }
+
+        $pem = $this->chavePublicaDaEmpresa($empresaId);
+
+        // Em desenvolvimento/testes pode ser usada a chave genérica. Nunca
+        // se arquiva uma chave que não esteja associada inequivocamente à empresa.
+        if ($pem === null) {
+            if (app()->environment(['local', 'testing']) && ! config('faturacao.agt.ativo')) {
+                return;
+            }
+
+            throw AssinaturaFiscalException::chavePublicaNaoEncontrada();
+        }
+
+        $fingerprint = hash('sha256', preg_replace('/\\s+/', '', $pem) ?: $pem);
+        $existente = DB::table('faturacao_chaves_publicas')
+            ->where('empresa_id', $empresaId)
+            ->where('versao', $versao)
+            ->first();
+
+        if ($existente !== null) {
+            if (! hash_equals((string) $existente->fingerprint, $fingerprint)) {
+                throw AssinaturaFiscalException::dadosEmFalta('a versão de chave já está associada a outra chave pública; incrementa FATURACAO_CHAVE_VERSAO antes de emitir.');
+            }
+
+            return;
+        }
+
+        DB::table('faturacao_chaves_publicas')->insert([
+            'empresa_id' => $empresaId,
+            'versao' => $versao,
+            'chave_publica_pem' => $pem,
+            'fingerprint' => $fingerprint,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    /** Resolve exclusivamente a chave histórica da empresa e da versão do documento. */
+    public function chavePublicaDaVersao(int $empresaId, int $versao): ?string
+    {
+        if ($versao < 1) {
+            return null;
+        }
+
+        $registo = DB::table('faturacao_chaves_publicas')
+            ->where('empresa_id', $empresaId)
+            ->where('versao', $versao)
+            ->first();
+
+        if ($registo === null) {
+            return null;
+        }
+
+        $pem = (string) $registo->chave_publica_pem;
+        $fingerprint = hash('sha256', preg_replace('/\\s+/', '', $pem) ?: $pem);
+
+        return hash_equals((string) $registo->fingerprint, $fingerprint) ? $pem : null;
     }
 
     /** Caminho esperado da chave privada da empresa: {chaves_dir}/{NIF}.pem. */
