@@ -14,22 +14,20 @@ class AssinaturaChavesPublicasTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected string $diretorio;
-
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->diretorio = sys_get_temp_dir().'/faturacao-chaves-'.uniqid('', true);
-        mkdir($this->diretorio, 0700, true);
-        config(['faturacao.chaves_dir' => $this->diretorio]);
+        $diretorio = sys_get_temp_dir().'/faturacao-chaves-'.uniqid('', true);
+        mkdir($diretorio, 0700, true);
+        config(['faturacao.chaves_dir' => $diretorio]);
 
-        $this->beforeApplicationDestroyed(function (): void {
-            foreach (glob($this->diretorio.'/*') ?: [] as $ficheiro) {
+        $this->beforeApplicationDestroyed(function () use ($diretorio): void {
+            foreach (glob($diretorio.'/*') ?: [] as $ficheiro) {
                 @unlink($ficheiro);
             }
 
-            @rmdir($this->diretorio);
+            @rmdir($diretorio);
         });
     }
 
@@ -50,7 +48,7 @@ class AssinaturaChavesPublicasTest extends TestCase
 
         $this->assertNotFalse($chave);
         $this->assertTrue(openssl_pkey_export($chave, $pem));
-        file_put_contents($this->diretorio.'/'.$nif.'.pem', $pem);
+        file_put_contents(config('faturacao.chaves_dir').'/'.$nif.'.pem', $pem);
     }
 
     /** @return array{0: string, 1: string} [chave privada, chave pública] */
