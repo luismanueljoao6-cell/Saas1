@@ -13,14 +13,14 @@ class ArmazemServiceProvider extends ServiceProvider
         $this->loadViewsFrom(__DIR__.'/../../resources/views', 'armazem');
         $this->app->register(RouteServiceProvider::class);
 
-        $menu = $this->app->make(MenuRegistry::class);
+        $this->app->make(TenantProvisionerRegistry::class)->register(\n            'faturacao',\n            fn (int $empresaId) => PapeisArmazem::provisionar($empresaId),\n        );\n\n        $menu = $this->app->make(MenuRegistry::class);
 
         $menu->adicionar(
             'armazem.index',
             'Armazéns',
             46,
             null,
-            fn () => auth()->user()?->hasRole('Administrador') ?? false,
+            fn () => auth()->user()?->hasAnyPermission(PapeisArmazem::PERMISSOES) ?? false,
         );
 
         $menu->adicionar(
