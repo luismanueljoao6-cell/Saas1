@@ -198,6 +198,19 @@ class RecibosInterfaceTest extends TestCase
             ->assertSessionHas('erro');
     }
 
+    public function test_servico_recusa_meio_de_pagamento_fora_do_contrato_da_base_de_dados(): void
+    {
+        $this->expectException(\\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Meio de pagamento inválido.');
+
+        app(ReciboService::class)->emitir(
+            (int) $this->empresa->id,
+            (int) $this->cliente->id,
+            '10.00',
+            'bitcoin',
+        );
+    }
+
     public function test_meio_de_pagamento_e_valor_sao_validados(): void
     {
         $fatura = $this->faturaEmitida();
