@@ -133,7 +133,6 @@ class AssinaturaChavesPublicasTest extends TestCase
         app(AssinaturaFiscalService::class)->verificarComPem('{"documentNo":"FT 2026/5"}', 'jws.invalido.assinatura', '');
     }
 
-
     public function test_comando_de_auditoria_das_chaves_esta_registado(): void
     {
         $this->assertArrayHasKey('faturacao:verificar-chaves', Artisan::all());
