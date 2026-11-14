@@ -187,7 +187,6 @@ class AssinaturaChavesPublicasTest extends TestCase
         $this->assertNotSame($chaveVersaoUm, $segundoServico->chavePublicaDaVersao((int) $empresa->id, 2));
     }
 
-
     public function test_mesmo_servico_recarrega_a_chave_privada_apos_rotacao(): void
     {
         $empresa = $this->empresa('5001636868');
