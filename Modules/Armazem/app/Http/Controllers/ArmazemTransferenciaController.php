@@ -51,13 +51,13 @@ class ArmazemTransferenciaController extends Controller
             fn (ArmazemTransferencia $transferencia): array => [$transferencia->id => (string) Str::uuid()]
         );
 
-        return view('armazem::transferencias.index', compact(
-            'armazens',
-            'produtos',
-            'transferencias',
-            'empresa',
-            'chavesRececao',
-        ));
+        return view('armazem::transferencias.index', [
+            'armazens' => $armazens,
+            'produtos' => $produtos,
+            'transferencias' => $transferencias,
+            'empresa' => $empresa,
+            'chavesRececao' => $chavesRececao,
+        ]);
     }
 
     public function store(Request $request, ArmazemTransferenciaService $service): RedirectResponse
@@ -66,13 +66,32 @@ class ArmazemTransferenciaController extends Controller
         $empresaId = (int) $empresa->id;
 
         $dados = $request->validate([
-            'armazem_origem_id' => ['required', 'integer', 'different:armazem_destino_id', 'exists:armazens,id,empresa_id,'.$empresaId.',ativo,1'],
-            'armazem_destino_id' => ['required', 'integer', 'exists:armazens,id,empresa_id,'.$empresaId.',ativo,1'],
+            'armazem_origem_id' => [
+                'required',
+                'integer',
+                'different:armazem_destino_id',
+                'exists:armazens,id,empresa_id,'.$empresaId.',ativo,1',
+            ],
+            'armazem_destino_id' => [
+                'required',
+                'integer',
+                'exists:armazens,id,empresa_id,'.$empresaId.',ativo,1',
+            ],
             'motivo' => ['required', 'string', 'max:255'],
             'observacoes' => ['nullable', 'string', 'max:2000'],
             'linhas' => ['required', 'array', 'min:1'],
-            'linhas.*.produto_id' => ['required', 'integer', 'distinct', 'exists:produtos,id,empresa_id,'.$empresaId.',ativo,1,controla_stock,1'],
-            'linhas.*.quantidade' => ['required', 'numeric', 'gt:0', 'decimal:0,3'],
+            'linhas.*.produto_id' => [
+                'required',
+                'integer',
+                'distinct',
+                'exists:produtos,id,empresa_id,'.$empresaId.',ativo,1,controla_stock,1',
+            ],
+            'linhas.*.quantidade' => [
+                'required',
+                'numeric',
+                'gt:0',
+                'decimal:0,3',
+            ],
         ]);
 
         $origem = Armazem::query()->findOrFail($dados['armazem_origem_id']);
