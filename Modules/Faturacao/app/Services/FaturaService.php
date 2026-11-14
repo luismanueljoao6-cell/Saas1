@@ -24,7 +24,7 @@ class FaturaService
     ) {}
 
     /**
-     * @param  array<int, array{produto_id?: int, descricao: string, quantidade: float, preco_unitario: float, preco_unitario_base?: float, taxa_iva: float, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
+     * @param  array<int, array{produto_id?: int, descricao: string, quantidade: int|string, preco_unitario: int|string, preco_unitario_base?: int|string, taxa_iva: int|string, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
      */
     public function criarRascunho(Empresa $empresa, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
     {
