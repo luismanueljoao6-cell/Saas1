@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use DomainException;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Armazem\Models\ArmazemStockMovimento;
 use Modules\Armazem\Models\ArmazemStockSaldo;
@@ -148,7 +147,8 @@ class ArmazemInventarioServiceTest extends TestCase
         [$empresaB, $armazemB, $produtoB] = $this->preparar('630100208');
         $inventario = app(ArmazemInventarioService::class)->abrir($empresaA, $armazemA, [$produtoA->id]);
 
-        $this->expectException(ModelNotFoundException::class);
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('O contexto atual não corresponde à empresa do inventário.');
         app(ArmazemInventarioService::class)->registarContagem($empresaB, $inventario, $inventario->linhas->first()->id, '1.000');
     }
 }
