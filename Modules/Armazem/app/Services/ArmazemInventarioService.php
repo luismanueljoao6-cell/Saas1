@@ -44,7 +44,7 @@ class ArmazemInventarioService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($utilizadorId !== null && ! User::withoutGlobalScopes()
+            if ($utilizadorId !== null && !User::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)->whereKey($utilizadorId)->exists()) {
                 throw new DomainException('O utilizador não pertence à empresa.');
             }
@@ -242,7 +242,7 @@ class ArmazemInventarioService
     {
         $tenant = app(TenantManager::class);
 
-        if ($tenant->has() && ! $tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
+        if ($tenant->has() && !$tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
             throw new DomainException('O contexto atual não corresponde à empresa do inventário.');
         }
     }
@@ -263,6 +263,6 @@ class ArmazemInventarioService
         $sinal = $valor < 0 ? '-' : '';
         $absoluto = abs($valor);
 
-        return $sinal.intdiv($absoluto, 1000).'.'.str_pad((string) ($absoluto % 1000), 3, '0', STR_PAD_LEFT);
+        return $sinal . intdiv($absoluto, 1000) . '.' . str_pad((string) ($absoluto % 1000), 3, '0', STR_PAD_LEFT);
     }
 }
