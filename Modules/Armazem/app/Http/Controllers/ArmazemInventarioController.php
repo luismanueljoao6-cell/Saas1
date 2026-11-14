@@ -28,7 +28,7 @@ class ArmazemInventarioController extends Controller
                 ->orderBy('nome')
                 ->get(['id', 'nome']),
             'inventarios' => ArmazemInventario::query()
-                ->with(['armazem:id,nome,codigo', 'utilizadorAbertura:id,name', 'linhas.produto:id,nome'])
+                ->with(['armazem:id,nome,codigo', 'utilizadorAbertura:id,name', 'linhas.produto:id,nome', 'linhas.utilizadorContagem:id,name'])
                 ->where('empresa_id', $empresaId)
                 ->latest()
                 ->paginate(10)
