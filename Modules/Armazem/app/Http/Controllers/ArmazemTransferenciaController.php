@@ -77,7 +77,7 @@ class ArmazemTransferenciaController extends Controller
             'armazem_destino_id' => [
                 'required',
                 'integer',
-                'exists:armazens,id,empresa_id,'.$empresaId.',ativo,1',
+                'exists:armazens,id,empresa_id,' . $empresaId . ',ativo,1',
             ],
             'motivo' => ['required', 'string', 'max:255'],
             'observacoes' => ['nullable', 'string', 'max:2000'],
