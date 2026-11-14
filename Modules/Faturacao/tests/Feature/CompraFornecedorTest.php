@@ -18,6 +18,7 @@ use Tests\TestCase;
 class CompraFornecedorTest extends TestCase
 {
     use RefreshDatabase;
+
     protected Empresa $empresa;
     protected User $utilizador;
 
