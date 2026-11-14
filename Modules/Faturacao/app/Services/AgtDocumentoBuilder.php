@@ -48,7 +48,7 @@ class AgtDocumentoBuilder
             if (! $servicoAssinatura->verificarComPem($payload, $assinatura, $chavePublica)) {
                 throw AgtException::configuracaoInvalida("a assinatura criptográfica do documento {$documento->numero_documento} é inválida ou foi adulterada.");
             }
-        } catch (\\Modules\\Faturacao\\Exceptions\\AssinaturaFiscalException|\\InvalidArgumentException $e) {
+        } catch (\Modules\Faturacao\Exceptions\AssinaturaFiscalException|\InvalidArgumentException $e) {
             throw AgtException::configuracaoInvalida("não foi possível verificar a assinatura do documento {$documento->numero_documento}: ".$e->getMessage());
         }
 
