@@ -26,6 +26,13 @@ class ArmazemStockRelatorioController extends Controller
             'data_fim' => ['nullable', 'date', 'after_or_equal:data_inicio'],
         ]);
 
+        $produtos = Produto::withoutGlobalScopes()
+            ->where('empresa_id', $empresaId)
+            ->where('ativo', true)
+            ->where('controla_stock', true)
+            ->orderBy('nome')
+            ->get(['id', 'nome']);
+
         $armazens = Armazem::query()
             ->where('ativo', true)
             ->orderBy('nome')
@@ -88,7 +95,7 @@ class ArmazemStockRelatorioController extends Controller
             ->count();
 
         return view('armazem::relatorios.stock', compact(
-            'armazens', 'saldos', 'movimentos', 'totalAlertas', 'inicio', 'fim', 'filtros'
+            'armazens', 'produtos', 'saldos', 'movimentos', 'totalAlertas', 'inicio', 'fim', 'filtros'
         ));
     }
 
