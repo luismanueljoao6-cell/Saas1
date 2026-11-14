@@ -48,7 +48,7 @@ class AssinaturaFiscalService
 
         try {
             $jws = Jws::assinar($documento->construirStringParaAssinar(), $chavePrivada);
-        } catch (\\InvalidArgumentException $e) {
+        } catch (\InvalidArgumentException $e) {
             throw AssinaturaFiscalException::falhaAoAssinar($e->getMessage());
         }
 
