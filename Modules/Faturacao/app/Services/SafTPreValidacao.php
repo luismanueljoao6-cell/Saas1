@@ -342,7 +342,6 @@ class SafTPreValidacao
         return $erros;
     }
 
-
     /**
      * A presença do JWS não prova a sua integridade. O SAF-T só pode incluir
      * documentos cuja assinatura seja verificável com a chave arquivada para
