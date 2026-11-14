@@ -20,6 +20,8 @@ class ArmazemInventarioLinha extends Model
         'quantidade_sistema',
         'quantidade_contada',
         'diferenca',
+        'contado_por',
+        'contado_em',
     ];
 
     protected function casts(): array
@@ -28,6 +30,7 @@ class ArmazemInventarioLinha extends Model
             'quantidade_sistema' => 'decimal:3',
             'quantidade_contada' => 'decimal:3',
             'diferenca' => 'decimal:3',
+            'contado_em' => 'datetime',
         ];
     }
 
@@ -39,5 +42,10 @@ class ArmazemInventarioLinha extends Model
     public function produto(): BelongsTo
     {
         return $this->belongsTo(Produto::class);
+    }
+
+    public function utilizadorContagem(): BelongsTo
+    {
+        return $this->belongsTo(\\Modules\\Core\\Models\\User::class, 'contado_por');
     }
 }
