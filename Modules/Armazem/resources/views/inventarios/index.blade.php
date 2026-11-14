@@ -85,6 +85,7 @@
                                     <th class="py-3 pr-4">Produto</th>
                                     <th class="px-3 py-3 text-right">Sistema</th>
                                     <th class="px-3 py-3">Contagem física</th>
+                                    <th class="px-3 py-3">Registada por</th>
                                     <th class="px-3 py-3 text-right">Diferença</th>
                                 </tr>
                             </thead>
@@ -102,6 +103,14 @@
                                                 </form>
                                             @else
                                                 <span class="tabular-nums text-slate-600 dark:text-zinc-300">{{ $linha->quantidade_contada === null ? '—' : number_format((float) $linha->quantidade_contada, 3, ',', '.') }}</span>
+                                            @endif
+                                        </td>
+                                        <td class="px-3 py-3 text-xs text-slate-500 dark:text-zinc-400">
+                                            @if ($linha->contado_em)
+                                                {{ $linha->utilizadorContagem?->name ?? 'Utilizador removido' }}
+                                                <span class="block">{{ $linha->contado_em->format('d/m/Y H:i') }}</span>
+                                            @else
+                                                —
                                             @endif
                                         </td>
                                         <td class="px-3 py-3 text-right tabular-nums">
