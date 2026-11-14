@@ -35,11 +35,11 @@ return new class extends Migration
             $table->id();
             $table->foreignId('empresa_id')->constrained('empresas')->cascadeOnDelete();
             $table->foreignId('rececao_id')->constrained('armazem_transferencia_rececoes')->cascadeOnDelete();
-            $table->foreignId('transferencia_linha_id');
-$table->foreign('transferencia_linha_id', 'arr_rec_linhas_trans_linha_fk')
-    ->references('id')
-    ->on('armazem_transferencia_linhas')
-    ->restrictOnDelete();
+                        $table->foreignId('transferencia_linha_id');
+            $table->foreign('transferencia_linha_id', 'arr_rec_linhas_trans_linha_fk')
+                ->references('id')
+                ->on('armazem_transferencia_linhas')
+                ->restrictOnDelete();
             $table->decimal('quantidade_recebida', 14, 3)->default(0);
             $table->decimal('quantidade_em_falta', 14, 3)->default(0);
             $table->decimal('quantidade_danificada', 14, 3)->default(0);
