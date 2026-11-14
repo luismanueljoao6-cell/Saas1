@@ -182,6 +182,7 @@ class OrcamentoFluxoTest extends TestCase
     {
         [$empresaA, $clienteA] = $this->criarContexto('630000209');
         [$empresaB, $clienteB] = $this->criarContexto('630000210');
+        app(TenantManager::class)->set((int) $empresaA->id);
         $orcamento = app(OrcamentoService::class)->criar($empresaA, $clienteA, [[
             'descricao' => 'Serviço',
             'quantidade' => '1',
@@ -193,6 +194,31 @@ class OrcamentoFluxoTest extends TestCase
         $this->expectException(\DomainException::class);
         app(OrcamentoService::class)->atualizarRascunho($orcamento, $clienteB, [[
             'descricao' => 'Serviço',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+    }
+
+    public function test_tenant_atual_nao_pode_editar_orcamento_de_outra_empresa(): void
+    {
+        [$empresaA, $clienteA] = $this->criarContexto('630000215');
+        app(TenantManager::class)->set((int) $empresaA->id);
+        $orcamento = app(OrcamentoService::class)->criar($empresaA, $clienteA, [[
+            'descricao' => 'Serviço',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+
+        $this->criarContexto('630000216');
+
+        $this->expectException(\\DomainException::class);
+        $this->expectExceptionMessage('O contexto atual não corresponde à empresa do orçamento.');
+        app(OrcamentoService::class)->atualizarRascunho($orcamento, $clienteA, [[
+            'descricao' => 'Tentativa de edição',
             'quantidade' => '1',
             'preco_unitario' => '100.00',
             'taxa_iva' => '14',
