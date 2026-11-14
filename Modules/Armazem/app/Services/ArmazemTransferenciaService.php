@@ -25,9 +25,6 @@ class ArmazemTransferenciaService
         $this->stock = $stock;
     }
 
-    /**
-     * Cria um rascunho. Cada produto só pode aparecer uma vez na transferência.
-     */
     public function criar(
         Empresa $empresa,
         Armazem $origem,
@@ -237,10 +234,6 @@ class ArmazemTransferenciaService
         }, attempts: 3);
     }
 
-    /**
-     * Regista uma entrega parcial. Quantidades em falta/danificadas ficam
-     * auditadas e nunca são creditadas no saldo do armazém de destino.
-     */
     public function registarRececaoParcial(
         Empresa $empresa,
         ArmazemTransferencia $transferencia,
@@ -480,10 +473,6 @@ class ArmazemTransferenciaService
         }, attempts: 3);
     }
 
-    /**
-     * Consulta explícita por empresa: processos internos podem executar sem
-     * tenant HTTP, cenário em que a TenantScope bloqueia queries implícitas.
-     */
     private function obterLinhas(Empresa $empresa, ArmazemTransferencia $transferencia, bool $bloquear = true)
     {
         $query = ArmazemTransferenciaLinha::withoutGlobalScopes()
