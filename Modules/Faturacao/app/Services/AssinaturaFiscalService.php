@@ -3,11 +3,11 @@
 namespace Modules\Faturacao\Services;
 
 use DateTimeInterface;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Contracts\DocumentoFiscalInterface;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Support\Jws;
-use Illuminate\Support\Facades\DB;
 use OpenSSLAsymmetricKey;
 
 /**
@@ -116,7 +116,6 @@ class AssinaturaFiscalService
 
         return is_string($publica) ? $publica : null;
     }
-
 
     /**
      * Guarda a chave pública usada nesta versão. O registo é imutável:
