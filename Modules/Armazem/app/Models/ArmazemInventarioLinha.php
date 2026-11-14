@@ -4,6 +4,7 @@ namespace Modules\Armazem\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Core\Models\User;
 use Modules\Core\Traits\BelongsToTenant;
 use Modules\Faturacao\Models\Produto;
 
@@ -46,6 +47,6 @@ class ArmazemInventarioLinha extends Model
 
     public function utilizadorContagem(): BelongsTo
     {
-        return $this->belongsTo(\\Modules\\Core\\Models\\User::class, 'contado_por');
+        return $this->belongsTo(User::class, 'contado_por');
     }
 }
