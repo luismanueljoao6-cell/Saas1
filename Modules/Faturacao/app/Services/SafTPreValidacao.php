@@ -5,7 +5,6 @@ namespace Modules\Faturacao\Services;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
-use RuntimeException;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Models\Fatura;
@@ -15,6 +14,7 @@ use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
 use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
 use Modules\Faturacao\Support\Jws;
+use RuntimeException;
 
 /**
  * Regras que se podem verificar SEM o XSD oficial: coerência interna dos documentos
