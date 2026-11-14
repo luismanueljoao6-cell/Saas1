@@ -16,9 +16,7 @@ use Modules\Faturacao\Models\Produto;
 
 class ArmazemInventarioService
 {
-    public function __construct(private readonly ArmazemStockService $stock)
-    {
-    }
+    public function __construct(private readonly ArmazemStockService $stock) {}
 
     public function abrir(
         Empresa $empresa,
