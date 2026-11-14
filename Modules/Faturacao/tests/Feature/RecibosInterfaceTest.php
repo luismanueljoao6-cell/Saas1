@@ -212,7 +212,6 @@ class RecibosInterfaceTest extends TestCase
         );
     }
 
-
     public function test_servico_de_recibos_recusa_empresa_fora_do_tenant_ativo(): void
     {
         $tenant = app(TenantManager::class);
@@ -227,7 +226,7 @@ class RecibosInterfaceTest extends TestCase
             );
 
             $this->fail('O serviço devia rejeitar uma empresa diferente do tenant ativo.');
-        } catch (\\DomainException $exception) {
+        } catch (\DomainException $exception) {
             $this->assertSame('A operação não pertence à empresa do contexto atual.', $exception->getMessage());
         } finally {
             $tenant->clear();
@@ -249,7 +248,7 @@ class RecibosInterfaceTest extends TestCase
             );
 
             $this->fail('O serviço devia rejeitar uma empresa diferente do tenant ativo.');
-        } catch (\\DomainException $exception) {
+        } catch (\DomainException $exception) {
             $this->assertSame('A operação não pertence à empresa do contexto atual.', $exception->getMessage());
         } finally {
             $tenant->clear();
