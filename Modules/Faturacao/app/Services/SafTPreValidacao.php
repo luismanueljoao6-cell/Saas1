@@ -5,12 +5,14 @@ namespace Modules\Faturacao\Services;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
 use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
+use Modules\Faturacao\Support\Jws;
 
 /**
  * Regras que se podem verificar SEM o XSD oficial: coerência interna dos documentos
@@ -59,6 +61,12 @@ class SafTPreValidacao
 
                 foreach ($this->verificarDocumento($documento) as $erro) {
                     $erros[] = $erro;
+                }
+
+                $erroAssinatura = $this->verificarAssinatura($documento);
+
+                if ($erroAssinatura !== null) {
+                    $erros[] = $erroAssinatura;
                 }
 
                 if (count($erros) >= self::MAX_ERROS) {
@@ -111,6 +119,12 @@ class SafTPreValidacao
 
             if (trim((string) $recibo->hash) === '') {
                 $erros[] = "{$ref}: recibo sem hash (assinatura); não pode entrar no SAF-T.";
+            } else {
+                $erroAssinatura = $this->verificarAssinatura($recibo);
+
+                if ($erroAssinatura !== null) {
+                    $erros[] = $erroAssinatura;
+                }
             }
 
             if ($recibo->chave_versao === null) {
@@ -320,6 +334,46 @@ class SafTPreValidacao
         $anterior[$serie] = [$numero, (string) $documento->hash, $referencia];
 
         return $erros;
+    }
+
+
+    /**
+     * A presença do JWS não prova a sua integridade. O SAF-T só pode incluir
+     * documentos cuja assinatura seja verificável com a chave arquivada para
+     * a empresa e versão exactas do documento.
+     */
+    protected function verificarAssinatura(Fatura|NotaCreditoDebito|Recibo $documento): ?string
+    {
+        $referencia = $this->referencia($documento);
+        $jws = trim((string) $documento->hash);
+
+        if ($jws === '') {
+            return null;
+        }
+
+        $versao = (int) $documento->chave_versao;
+        $assinaturas = app(AssinaturaFiscalService::class);
+        $chavePublica = $assinaturas->chavePublicaDaVersao((int) $documento->empresa_id, $versao);
+
+        if (! is_string($chavePublica) || $chavePublica === '') {
+            return "{$referencia}: não existe chave pública arquivada para a versão {$versao}; a assinatura não pode ser validada para o SAF-T.";
+        }
+
+        $payload = Jws::payload($jws);
+
+        if (! is_string($payload)) {
+            return "{$referencia}: o JWS está mal formado e não pode ser validado para o SAF-T.";
+        }
+
+        try {
+            if (! $assinaturas->verificarComPem($payload, $jws, $chavePublica)) {
+                return "{$referencia}: a assinatura criptográfica JWS é inválida ou o payload foi adulterado.";
+            }
+        } catch (AssinaturaFiscalException|\\InvalidArgumentException $e) {
+            return "{$referencia}: falha ao verificar a assinatura JWS: ".$e->getMessage();
+        }
+
+        return null;
     }
 
     /**
