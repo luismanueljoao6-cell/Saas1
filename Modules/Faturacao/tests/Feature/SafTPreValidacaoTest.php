@@ -5,6 +5,7 @@ namespace Modules\Faturacao\Tests\Feature;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
@@ -222,6 +223,21 @@ class SafTPreValidacaoTest extends TestCase
             $outroCliente,
             [['descricao' => 'Adiantamento', 'quantidade' => '1.000', 'preco_unitario' => '100.00', 'taxa_iva' => '14.00']],
         );
+    }
+
+
+    public function test_pre_validacao_bloqueia_documento_sem_chave_publica_historica(): void
+    {
+        $fatura = $this->emitir('Documento sem chave histórica');
+
+        DB::table('faturacao_chaves_publicas')
+            ->where('empresa_id', $this->empresa->id)
+            ->where('versao', $fatura->chave_versao)
+            ->delete();
+
+        $erros = $this->servico()->validar($this->empresa, now()->startOfYear(), now()->endOfYear());
+
+        $this->assertStringContainsString('não existe chave pública arquivada', implode(' ', $erros));
     }
 
     // --- Continuidade da série ----------------------------------------
