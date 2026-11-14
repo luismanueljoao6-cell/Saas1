@@ -28,7 +28,7 @@ class ArmazemTransferenciaService
     /**
      * Cria um rascunho. Cada produto só pode aparecer uma vez na transferência.
      *
-     * @param array<int, array{produto_id: int, quantidade: string|int|float}> $linhas
+     * @param array<int, array<string, mixed>> $linhas
      */
     public function criar(
         Empresa $empresa,
