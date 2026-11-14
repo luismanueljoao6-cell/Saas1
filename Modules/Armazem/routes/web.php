@@ -14,7 +14,7 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa'])
             Route::get('/', [ArmazemController::class, 'index'])->name('index');
         });
 
-        Route::get('/relatorios/stock', [ArmazemStockRelatorioController::class, 'index'])
+        Route::get('/relatorios/stock/exportar', [ArmazemStockExportacaoController::class, 'saldos'])\n            ->middleware(['permission:armazem.stock.relatorios.ver', 'throttle:10,1'])\n            ->name('relatorios.stock.exportar');\n\n        Route::get('/relatorios/stock', [ArmazemStockRelatorioController::class, 'index'])
             ->middleware('permission:armazem.stock.relatorios.ver')
             ->name('relatorios.stock');
         Route::post('/stock/minimos', [ArmazemStockRelatorioController::class, 'guardarMinimo'])
