@@ -1,12 +1,12 @@
 <?php
 
-namespace Modules\\Faturacao\\Tests\\Feature;
+namespace Modules\Faturacao\Tests\Feature;
 
-use Illuminate\\Foundation\\Testing\\RefreshDatabase;
-use Modules\\Core\\Models\\Empresa;
-use Modules\\Faturacao\\Exceptions\\AssinaturaFiscalException;
-use Modules\\Faturacao\\Services\\AssinaturaFiscalService;
-use Tests\\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
+use Modules\Faturacao\Services\AssinaturaFiscalService;
+use Tests\TestCase;
 
 class AssinaturaChavesPublicasTest extends TestCase
 {
