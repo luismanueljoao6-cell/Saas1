@@ -29,8 +29,8 @@ class ArmazemInventarioService
     ): ArmazemInventario {
         $ids = array_values(array_unique(array_filter(array_map('intval', $produtoIds))));
 
-        if ($ids === []) {
-            throw new InvalidArgumentException('Seleciona pelo menos um produto para contar.');
+        if ($ids === [] || count($ids) !== count($produtoIds) || min($ids) <= 0) {
+            throw new InvalidArgumentException('Seleciona produtos válidos, sem repetições, para contar.');
         }
 
         return DB::transaction(function () use ($empresa, $armazem, $ids, $utilizadorId, $observacoes): ArmazemInventario {
