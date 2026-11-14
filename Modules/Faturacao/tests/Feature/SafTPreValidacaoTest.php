@@ -6,10 +6,10 @@ use DOMDocument;
 use DOMXPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
-use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
 use Modules\Faturacao\Services\FaturaService;
@@ -200,7 +200,7 @@ class SafTPreValidacaoTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        \Modules\Faturacao\Support\Dinheiro::multiplicarDividirPorExcesso(
+        Dinheiro::multiplicarDividirPorExcesso(
             PHP_INT_MAX,
             PHP_INT_MAX,
             1,
