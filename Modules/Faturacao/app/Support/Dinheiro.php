@@ -77,6 +77,47 @@ final class Dinheiro
         ];
     }
 
+    /**
+     * Calcula ceil(($a * $b) / $divisor) sem permitir overflow silencioso.
+     * Reduz fatores comuns antes da multiplicação; se o produto continuar
+     * fora do intervalo inteiro suportado pelo PHP, rejeita a operação.
+     */
+    public static function multiplicarDividirPorExcesso(int $a, int $b, int $divisor): int
+    {
+        if ($a < 0 || $b < 0 || $divisor <= 0) {
+            throw new \\InvalidArgumentException('Os valores do cálculo proporcional têm de ser não negativos e o divisor positivo.');
+        }
+
+        if ($a === 0 || $b === 0) {
+            return 0;
+        }
+
+        $fator = self::mdc($a, $divisor);
+        $a = intdiv($a, $fator);
+        $divisor = intdiv($divisor, $fator);
+
+        $fator = self::mdc($b, $divisor);
+        $b = intdiv($b, $fator);
+        $divisor = intdiv($divisor, $fator);
+
+        if ($a > intdiv(PHP_INT_MAX, $b)) {
+            throw new \\InvalidArgumentException('O cálculo proporcional excede o limite inteiro seguro.');
+        }
+
+        $produto = $a * $b;
+
+        return intdiv($produto, $divisor) + (($produto % $divisor) === 0 ? 0 : 1);
+    }
+
+    private static function mdc(int $a, int $b): int
+    {
+        while ($b !== 0) {
+            [$a, $b] = [$b, $a % $b];
+        }
+
+        return $a;
+    }
+
     /** Converte um decimal em inteiro com $casas casas, half-up, sem float. */
     private static function escalar(mixed $valor, int $casas): int
     {
