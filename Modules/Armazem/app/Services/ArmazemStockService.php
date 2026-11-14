@@ -165,6 +165,18 @@ class ArmazemStockService
             throw new DomainException('O produto não está configurado para controlar stock.');
         }
 
+        $inventarioAberto = DB::table('armazem_inventario_linhas as linhas')
+            ->join('armazem_inventarios as inventarios', 'inventarios.id', '=', 'linhas.inventario_id')
+            ->where('inventarios.empresa_id', $empresa->id)
+            ->where('inventarios.armazem_id', $armazemBloqueado->id)
+            ->where('inventarios.estado', 'em_contagem')
+            ->where('linhas.produto_id', $produtoValidado->id)
+            ->exists();
+
+        if ($inventarioAberto) {
+            throw new DomainException('O produto está em inventário físico. Conclui ou cancela a contagem antes de movimentar stock.');
+        }
+
         DB::table('armazem_stock_saldos')->insertOrIgnore([
             'empresa_id' => $empresa->id,
             'armazem_id' => $armazemBloqueado->id,
