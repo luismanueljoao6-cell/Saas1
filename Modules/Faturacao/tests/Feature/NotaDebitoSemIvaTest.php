@@ -3,12 +3,15 @@
 namespace Modules\Faturacao\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
+use Modules\Faturacao\Exceptions\AgtException;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Services\AgtDocumentoBuilder;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
+use Modules\Faturacao\Support\Jws;
 use Tests\TestCase;
 
 class NotaDebitoSemIvaTest extends TestCase
@@ -88,6 +91,48 @@ class NotaDebitoSemIvaTest extends TestCase
         $documento = app(AgtDocumentoBuilder::class)->construir($nota);
 
         $this->assertArrayNotHasKey('taxes', $documento['lines'][0]);
+    }
+
+
+    public function test_pedido_agt_recusa_jws_com_assinatura_adulterada(): void
+    {
+        [$empresa, $cliente] = $this->cenario('610000007');
+        $servico = app(NotaCreditoDebitoService::class);
+        $nota = $servico->emitir($servico->criarRascunho(
+            $empresa->id,
+            $cliente->id,
+            'debito',
+            'Juros de mora',
+            $this->linha(1000, 0),
+        ));
+
+        $partes = explode('.', (string) $nota->hash);
+        $partes[2] = Jws::base64url('assinatura adulterada');
+        $nota->hash = implode('.', $partes);
+
+        $this->expectException(AgtException::class);
+        app(AgtDocumentoBuilder::class)->construir($nota);
+    }
+
+    public function test_pedido_agt_bloqueia_documento_sem_chave_publica_historica(): void
+    {
+        [$empresa, $cliente] = $this->cenario('610000008');
+        $servico = app(NotaCreditoDebitoService::class);
+        $nota = $servico->emitir($servico->criarRascunho(
+            $empresa->id,
+            $cliente->id,
+            'debito',
+            'Juros de mora',
+            $this->linha(1000, 0),
+        ));
+
+        DB::table('faturacao_chaves_publicas')
+            ->where('empresa_id', $empresa->id)
+            ->where('versao', $nota->chave_versao)
+            ->delete();
+
+        $this->expectException(AgtException::class);
+        app(AgtDocumentoBuilder::class)->construir($nota);
     }
 
     public function test_configuracao_pode_voltar_a_permitir_iva_na_nota_de_debito(): void
