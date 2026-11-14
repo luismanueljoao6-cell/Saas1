@@ -85,37 +85,79 @@ final class Dinheiro
     public static function multiplicarDividirPorExcesso(int $a, int $b, int $divisor): int
     {
         if ($a < 0 || $b < 0 || $divisor <= 0) {
-            throw new \InvalidArgumentException('Os valores do cálculo proporcional têm de ser não negativos e o divisor positivo.');
+            throw new \\InvalidArgumentException('Os valores do cálculo proporcional têm de ser não negativos e o divisor positivo.');
         }
 
         if ($a === 0 || $b === 0) {
             return 0;
         }
 
-        $fator = self::mdc($a, $divisor);
-        $a = intdiv($a, $fator);
-        $divisor = intdiv($divisor, $fator);
+        $parteInteira = intdiv($a, $divisor);
 
-        $fator = self::mdc($b, $divisor);
-        $b = intdiv($b, $fator);
-        $divisor = intdiv($divisor, $fator);
-
-        if ($a > intdiv(PHP_INT_MAX, $b)) {
-            throw new \InvalidArgumentException('O cálculo proporcional excede o limite inteiro seguro.');
+        if ($parteInteira > intdiv(PHP_INT_MAX, $b)) {
+            throw new \\InvalidArgumentException('O cálculo proporcional excede o limite inteiro seguro.');
         }
 
-        $produto = $a * $b;
+        $resultado = $parteInteira * $b;
+        $parteFracionaria = $a % $divisor;
+        [$quociente, $resto] = self::multiplicarModuloComQuociente($parteFracionaria, $b, $divisor);
 
-        return intdiv($produto, $divisor) + (($produto % $divisor) === 0 ? 0 : 1);
+        if ($resultado > PHP_INT_MAX - $quociente) {
+            throw new \\InvalidArgumentException('O cálculo proporcional excede o limite inteiro seguro.');
+        }
+
+        $resultado += $quociente;
+
+        if ($resto !== 0) {
+            if ($resultado === PHP_INT_MAX) {
+                throw new \\InvalidArgumentException('O arredondamento proporcional excede o limite inteiro seguro.');
+            }
+
+            $resultado++;
+        }
+
+        return $resultado;
     }
 
-    private static function mdc(int $a, int $b): int
+    /**
+     * Devolve quociente e resto de ($a * $b) / $divisor, sem construir o produto.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private static function multiplicarModuloComQuociente(int $a, int $b, int $divisor): array
     {
-        while ($b !== 0) {
-            [$a, $b] = [$b, $a % $b];
+        $quociente = 0;
+        $resto = 0;
+
+        foreach (str_split(decbin($b)) as $bit) {
+            // Duplica o valor acumulado sem deixar o resto ultrapassar o divisor.
+            $carry = 0;
+
+            if ($resto >= $divisor - $resto) {
+                $resto -= $divisor - $resto;
+                $carry = 1;
+            } else {
+                $resto += $resto;
+            }
+
+            // Soma 'a' quando o bit atual é 1, novamente sem overflow.
+            if ($bit === '1' && $a !== 0) {
+                if ($resto >= $divisor - $a) {
+                    $resto -= $divisor - $a;
+                    $carry++;
+                } else {
+                    $resto += $a;
+                }
+            }
+
+            if ($quociente > intdiv(PHP_INT_MAX - $carry, 2)) {
+                throw new \\InvalidArgumentException('O cálculo proporcional excede o limite inteiro seguro.');
+            }
+
+            $quociente = ($quociente * 2) + $carry;
         }
 
-        return $a;
+        return [$quociente, $resto];
     }
 
     /** Converte um decimal em inteiro com $casas casas, half-up, sem float. */
