@@ -204,7 +204,7 @@ class OrcamentoService
         $tenant = app(TenantManager::class);
 
         if ($tenant->has() && $tenant->emBypass() === false && $tenant->id() !== $empresaId) {
-            throw new \\DomainException('O contexto atual não corresponde à empresa do orçamento.');
+            throw new \DomainException('O contexto atual não corresponde à empresa do orçamento.');
         }
     }
 

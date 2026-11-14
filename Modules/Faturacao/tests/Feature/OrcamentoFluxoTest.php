@@ -215,7 +215,7 @@ class OrcamentoFluxoTest extends TestCase
 
         $this->criarContexto('630000216');
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('O contexto atual não corresponde à empresa do orçamento.');
         app(OrcamentoService::class)->atualizarRascunho($orcamento, $clienteA, [[
             'descricao' => 'Tentativa de edição',
