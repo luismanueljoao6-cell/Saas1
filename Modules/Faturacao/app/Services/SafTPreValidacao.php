@@ -2,9 +2,9 @@
 
 namespace Modules\Faturacao\Services;
 
-use InvalidArgumentException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Models\Fatura;
