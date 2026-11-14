@@ -22,6 +22,8 @@ final class PapeisArmazem
         'armazem.transferencias.expedir',
         'armazem.transferencias.receber',
         'armazem.transferencias.cancelar',
+        'armazem.stock.relatorios.ver',
+        'armazem.stock.minimos.gerir',
     ];
 
     public static function provisionar(int $empresaId): void
