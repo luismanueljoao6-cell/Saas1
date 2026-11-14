@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Armazem\Models\ArmazemStockMovimento;
 use Modules\Armazem\Models\ArmazemStockSaldo;
+use Modules\Armazem\Services\ArmazemInventarioService;
 use Modules\Armazem\Services\ArmazemService;
 use Modules\Armazem\Services\ArmazemStockService;
 use Modules\Core\Models\Empresa;
@@ -156,4 +157,54 @@ class ArmazemStockServiceTest extends TestCase
             $empresaB, $armazemA, $produtoA, '1.000', 'Tenant divergente'
         );
     }
+
+    public function test_ajuste_com_a_mesma_chave_de_idempotencia_nao_duplica_movimento(): void
+    {
+        [$empresa, $armazem, $produto] = $this->preparar('630100111');
+        $service = app(ArmazemStockService::class);
+        $service->entrada($empresa, $armazem, $produto, '6.000', 'Entrada inicial');
+
+        $primeiro = $service->ajustar(
+            $empresa, $armazem, $produto, '4.500', 'Contagem física', null, 'ajuste-001'
+        );
+        $repetido = $service->ajustar(
+            $empresa, $armazem, $produto, '4.500', 'Contagem física', null, 'ajuste-001'
+        );
+
+        $this->assertSame($primeiro->id, $repetido->id);
+        $this->assertSame(2, ArmazemStockMovimento::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)->count());
+        $this->assertSame('4.500', (string) ArmazemStockSaldo::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)->value('quantidade'));
+    }
+
+    public function test_chave_de_ajuste_nao_pode_ser_reutilizada_com_outra_contagem(): void
+    {
+        [$empresa, $armazem, $produto] = $this->preparar('630100112');
+        $service = app(ArmazemStockService::class);
+        $service->entrada($empresa, $armazem, $produto, '6.000', 'Entrada inicial');
+        $service->ajustar($empresa, $armazem, $produto, '4.500', 'Contagem física', null, 'ajuste-002');
+
+        $this->expectException(DomainException::class);
+        $service->ajustar($empresa, $armazem, $produto, '4.000', 'Contagem física', null, 'ajuste-002');
+    }
+
+    public function test_bloqueia_movimentos_de_stock_enquanto_produto_esta_em_inventario(): void
+    {
+        [$empresa, $armazem, $produto] = $this->preparar('630100113');
+        app(ArmazemInventarioService::class)->abrir($empresa, $armazem, [$produto->id]);
+
+        $this->expectException(DomainException::class);
+        app(ArmazemStockService::class)->entrada($empresa, $armazem, $produto, '1.000', 'Entrada durante contagem');
+    }
+
+    public function test_nao_permite_movimentos_de_produto_inativo(): void
+    {
+        [$empresa, $armazem, $produto] = $this->preparar('630100114');
+        $produto->forceFill(['ativo' => false])->save();
+
+        $this->expectException(DomainException::class);
+        app(ArmazemStockService::class)->entrada($empresa, $armazem, $produto, '1.000', 'Entrada produto inativo');
+    }
+
 }
