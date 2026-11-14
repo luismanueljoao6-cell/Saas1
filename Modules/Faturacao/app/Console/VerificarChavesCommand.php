@@ -90,7 +90,7 @@ class VerificarChavesCommand extends Command
 
         $this->verificarChaveGenerica($utilizadores, $exigir, $problemas, $avisos);
         $this->verificarChaveDoSoftware($utilizadores, $problemas);
-        $this->verificarArquivoHistorico($assinatura, $problemas);
+        $this->verificarArquivoHistorico($assinatura, $problemas, $empresaId);
 
         if ($avisos !== []) {
             $this->table(['Âmbito', 'Aviso'], $avisos);
@@ -175,7 +175,7 @@ class VerificarChavesCommand extends Command
      *
      * @param  array<int, array{0: string, 1: string}>  $problemas
      */
-    protected function verificarArquivoHistorico(AssinaturaFiscalService $assinatura, array &$problemas): void
+    protected function verificarArquivoHistorico(AssinaturaFiscalService $assinatura, array &$problemas, ?int $empresaId = null): void
     {
         if (! Schema::hasTable('faturacao_chaves_publicas')) {
             $problemas[] = ['arquivo histórico', 'a tabela faturacao_chaves_publicas não existe; executa php artisan migrate'];
@@ -190,17 +190,25 @@ class VerificarChavesCommand extends Command
         ];
 
         foreach ($tabelas as $tabela => $estados) {
-            $semVersao = DB::table($tabela)
-                ->whereIn('estado', $estados)
-                ->whereNull('chave_versao')
-                ->count();
+            if (! Schema::hasTable($tabela)) {
+                $problemas[] = [$tabela, 'a tabela não existe; confirma as migrations do módulo Faturação'];
+
+                continue;
+            }
+
+            $consulta = DB::table($tabela)->whereIn('estado', $estados);
+
+            if ($empresaId !== null) {
+                $consulta->where('empresa_id', $empresaId);
+            }
+
+            $semVersao = (clone $consulta)->whereNull('chave_versao')->count();
 
             if ($semVersao > 0) {
                 $problemas[] = [$tabela, "{$semVersao} documento(s) final(is) sem versão de chave de assinatura"];
             }
 
-            $documentos = DB::table($tabela)
-                ->whereIn('estado', $estados)
+            $documentos = (clone $consulta)
                 ->whereNotNull('chave_versao')
                 ->select('empresa_id', 'chave_versao')
                 ->distinct()
@@ -221,7 +229,7 @@ class VerificarChavesCommand extends Command
 
         $versaoAtual = (int) config('faturacao.chave_versao', 1);
 
-        foreach (Empresa::query()->orderBy('id')->get(['id', 'nif']) as $empresa) {
+        foreach (Empresa::query()->when($empresaId, fn ($q) => $q->whereKey($empresaId))->orderBy('id')->get(['id', 'nif']) as $empresa) {
             try {
                 $chaveInstalada = $assinatura->chavePublicaDaEmpresa((int) $empresa->id);
             } catch (AssinaturaFiscalException|InvalidArgumentException) {
