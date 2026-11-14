@@ -14,22 +14,22 @@ class RegistoSessaoSeguraTest extends TestCase
 
     public function test_registo_autentica_na_guard_web_e_regenera_a_sessao(): void
     {
-        $empresa = Empresa::create([
-            'nome_comercial' => 'Empresa de Teste',
-            'nif' => '450000002',
-        ]);
-
-        $utilizador = User::create([
-            'empresa_id' => $empresa->id,
-            'name' => 'Administrador',
-            'email' => 'admin-registo-2@example.test',
-            'password' => 'password-segura',
-        ]);
-
         $this->mock(RegistoEmpresaService::class)
             ->shouldReceive('registar')
             ->once()
-            ->andReturn($utilizador);
+            ->andReturnUsing(function (array $dadosEmpresa, array $dadosAdmin, ?array $servicos): User {
+                $empresa = Empresa::create([
+                    'nome_comercial' => $dadosEmpresa['nome_comercial'],
+                    'nif' => $dadosEmpresa['nif'],
+                ]);
+
+                return User::create([
+                    'empresa_id' => $empresa->id,
+                    'name' => $dadosAdmin['name'],
+                    'email' => $dadosAdmin['email'],
+                    'password' => $dadosAdmin['password'],
+                ]);
+            });
 
         $sessaoAnterior = session()->getId();
 
@@ -44,7 +44,8 @@ class RegistoSessaoSeguraTest extends TestCase
             'servicos' => ['faturacao'],
         ]);
 
-        $resposta->assertRedirect(route('core.empresa.editar', $empresa->id));
+        $utilizador = User::query()->where('email', 'admin-registo-2@example.test')->firstOrFail();
+        $resposta->assertRedirect(route('core.empresa.editar', $utilizador->empresa_id));
         $this->assertAuthenticatedAs($utilizador, 'web');
         $this->assertNotSame($sessaoAnterior, session()->getId());
     }
