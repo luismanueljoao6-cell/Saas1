@@ -19,8 +19,8 @@ class OrcamentoFluxoTest extends TestCase
     {
         $empresa = Empresa::create(['nome_comercial' => 'Empresa '.$nif, 'nif' => $nif]);
         $empresa->aderirServicos([Servico::Faturacao]);
-        $cliente = Cliente::create(['empresa_id' => $empresa->id, 'nome' => 'Cliente '.$nif, 'nif' => null]);
         app(TenantManager::class)->set((int) $empresa->id);
+        $cliente = Cliente::create(['empresa_id' => $empresa->id, 'nome' => 'Cliente '.$nif, 'nif' => null]);
 
         return [$empresa, $cliente];
     }
