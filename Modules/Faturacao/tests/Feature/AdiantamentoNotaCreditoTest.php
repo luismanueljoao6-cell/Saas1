@@ -84,6 +84,32 @@ class AdiantamentoNotaCreditoTest extends TestCase
         return [['descricao' => 'Correção', 'quantidade' => 1, 'preco_unitario' => $preco, 'taxa_iva' => 14]];
     }
 
+
+    public function test_operacoes_sobre_notas_recusam_empresa_fora_do_tenant_ativo(): void
+    {
+        $fatura = $this->faturaFinal();
+        $notas = app(NotaCreditoDebitoService::class);
+        $rascunho = $notas->criarRascunho(
+            $this->empresa->id,
+            $this->cliente->id,
+            'credito',
+            'Ajuste',
+            $this->linhaNc('10.00'),
+            $fatura->id,
+        );
+
+        $tenant = app(TenantManager::class);
+        $tenant->set((int) $this->empresa->id + 1000);
+
+        try {
+            $this->expectException(\\DomainException::class);
+            $this->expectExceptionMessage('A operação não pertence à empresa do contexto atual.');
+            $notas->eliminarRascunho($rascunho);
+        } finally {
+            $tenant->clear();
+        }
+    }
+
     public function test_anulacao_total_de_adiantamento_abatido_e_recusada(): void
     {
         $fa = $this->adiantamentoRecebido();
