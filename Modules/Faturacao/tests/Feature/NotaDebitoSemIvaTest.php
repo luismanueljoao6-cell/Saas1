@@ -113,7 +113,6 @@ class NotaDebitoSemIvaTest extends TestCase
         app(AgtDocumentoBuilder::class)->construir($nota);
     }
 
-
     public function test_pedido_agt_recusa_dados_fiscais_divergentes_do_payload_assinado(): void
     {
         [$empresa, $cliente] = $this->cenario('610000009');
