@@ -16,7 +16,18 @@ class StockController extends Controller
 {
     public function index(Request $request): View
     {
-        $dados = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $dados = $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
+            'tipo' => ['nullable', 'in:entrada,saida,ajuste'],
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date', 'after_or_equal:data_inicio'],
+        ]);
+
+        $produtos = Produto::query()
+            ->with('stockSaldo')
+            ->where('controla_stock', true)
+            ->orderBy('nome')
+            ->get();
 
         $movimentos = StockMovimento::query()
             ->with('produto')
@@ -27,18 +38,28 @@ class StockController extends Controller
                         ->orWhereHas('produto', fn ($produto) => $produto->where('nome', 'like', "%{$termo}%"));
                 });
             })
+            ->when($dados['tipo'] ?? null, fn ($query, string $tipo) => $query->where('tipo', $tipo))
+            ->when($dados['data_inicio'] ?? null, fn ($query, string $data) => $query->whereDate('created_at', '>=', $data))
+            ->when($dados['data_fim'] ?? null, fn ($query, string $data) => $query->whereDate('created_at', '<=', $data))
             ->latest('id')
             ->paginate(25)
             ->withQueryString();
 
+        $stockBaixo = $produtos->filter(
+            fn (Produto $produto): bool => (float) ($produto->stockSaldo?->quantidade ?? 0) <= (float) $produto->stock_minimo
+        );
+
         return view('faturacao::stock.index', [
             'chaveIdempotencia' => (string) Str::uuid(),
-            'produtos' => Produto::query()
-                ->with('stockSaldo')
-                ->where('controla_stock', true)
-                ->orderBy('nome')
-                ->get(),
+            'produtos' => $produtos,
             'movimentos' => $movimentos,
+            'indicadores' => [
+                'produtos' => $produtos->count(),
+                'stock_baixo' => $stockBaixo->count(),
+                'sem_stock' => $stockBaixo->filter(fn (Produto $produto): bool => (float) ($produto->stockSaldo?->quantidade ?? 0) <= 0)->count(),
+                'movimentos_hoje' => StockMovimento::query()->whereDate('created_at', today())->count(),
+            ],
+            'filtros' => $dados,
         ]);
     }
 

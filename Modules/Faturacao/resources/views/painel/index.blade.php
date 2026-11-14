@@ -15,6 +15,17 @@
             </a>
         </div>
 
+        <nav aria-label="Acessos rápidos" class="flex flex-wrap gap-2">
+            <a href="{{ route('faturacao.orcamentos.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Orçamentos</a>
+            <a href="{{ route('faturacao.clientes.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Clientes</a>
+            <a href="{{ route('faturacao.produtos.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Produtos</a>
+            @if (auth()->user()->hasRole('Administrador'))
+                <a href="{{ route('faturacao.stock.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Stock</a>
+                <a href="{{ route('faturacao.compras.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Compras</a>
+                <a href="{{ route('faturacao.fornecedores.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Fornecedores</a>
+            @endif
+        </nav>
+
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <section class="rounded-xl border border-slate-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
                 <p class="text-sm text-slate-500 dark:text-zinc-400">Documentos emitidos este mês</p>

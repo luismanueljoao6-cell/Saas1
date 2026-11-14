@@ -9,13 +9,26 @@
             <p class="mt-1 text-sm text-slate-500 dark:text-zinc-400">Organiza o catálogo por categoria e identifica artigos através do código de barras.</p>
         </div>
 
-        <form method="GET" action="{{ route('faturacao.produtos.index') }}" role="search" class="mt-4 flex flex-col gap-2 sm:flex-row">
+        <form method="GET" action="{{ route('faturacao.produtos.index') }}" role="search" class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <label for="pesquisa-registos" class="sr-only">Pesquisar produtos</label>
             <input id="pesquisa-registos" type="search" name="q" value="{{ request('q') }}" maxlength="100" placeholder="Nome, código interno ou código de barras" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:max-w-md">
-            <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-900">Pesquisar</button>
-            @if (request()->filled('q'))
-                <a href="{{ route('faturacao.produtos.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-600 dark:border-zinc-700 dark:text-zinc-300">Limpar</a>
-            @endif
+            <select name="categoria_id" aria-label="Filtrar por categoria" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
+                <option value="">Todas as categorias</option>
+                @foreach ($categorias as $categoria)
+                    <option value="{{ $categoria->id }}" @selected((string) request('categoria_id') === (string) $categoria->id)>{{ $categoria->nome }}</option>
+                @endforeach
+            </select>
+            <select name="stock" aria-label="Filtrar por disponibilidade de stock" class="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
+                <option value="">Todos os níveis de stock</option>
+                <option value="baixo" @selected(request('stock') === 'baixo')>Stock baixo</option>
+                <option value="sem_stock" @selected(request('stock') === 'sem_stock')>Sem stock</option>
+            </select>
+            <div class="flex gap-2">
+                <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-900">Filtrar</button>
+                @if (request()->anyFilled(['q', 'categoria_id', 'stock']))
+                    <a href="{{ route('faturacao.produtos.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-600 dark:border-zinc-700 dark:text-zinc-300">Limpar</a>
+                @endif
+            </div>
         </form>
 
         @if (session('sucesso'))

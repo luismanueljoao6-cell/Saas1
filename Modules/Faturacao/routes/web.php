@@ -2,7 +2,9 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Faturacao\Http\Controllers\ClienteController;
+use Modules\Faturacao\Http\Controllers\CompraController;
 use Modules\Faturacao\Http\Controllers\FaturaController;
+use Modules\Faturacao\Http\Controllers\FornecedorController;
 use Modules\Faturacao\Http\Controllers\NotaController;
 use Modules\Faturacao\Http\Controllers\OrcamentoController;
 use Modules\Faturacao\Http\Controllers\PainelFaturacaoController;
@@ -29,6 +31,19 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa', 'servico:faturacao', 'p
         Route::post('/orcamentos', [OrcamentoController::class, 'guardar'])->middleware('throttle:30,1')->name('orcamentos.guardar');
         Route::patch('/orcamentos/{orcamento}/estado', [OrcamentoController::class, 'estado'])->whereNumber('orcamento')->name('orcamentos.estado');
         Route::post('/orcamentos/{orcamento}/converter', [OrcamentoController::class, 'converter'])->whereNumber('orcamento')->middleware('throttle:10,1')->name('orcamentos.converter');
+
+        Route::middleware('papel:Administrador')->group(function () {
+            Route::get('/fornecedores', [FornecedorController::class, 'index'])->name('fornecedores.index');
+            Route::post('/fornecedores', [FornecedorController::class, 'guardar'])->middleware('throttle:20,1')->name('fornecedores.store');
+            Route::put('/fornecedores/{fornecedor}', [FornecedorController::class, 'atualizar'])->whereNumber('fornecedor')->middleware('throttle:20,1')->name('fornecedores.update');
+            Route::patch('/fornecedores/{fornecedor}/estado', [FornecedorController::class, 'alternarEstado'])->whereNumber('fornecedor')->middleware('throttle:20,1')->name('fornecedores.estado');
+            Route::get('/compras', [CompraController::class, 'index'])->name('compras.index');
+            Route::get('/compras/criar', [CompraController::class, 'criar'])->name('compras.criar');
+            Route::post('/compras', [CompraController::class, 'guardar'])->middleware('throttle:20,1')->name('compras.guardar');
+            Route::get('/compras/{compra}', [CompraController::class, 'mostrar'])->whereNumber('compra')->name('compras.mostrar');
+            Route::post('/compras/{compra}/receber', [CompraController::class, 'receber'])->whereNumber('compra')->middleware('throttle:10,1')->name('compras.receber');
+            Route::post('/compras/{compra}/pagamentos', [CompraController::class, 'pagar'])->whereNumber('compra')->middleware('throttle:20,1')->name('compras.pagamentos.store');
+        });
 
         Route::get('/clientes', [ClienteController::class, 'index'])->name('clientes.index');
         Route::get('/clientes/{cliente}/conta-corrente', [ClienteController::class, 'contaCorrente'])->whereNumber('cliente')->name('clientes.conta-corrente');

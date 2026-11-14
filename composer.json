@@ -3,7 +3,10 @@
     "name": "laravel/laravel",
     "type": "project",
     "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "keywords": [
+        "laravel",
+        "framework"
+    ],
     "license": "MIT",
     "require": {
         "php": "^8.4",
@@ -24,23 +27,23 @@
         "phpunit/phpunit": "^12.5.12"
     },
     "autoload": {
-    "psr-4": {
-        "App\\": "app/",
-        "Database\\Factories\\": "database/factories/",
-        "Database\\Seeders\\": "database/seeders/",
-        "Modules\\Core\\": "Modules/Core/app/",
-"Modules\\Subscricoes\\": "Modules/Subscricoes/app/",
-"Modules\\Faturacao\\": "Modules/Faturacao/app/",
-"Modules\\Core\\Database\\Seeders\\": "Modules/Core/database/seeders/",
-"Modules\\Subscricoes\\Database\\Seeders\\": "Modules/Subscricoes/database/seeders/",
-"Modules\\Faturacao\\Database\\Seeders\\": "Modules/Faturacao/database/seeders/",
- "Modules\\Atelier\\": "Modules/Atelier/app/",
-"Modules\\Atelier\\Database\\Seeders\\": "Modules/Atelier/database/seeders/",
-"Modules\\EstudioMusica\\": "Modules/EstudioMusica/app/",
-"Modules\\EstudioMusica\\Database\\Seeders\\": "Modules/EstudioMusica/database/seeders/"       
-    }
-},
-
+        "psr-4": {
+            "App\\": "app/",
+            "Database\\Factories\\": "database/factories/",
+            "Database\\Seeders\\": "database/seeders/",
+            "Modules\\Core\\": "Modules/Core/app/",
+            "Modules\\Subscricoes\\": "Modules/Subscricoes/app/",
+            "Modules\\Faturacao\\": "Modules/Faturacao/app/",
+            "Modules\\Core\\Database\\Seeders\\": "Modules/Core/database/seeders/",
+            "Modules\\Subscricoes\\Database\\Seeders\\": "Modules/Subscricoes/database/seeders/",
+            "Modules\\Faturacao\\Database\\Seeders\\": "Modules/Faturacao/database/seeders/",
+            "Modules\\Atelier\\": "Modules/Atelier/app/",
+            "Modules\\Atelier\\Database\\Seeders\\": "Modules/Atelier/database/seeders/",
+            "Modules\\EstudioMusica\\": "Modules/EstudioMusica/app/",
+            "Modules\\EstudioMusica\\Database\\Seeders\\": "Modules/EstudioMusica/database/seeders/",
+            "Modules\\Armazem\\": "Modules/Armazem/app/"
+        }
+    },
     "autoload-dev": {
         "psr-4": {
             "Tests\\": "tests/"

@@ -1,0 +1,15 @@
+{
+    "name": "Armazem",
+    "alias": "armazem",
+    "description": "Gestão operacional de armazéns, localizações e existências por empresa.",
+    "keywords": [
+        "stock",
+        "inventario",
+        "transferencias"
+    ],
+    "priority": 2,
+    "providers": [
+        "Modules\\Armazem\\Providers\\ArmazemServiceProvider"
+    ],
+    "files": []
+}
