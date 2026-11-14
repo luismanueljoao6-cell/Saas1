@@ -1,12 +1,12 @@
 <?php
 
-namespace Modules\\Armazem\\Http\\Controllers;
+namespace Modules\Armazem\Http\Controllers;
 
-use Illuminate\\Database\\Query\\JoinClause;
-use Illuminate\\Http\\Request;
-use Illuminate\\Routing\\Controller;
-use Illuminate\\Support\\Facades\\DB;
-use Symfony\\Component\\HttpFoundation\\StreamedResponse;
+use Illuminate\Database\Query\JoinClause;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ArmazemStockExportacaoController extends Controller
 {
@@ -37,10 +37,10 @@ class ArmazemStockExportacaoController extends Controller
                 'saldos.quantidade',
                 'minimos.quantidade_minima',
             ])
-            ->when($filtros['armazem_id'] ?? null, fn ($q, $id) => $q->where('saldos.armazem_id', $id))
-            ->when($filtros['pesquisa'] ?? null, fn ($q, $termo) => $q->where('produtos.nome', 'like', '%'.$termo.'%'))
-            ->when(($filtros['abaixo_minimo'] ?? false) === true || ($filtros['abaixo_minimo'] ?? null) === '1', function ($q): void {
-                $q->whereNotNull('minimos.id')
+            ->when($filtros['armazem_id'] ?? null, fn ($query, $id) => $query->where('saldos.armazem_id', $id))
+            ->when($filtros['pesquisa'] ?? null, fn ($query, $termo) => $query->where('produtos.nome', 'like', '%'.$termo.'%'))
+            ->when(($filtros['abaixo_minimo'] ?? false) === true || ($filtros['abaixo_minimo'] ?? null) === '1', function ($query): void {
+                $query->whereNotNull('minimos.id')
                     ->whereColumn('saldos.quantidade', '<=', 'minimos.quantidade_minima');
             })
             ->orderBy('armazens.nome')
