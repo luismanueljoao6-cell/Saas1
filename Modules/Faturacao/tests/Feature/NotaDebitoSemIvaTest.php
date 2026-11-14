@@ -27,7 +27,9 @@ class NotaDebitoSemIvaTest extends TestCase
         parent::setUp();
 
         $recurso = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
-        openssl_pkey_export($recurso, $this->pemChave);
+        $pemChave = '';
+        openssl_pkey_export($recurso, $pemChave);
+        $this->pemChave = $pemChave;
         $this->diretorioChaves = sys_get_temp_dir().'/faturacao-teste-'.uniqid();
         mkdir($this->diretorioChaves, 0700, true);
         config(['faturacao.chaves_dir' => $this->diretorioChaves]);
