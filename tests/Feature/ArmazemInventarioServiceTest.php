@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use DomainException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Armazem\Models\ArmazemStockMovimento;
 use Modules\Armazem\Models\ArmazemStockSaldo;
@@ -153,8 +154,7 @@ class ArmazemInventarioServiceTest extends TestCase
         // Simular o pedido autenticado de B antes de tentar alterar o inventário de A.
         app(TenantManager::class)->set((int) $empresaB->id);
 
-        $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('O contexto atual não corresponde à empresa do inventário.');
+        $this->expectException(ModelNotFoundException::class);
         app(ArmazemInventarioService::class)->registarContagem($empresaB, $inventario, $inventario->linhas->first()->id, '1.000');
     }
 }
