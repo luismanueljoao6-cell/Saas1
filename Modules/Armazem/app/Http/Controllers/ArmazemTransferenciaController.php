@@ -48,7 +48,9 @@ class ArmazemTransferenciaController extends Controller
             ->withQueryString();
 
         $chavesRececao = $transferencias->getCollection()->mapWithKeys(
-            fn (ArmazemTransferencia $transferencia): array => [$transferencia->id => (string) Str::uuid()]
+            fn (ArmazemTransferencia $transferencia): array => [
+                $transferencia->id => (string) Str::uuid(),
+            ]
         );
 
         return view('armazem::transferencias.index', [
@@ -124,7 +126,10 @@ class ArmazemTransferenciaController extends Controller
             return back()->with('erro', $exception->getMessage());
         }
 
-        return back()->with('sucesso', 'Transferência expedida. O stock saiu da origem e está em trânsito.');
+        return back()->with(
+            'sucesso',
+            'Transferência expedida. O stock saiu da origem e está em trânsito.'
+        );
     }
 
     public function receber(
@@ -175,10 +180,16 @@ class ArmazemTransferenciaController extends Controller
         }
 
         if ((bool) ($dados['finalizar'] ?? false)) {
-            return back()->with('sucesso', 'Receção finalizada. As divergências ficaram registadas e não foram adicionadas ao stock.');
+            return back()->with(
+                'sucesso',
+                'Receção finalizada. As divergências ficaram registadas e não foram adicionadas ao stock.'
+            );
         }
 
-        return back()->with('sucesso', 'Receção parcial registada. Podes continuar a receber as quantidades em falta.');
+        return back()->with(
+            'sucesso',
+            'Receção parcial registada. Podes continuar a receber as quantidades em falta.'
+        );
     }
 
     public function cancelar(
