@@ -28,7 +28,12 @@ class SafTPreValidacao
 {
     public const MAX_ERROS = 100;
 
-    public function __construct(protected SafTExportService $exportador) {}
+    protected SafTExportService $exportador;
+
+    public function __construct(SafTExportService $exportador)
+    {
+        $this->exportador = $exportador;
+    }
 
     /** @return list<string> problemas encontrados; vazio quando nada impede a geração */
     public function validar(Empresa $empresa, Carbon $inicio, Carbon $fim): array
