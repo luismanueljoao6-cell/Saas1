@@ -32,6 +32,8 @@ class NotaCreditoDebitoService
      */
     public function criarParaAnularFatura(Fatura $fatura, string $motivo): NotaCreditoDebito
     {
+        GuardaEmissao::garantirTenant((int) $fatura->empresa_id);
+
         // Lock na fatura: dois pedidos de anulação em simultâneo ficam
         // serializados e o segundo já vê o rascunho do primeiro.
         return DB::transaction(function () use ($fatura, $motivo) {
@@ -81,6 +83,8 @@ class NotaCreditoDebitoService
     /** Elimina uma nota ainda em rascunho; uma nota emitida é um documento fiscal e não se apaga. */
     public function eliminarRascunho(NotaCreditoDebito $nota): void
     {
+        GuardaEmissao::garantirTenant((int) $nota->empresa_id);
+
         DB::transaction(function () use ($nota) {
             $atual = NotaCreditoDebito::withoutGlobalScopes()
                 ->where('empresa_id', $nota->empresa_id)
@@ -211,6 +215,8 @@ class NotaCreditoDebitoService
      */
     public function emitir(NotaCreditoDebito $nota): NotaCreditoDebito
     {
+        GuardaEmissao::garantirTenant((int) $nota->empresa_id);
+
         try {
             return DB::transaction(function () use ($nota) {
                 $nota = NotaCreditoDebito::withoutGlobalScopes()
