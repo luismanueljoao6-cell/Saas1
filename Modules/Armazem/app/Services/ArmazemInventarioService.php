@@ -161,7 +161,7 @@ class ArmazemInventarioService
                 throw new DomainException('Só é possível concluir um inventário em contagem.');
             }
 
-            if ($utilizadorId !== null && ! User::withoutGlobalScopes()
+            if ($utilizadorId !== null && !User::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)->whereKey($utilizadorId)->exists()) {
                 throw new DomainException('O utilizador não pertence à empresa.');
             }
