@@ -33,6 +33,7 @@ Requisitos operacionais:
 - não colocar chaves privadas em commits, issues, logs, tickets ou mensagens;
 - manter cópias de segurança protegidas e testar a recuperação;
 - nunca substituir uma chave privada sem preservar a versão anterior enquanto existirem documentos assinados com ela.
+- a chave privada não fica em cache no serviço: cada assinatura lê o ficheiro actual, e o arquivo regista a chave exacta usada no documento;
 
 ## Arquivo de chaves públicas
 
