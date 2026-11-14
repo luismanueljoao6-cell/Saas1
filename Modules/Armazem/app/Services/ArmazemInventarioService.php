@@ -101,11 +101,12 @@ class ArmazemInventarioService
         Empresa $empresa,
         ArmazemInventario $inventario,
         int $linhaId,
-        string $quantidadeContada
+        string $quantidadeContada,
+        ?int $utilizadorId = null
     ): ArmazemInventarioLinha {
         $contagem = $this->emMilhares($quantidadeContada);
 
-        return DB::transaction(function () use ($empresa, $inventario, $linhaId, $contagem): ArmazemInventarioLinha {
+        return DB::transaction(function () use ($empresa, $inventario, $linhaId, $contagem, $utilizadorId): ArmazemInventarioLinha {
             $this->validarTenant($empresa);
             Empresa::query()->whereKey($empresa->id)->lockForUpdate()->firstOrFail();
 
@@ -119,6 +120,11 @@ class ArmazemInventarioService
                 throw new DomainException('Este inventário já não aceita contagens.');
             }
 
+            if ($utilizadorId !== null && User::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)->whereKey($utilizadorId)->exists() === false) {
+                throw new DomainException('O utilizador não pertence à empresa.');
+            }
+
             $linha = ArmazemInventarioLinha::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
                 ->where('inventario_id', $sessao->id)
@@ -130,6 +136,8 @@ class ArmazemInventarioService
             $linha->forceFill([
                 'quantidade_contada' => $this->formatar($contagem),
                 'diferenca' => $this->formatar($contagem - $sistema),
+                'contado_por' => $utilizadorId,
+                'contado_em' => now(),
             ])->save();
 
             return $linha->load('produto');
