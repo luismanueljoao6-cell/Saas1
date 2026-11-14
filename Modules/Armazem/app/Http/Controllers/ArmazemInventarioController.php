@@ -68,7 +68,7 @@ class ArmazemInventarioController extends Controller
                 (int) $request->user()->id,
                 $dados['observacoes'] ?? null,
             );
-        } catch (DomainException | InvalidArgumentException $exception) {
+        } catch (DomainException|InvalidArgumentException $exception) {
             return back()->withInput()->with('erro', $exception->getMessage());
         }
 
@@ -92,7 +92,7 @@ class ArmazemInventarioController extends Controller
                 $linha,
                 (string) $dados['quantidade_contada'],
             );
-        } catch (DomainException | InvalidArgumentException $exception) {
+        } catch (DomainException|InvalidArgumentException $exception) {
             return back()->withInput()->with('erro', $exception->getMessage());
         }
 
@@ -110,7 +110,7 @@ class ArmazemInventarioController extends Controller
                 $this->obterInventario($request, $inventario),
                 (int) $request->user()->id,
             );
-        } catch (DomainException | InvalidArgumentException $exception) {
+        } catch (DomainException|InvalidArgumentException $exception) {
             return back()->with('erro', $exception->getMessage());
         }
 
