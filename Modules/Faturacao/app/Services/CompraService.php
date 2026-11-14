@@ -3,8 +3,10 @@
 namespace Modules\Faturacao\Services;
 
 use DomainException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Compra;
 use Modules\Faturacao\Models\CompraPagamento;
@@ -143,47 +145,107 @@ class CompraService
         }, attempts: 3);
     }
 
-    public function registarPagamento(Empresa $empresa, Compra $compra, array $dados, int $utilizadorId): CompraPagamento
-    {
-        return DB::transaction(function () use ($empresa, $compra, $dados, $utilizadorId): CompraPagamento {
-            $bloqueada = Compra::withoutGlobalScopes()
+    public function registarPagamento(
+        Empresa $empresa,
+        Compra $compra,
+        array $dados,
+        int $utilizadorId,
+        string $chaveIdempotencia
+    ): CompraPagamento {
+        $chaveIdempotencia = trim($chaveIdempotencia);
+
+        if ($chaveIdempotencia === '' || mb_strlen($chaveIdempotencia) > 36) {
+            throw new InvalidArgumentException('A chave de idempotência do pagamento é inválida.');
+        }
+
+        $valorCentimos = Dinheiro::centimos((string) $dados['valor']);
+        $valorFormatado = Dinheiro::formatar($valorCentimos);
+        $payloadHash = hash('sha256', json_encode([
+            'compra_id' => (int) $compra->id,
+            'valor' => $valorFormatado,
+            'data_pagamento' => (string) $dados['data_pagamento'],
+            'metodo' => (string) $dados['metodo'],
+            'referencia' => $dados['referencia'] ?? null,
+            'observacoes' => $dados['observacoes'] ?? null,
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            return DB::transaction(function () use (
+                $empresa, $compra, $dados, $utilizadorId, $chaveIdempotencia, $valorCentimos,
+                $valorFormatado, $payloadHash
+            ): CompraPagamento {
+                $bloqueada = Compra::withoutGlobalScopes()
+                    ->where('empresa_id', $empresa->id)
+                    ->whereKey($compra->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $existente = CompraPagamento::withoutGlobalScopes()
+                    ->where('empresa_id', $empresa->id)
+                    ->where('chave_idempotencia', $chaveIdempotencia)
+                    ->first();
+
+                if ($existente) {
+                    if ((int) $existente->compra_id !== (int) $bloqueada->id
+                        || hash_equals((string) $existente->payload_hash, $payloadHash) === false) {
+                        throw new DomainException('Esta chave de pagamento já foi utilizada com outros dados.');
+                    }
+
+                    return $existente;
+                }
+
+                if ($bloqueada->estado !== 'recebida') {
+                    throw new DomainException('Só é possível pagar compras já recebidas.');
+                }
+
+                $totalCentimos = Dinheiro::centimos((string) $bloqueada->total);
+                $pagoCentimos = Dinheiro::centimos((string) $bloqueada->total_pago);
+                $saldoCentimos = $totalCentimos - $pagoCentimos;
+
+                if ($valorCentimos <= 0 || $valorCentimos > $saldoCentimos) {
+                    throw new DomainException('O pagamento deve ser positivo e não pode exceder o saldo em dívida.');
+                }
+
+                $pagamento = CompraPagamento::create([
+                    'empresa_id' => $empresa->id,
+                    'compra_id' => $bloqueada->id,
+                    'valor' => $valorFormatado,
+                    'data_pagamento' => $dados['data_pagamento'],
+                    'metodo' => $dados['metodo'],
+                    'referencia' => $dados['referencia'] ?? null,
+                    'observacoes' => $dados['observacoes'] ?? null,
+                    'registado_por' => $utilizadorId,
+                    'chave_idempotencia' => $chaveIdempotencia,
+                    'payload_hash' => $payloadHash,
+                ]);
+
+                $novoPago = $pagoCentimos + $valorCentimos;
+                $bloqueada->forceFill([
+                    'total_pago' => Dinheiro::formatar($novoPago),
+                    'estado_pagamento' => $novoPago === $totalCentimos ? 'pago' : 'parcial',
+                ])->save();
+
+                return $pagamento;
+            }, attempts: 3);
+        } catch (QueryException $exception) {
+            // A restrição única também protege a reutilização concorrente da chave
+            // entre compras diferentes da mesma empresa.
+            $existente = CompraPagamento::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
-                ->whereKey($compra->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+                ->where('chave_idempotencia', $chaveIdempotencia)
+                ->first();
 
-            if ($bloqueada->estado !== 'recebida') {
-                throw new DomainException('Só é possível pagar compras já recebidas.');
+            if ($existente === null) {
+                throw $exception;
             }
 
-            $valorCentimos = Dinheiro::centimos((string) $dados['valor']);
-            $totalCentimos = Dinheiro::centimos((string) $bloqueada->total);
-            $pagoCentimos = Dinheiro::centimos((string) $bloqueada->total_pago);
-            $saldoCentimos = $totalCentimos - $pagoCentimos;
-
-            if ($valorCentimos <= 0 || $valorCentimos > $saldoCentimos) {
-                throw new DomainException('O pagamento deve ser positivo e não pode exceder o saldo em dívida.');
+            if ((int) $existente->compra_id !== (int) $compra->id
+                || hash_equals((string) $existente->payload_hash, $payloadHash) === false) {
+                throw new DomainException('Esta chave de pagamento já foi utilizada com outros dados.');
             }
 
-            $pagamento = CompraPagamento::create([
-                'empresa_id' => $empresa->id,
-                'compra_id' => $bloqueada->id,
-                'valor' => Dinheiro::formatar($valorCentimos),
-                'data_pagamento' => $dados['data_pagamento'],
-                'metodo' => $dados['metodo'],
-                'referencia' => $dados['referencia'] ?? null,
-                'observacoes' => $dados['observacoes'] ?? null,
-                'registado_por' => $utilizadorId,
-            ]);
-
-            $novoPago = $pagoCentimos + $valorCentimos;
-            $bloqueada->forceFill([
-                'total_pago' => Dinheiro::formatar($novoPago),
-                'estado_pagamento' => $novoPago === $totalCentimos ? 'pago' : 'parcial',
-            ])->save();
-
-            return $pagamento;
-        }, attempts: 3);
+            return $existente;
+        }
     }
 
     public function __construct(private readonly StockService $stock) {}
