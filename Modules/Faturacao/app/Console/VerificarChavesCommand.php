@@ -83,7 +83,7 @@ class VerificarChavesCommand extends Command
 
             $permissoes = DIRECTORY_SEPARATOR === '/' ? fileperms($caminho) % 01000 : 0;
 
-            if (($permissoes & 0077) !== 0) {
+            if (($permissoes % 0100) !== 0) {
                 $avisos[] = [$rotulo, sprintf('permissões %o demasiado abertas no ficheiro da chave (usa chmod 600)', $permissoes)];
             }
         }
