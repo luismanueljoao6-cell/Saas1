@@ -5,8 +5,8 @@ namespace Modules\Faturacao\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
-use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Exceptions\AgtException;
+use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Services\AgtDocumentoBuilder;
 use Modules\Faturacao\Services\FaturaService;
@@ -92,7 +92,6 @@ class NotaDebitoSemIvaTest extends TestCase
 
         $this->assertArrayNotHasKey('taxes', $documento['lines'][0]);
     }
-
 
     public function test_pedido_agt_recusa_jws_com_assinatura_adulterada(): void
     {
