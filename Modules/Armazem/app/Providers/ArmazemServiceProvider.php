@@ -28,5 +28,12 @@ class ArmazemServiceProvider extends ServiceProvider
         $menu->adicionar('armazem.index', 'Armazéns', 46, null, $podeConsultar);
         $menu->adicionar('armazem.transferencias.index', 'Transferências', 47, null, $podeConsultar);
         $menu->adicionar('armazem.inventarios.index', 'Inventários', 48, null, $podeConsultar);
+        $menu->adicionar(
+            'armazem.relatorios.stock',
+            'Relatórios de stock',
+            49,
+            null,
+            fn () => auth()->user()?->can('armazem.stock.relatorios.ver') ?? false,
+        );
     }
 }
