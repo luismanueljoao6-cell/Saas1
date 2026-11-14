@@ -161,6 +161,14 @@ class ArmazemStockService
             ->whereKey($produto->id)
             ->firstOrFail();
 
+        if (! $produtoValidado->ativo) {
+            throw new DomainException('Não é possível movimentar stock de um produto inativo.');
+        }
+
+        if (! $produtoValidado->ativo) {
+            throw new DomainException('Não é possível movimentar stock de um produto inativo.');
+        }
+
         if (! $produtoValidado->controla_stock) {
             throw new DomainException('O produto não está configurado para controlar stock.');
         }
