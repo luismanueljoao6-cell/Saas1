@@ -113,6 +113,7 @@ class CompraFornecedorTest extends TestCase
 
         $this->actingAs($this->utilizador)
             ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '11111111-1111-4111-8111-111111111111',
                 'valor' => '5000.00',
                 'data_pagamento' => today()->toDateString(),
                 'metodo' => 'transferencia',
@@ -124,8 +125,37 @@ class CompraFornecedorTest extends TestCase
         $this->assertSame('5000.00', (string) $compra->total_pago);
         $this->assertSame('parcial', $compra->estado_pagamento);
 
+        // Repetir exatamente o mesmo pedido não pode criar um segundo pagamento.
         $this->actingAs($this->utilizador)
             ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '11111111-1111-4111-8111-111111111111',
+                'valor' => '5000.00',
+                'data_pagamento' => today()->toDateString(),
+                'metodo' => 'transferencia',
+                'referencia' => 'TRF-001',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseCount('compra_pagamentos', 1);
+        $this->assertSame('5000.00', (string) $compra->fresh()->total_pago);
+
+        // A mesma chave com dados diferentes é recusada sem alterar o saldo.
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '11111111-1111-4111-8111-111111111111',
+                'valor' => '5001.00',
+                'data_pagamento' => today()->toDateString(),
+                'metodo' => 'transferencia',
+                'referencia' => 'TRF-001',
+            ])
+            ->assertSessionHasErrors(['pagamento']);
+
+        $this->assertDatabaseCount('compra_pagamentos', 1);
+        $this->assertSame('5000.00', (string) $compra->fresh()->total_pago);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '22222222-2222-4222-8222-222222222222',
                 'valor' => '5488.00',
                 'data_pagamento' => today()->toDateString(),
                 'metodo' => 'multicaixa',
@@ -138,6 +168,7 @@ class CompraFornecedorTest extends TestCase
 
         $this->actingAs($this->utilizador)
             ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '33333333-3333-4333-8333-333333333333',
                 'valor' => '0.01',
                 'data_pagamento' => today()->toDateString(),
                 'metodo' => 'dinheiro',
@@ -183,6 +214,7 @@ class CompraFornecedorTest extends TestCase
 
         $this->actingAs($this->utilizador)
             ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '44444444-4444-4444-8444-444444444444',
                 'valor' => '50.00',
                 'data_pagamento' => today()->toDateString(),
                 'metodo' => 'dinheiro',
