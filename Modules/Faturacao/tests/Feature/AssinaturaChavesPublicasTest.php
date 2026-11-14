@@ -3,6 +3,7 @@
 namespace Modules\Faturacao\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Services\AssinaturaFiscalService;
@@ -130,6 +131,12 @@ class AssinaturaChavesPublicasTest extends TestCase
         $this->expectException(AssinaturaFiscalException::class);
 
         app(AssinaturaFiscalService::class)->verificarComPem('{"documentNo":"FT 2026/5"}', 'jws.invalido.assinatura', '');
+    }
+
+
+    public function test_comando_de_auditoria_das_chaves_esta_registado(): void
+    {
+        $this->assertArrayHasKey('faturacao:verificar-chaves', Artisan::all());
     }
 
     public function test_arquiva_e_resolve_a_chave_publica_da_empresa_por_versao(): void
