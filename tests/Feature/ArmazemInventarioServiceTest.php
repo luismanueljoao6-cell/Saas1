@@ -11,6 +11,7 @@ use Modules\Armazem\Services\ArmazemInventarioService;
 use Modules\Armazem\Services\ArmazemService;
 use Modules\Armazem\Services\ArmazemStockService;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Support\Servico;
 use Modules\Faturacao\Models\Produto;
