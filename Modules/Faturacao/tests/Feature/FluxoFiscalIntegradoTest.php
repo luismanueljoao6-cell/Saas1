@@ -94,6 +94,7 @@ class FluxoFiscalIntegradoTest extends TestCase
     {
         $empresa ??= $this->empresa;
         $cliente ??= $this->cliente;
+        $this->garantirChaveDaEmpresa($empresa);
 
         $faturas = app(FaturaService::class);
         $ft = $faturas->emitir($faturas->criarRascunho($empresa, $cliente, [
