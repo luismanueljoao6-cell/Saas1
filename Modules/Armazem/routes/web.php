@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Modules\Armazem\Http\Controllers\ArmazemController;
 use Modules\Armazem\Http\Controllers\ArmazemInventarioController;
+use Modules\Armazem\Http\Controllers\ArmazemStockExportacaoController;
 use Modules\Armazem\Http\Controllers\ArmazemStockRelatorioController;
 use Modules\Armazem\Http\Controllers\ArmazemTransferenciaController;
 
