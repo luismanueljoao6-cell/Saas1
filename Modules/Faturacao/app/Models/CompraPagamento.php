@@ -13,7 +13,7 @@ class CompraPagamento extends Model
     protected $table = 'compra_pagamentos';
 
     protected $fillable = [
-        'empresa_id', 'compra_id', 'valor', 'data_pagamento',
+        'empresa_id', 'compra_id', 'valor', 'data_pagamento', 'chave_idempotencia', 'payload_hash',
         'metodo', 'referencia', 'observacoes', 'registado_por',
     ];
 
