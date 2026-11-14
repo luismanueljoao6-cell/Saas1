@@ -44,7 +44,7 @@ class ArmazemInventarioService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($utilizadorId !== null && !User::withoutGlobalScopes()
+            if ($utilizadorId !== null && ! User::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)->whereKey($utilizadorId)->exists()) {
                 throw new DomainException('O utilizador não pertence à empresa.');
             }
@@ -196,9 +196,9 @@ class ArmazemInventarioService
                     $armazem,
                     $produto,
                     (string) $linha->quantidade_contada,
-                    'Inventário físico '.$sessao->id,
+                    'Inventário físico ' . $sessao->id,
                     $utilizadorId,
-                    'inventario:'.$sessao->id.':produto:'.$produto->id
+                    'inventario:' . $sessao->id . ':produto:' . $produto->id
                 );
             }
 
@@ -242,7 +242,7 @@ class ArmazemInventarioService
     {
         $tenant = app(TenantManager::class);
 
-        if ($tenant->has() && !$tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
+        if ($tenant->has() && ! $tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
             throw new DomainException('O contexto atual não corresponde à empresa do inventário.');
         }
     }
