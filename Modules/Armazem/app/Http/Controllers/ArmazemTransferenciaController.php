@@ -80,7 +80,9 @@ class ArmazemTransferenciaController extends Controller
             'armazem_destino_id' => [
                 'required',
                 'integer',
-                'exists:armazens,id,empresa_id,' . $empresaId . ',ativo,1',
+                Rule::exists('armazens', 'id')->where(fn ($query) => $query
+                    ->where('empresa_id', $empresaId)
+                    ->where('ativo', true)),
             ],
             'motivo' => ['required', 'string', 'max:255'],
             'observacoes' => ['nullable', 'string', 'max:2000'],
