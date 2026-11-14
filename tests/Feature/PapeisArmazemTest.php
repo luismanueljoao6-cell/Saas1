@@ -1,13 +1,13 @@
 <?php
 
-namespace Tests\\Feature;
+namespace Tests\Feature;
 
-use Illuminate\\Foundation\\Testing\\RefreshDatabase;
-use Modules\\Armazem\\Support\\PapeisArmazem;
-use Modules\\Core\\Models\\Empresa;
-use Spatie\\Permission\\Models\\Role;
-use Spatie\\Permission\\PermissionRegistrar;
-use Tests\\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Armazem\Support\PapeisArmazem;
+use Modules\Core\Models\Empresa;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
+use Tests\TestCase;
 
 class PapeisArmazemTest extends TestCase
 {
