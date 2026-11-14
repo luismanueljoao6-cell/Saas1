@@ -116,8 +116,7 @@ class ArmazemTransferenciaController extends Controller
         Request $request,
         int $transferencia,
         ArmazemTransferenciaService $service
-    ): RedirectResponse
-    {
+    ): RedirectResponse {
         $alvo = $this->obterTransferencia($request, $transferencia);
 
         try {
@@ -136,8 +135,7 @@ class ArmazemTransferenciaController extends Controller
         Request $request,
         int $transferencia,
         ArmazemTransferenciaService $service
-    ): RedirectResponse
-    {
+    ): RedirectResponse {
         $alvo = $this->obterTransferencia($request, $transferencia);
 
         try {
@@ -153,8 +151,7 @@ class ArmazemTransferenciaController extends Controller
         Request $request,
         int $transferencia,
         ArmazemTransferenciaService $service
-    ): RedirectResponse
-    {
+    ): RedirectResponse {
         $alvo = $this->obterTransferencia($request, $transferencia);
         $dados = $request->validate([
             'chave_idempotencia' => ['required', 'uuid', 'max:100'],
@@ -196,8 +193,7 @@ class ArmazemTransferenciaController extends Controller
         Request $request,
         int $transferencia,
         ArmazemTransferenciaService $service
-    ): RedirectResponse
-    {
+    ): RedirectResponse {
         $alvo = $this->obterTransferencia($request, $transferencia);
 
         try {
