@@ -154,7 +154,7 @@ class AssinaturaChavesPublicasTest extends TestCase
         $chaveOriginal = $servico->chavePublicaDaVersao((int) $empresa->id, 1);
 
         $this->guardarChavePrivada($empresa->nif);
-        $servico = new AssinaturaFiscalService();
+        $servico = app(AssinaturaFiscalService::class);
 
         try {
             $servico->arquivarChavePublicaDaEmpresa((int) $empresa->id, 1);
@@ -171,12 +171,12 @@ class AssinaturaChavesPublicasTest extends TestCase
         $empresa = $this->empresa('5001636867');
         $this->guardarChavePrivada($empresa->nif);
 
-        $primeiroServico = new AssinaturaFiscalService();
+        $primeiroServico = app(AssinaturaFiscalService::class);
         $primeiroServico->arquivarChavePublicaDaEmpresa((int) $empresa->id, 1);
         $chaveVersaoUm = $primeiroServico->chavePublicaDaVersao((int) $empresa->id, 1);
 
         $this->guardarChavePrivada($empresa->nif);
-        $segundoServico = new AssinaturaFiscalService();
+        $segundoServico = app(AssinaturaFiscalService::class);
         $segundoServico->arquivarChavePublicaDaEmpresa((int) $empresa->id, 2);
 
         $this->assertSame($chaveVersaoUm, $segundoServico->chavePublicaDaVersao((int) $empresa->id, 1));
