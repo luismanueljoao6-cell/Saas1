@@ -180,7 +180,7 @@ class ArmazemTransferenciaController extends Controller
                 $dados['chave_idempotencia'],
                 (int) $request->user()->id,
             );
-        } catch (DomainException | InvalidArgumentException $exception) {
+        } catch (DomainException|InvalidArgumentException $exception) {
             return back()->with('erro', $exception->getMessage());
         }
 
