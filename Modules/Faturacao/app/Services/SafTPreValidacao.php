@@ -364,13 +364,13 @@ class SafTPreValidacao
             return "{$referencia}: não existe chave pública arquivada para a versão {$versao}; a assinatura não pode ser validada para o SAF-T.";
         }
 
-        $payload = Jws::payload($jws);
-
-        if (! is_string($payload)) {
-            return "{$referencia}: o JWS está mal formado e não pode ser validado para o SAF-T.";
-        }
-
         try {
+            $payload = Jws::payload($jws);
+
+            if (! is_string($payload)) {
+                return "{$referencia}: o JWS está mal formado e não pode ser validado para o SAF-T.";
+            }
+
             if (! $assinaturas->verificarComPem($payload, $jws, $chavePublica)) {
                 return "{$referencia}: a assinatura criptográfica JWS é inválida ou o payload foi adulterado.";
             }
