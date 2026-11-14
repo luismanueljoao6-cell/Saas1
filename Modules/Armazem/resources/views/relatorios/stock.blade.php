@@ -85,7 +85,7 @@
 
         <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div class="border-b border-slate-100 px-5 py-4 dark:border-zinc-800">
-                <h2 class="font-semibold text-slate-900 dark:text-zinc-100">Saldos por armazém</h2>
+                <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="font-semibold text-slate-900 dark:text-zinc-100">Saldos por armazém</h2><p class="mt-1 text-xs text-slate-500 dark:text-zinc-400">Exporta os resultados completos dos filtros atuais para CSV, compatível com Excel.</p></div><a href="{{ route('armazem.relatorios.stock.exportar', request()->query()) }}" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Exportar CSV</a></div>
                 <p class="mt-1 text-xs text-slate-500 dark:text-zinc-400">Os limites configurados são comparados com o saldo atual. Produtos sem limite definido aparecem sem alerta.</p>
             </div>
             <div class="overflow-x-auto">
