@@ -32,6 +32,7 @@ homologação fiscal** e não devem ser apresentados como tal.
 | H7 | Comunicação com a AGT | Ensaio completo no ambiente de **homologação** da AGT (séries, submissão, correção de rejeitados) | `faturacao.agt.*`, `AgtSubmissaoService`, `AgtSerieService` |
 | H8 | Base de dados real | Correr a suite e as migrations (instalação limpa, upgrade, rollback) em **MySQL** com dados de teste | CI MySQL; `adiantamento_abatimentos` (triggers) |
 | H9 | Integridade entre empresas na BD | Hoje garantida pelo serviço; avaliar chave composta (empresa, fatura) nas FKs dos abatimentos | `adiantamento_abatimentos` |
+| H10 | Âmbito e ciclo de vida da chave de assinatura | Confirmar na especificação vigente se a chave é do produtor do software ou da empresa emitente; confirmar versão, comunicação e rotação. A implementação arquiva chaves públicas por empresa/versão, mas não presume que esse âmbito esteja homologado | `AssinaturaFiscalService`, `faturacao_chaves_publicas`, `FATURACAO_CHAVE_VERSAO` |
 
 ## 3. Regra de comunicação
 
@@ -46,3 +47,10 @@ homologação fiscal** e não devem ser apresentados como tal.
 - `true` afirma que a representação fiscal está definida **e implementada**. Só se muda depois de fechar o ponto H3
   com a especificação da AGT; nunca para desbloquear a exportação.
 - Testes: `AbatimentoReconciliacaoSafTTest`, `AbatimentoIdempotenciaConcorrenteTest`.
+
+## 5. H10 — arquivo de chaves públicas e documentos históricos
+
+- A implementação guarda a chave pública e o fingerprint por combinação `empresa_id + versao`. O arquivo é imutável por versão: tentar reutilizar a mesma versão com outra chave interrompe a emissão.
+- Antes da submissão, o JWS é verificado com a chave pública arquivada para a empresa e a versão exacta do documento. Não se usa a chave actualmente instalada para validar automaticamente documentos antigos.
+- Documentos emitidos antes desta migração podem não ter chave pública arquivada. Esses documentos ficam bloqueados para submissão até a chave original ser recuperada e associada à versão correcta; não se deve preencher o histórico com a chave actual por conveniência.
+- **Pendente de confirmação externa:** o âmbito jurídico/técnico da chave (produtor do software vs. empresa emitente), a forma de comunicação à AGT e o processo de rotação têm de ser confirmados na documentação técnica vigente e em homologação. A implementação técnica não constitui prova de aceitação pela AGT.
