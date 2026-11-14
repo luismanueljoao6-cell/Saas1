@@ -196,9 +196,9 @@ class ArmazemInventarioService
                     $armazem,
                     $produto,
                     (string) $linha->quantidade_contada,
-                    'Inventário físico ' . $sessao->id,
+                    sprintf('Inventário físico %d', $sessao->id),
                     $utilizadorId,
-                    'inventario:' . $sessao->id . ':produto:' . $produto->id
+                    sprintf('inventario:%d:produto:%d', $sessao->id, $produto->id)
                 );
             }
 
@@ -242,7 +242,7 @@ class ArmazemInventarioService
     {
         $tenant = app(TenantManager::class);
 
-        if ($tenant->has() && !$tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
+        if ($tenant->has() && ! $tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
             throw new DomainException('O contexto atual não corresponde à empresa do inventário.');
         }
     }
@@ -263,6 +263,6 @@ class ArmazemInventarioService
         $sinal = $valor < 0 ? '-' : '';
         $absoluto = abs($valor);
 
-        return $sinal . intdiv($absoluto, 1000) . '.' . str_pad((string) ($absoluto % 1000), 3, '0', STR_PAD_LEFT);
+        return sprintf('%s%d.%03d', $sinal, intdiv($absoluto, 1000), $absoluto % 1000);
     }
 }
