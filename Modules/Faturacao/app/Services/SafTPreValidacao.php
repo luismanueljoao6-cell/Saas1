@@ -2,6 +2,7 @@
 
 namespace Modules\Faturacao\Services;
 
+use InvalidArgumentException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
@@ -369,7 +370,7 @@ class SafTPreValidacao
             if (! $assinaturas->verificarComPem($payload, $jws, $chavePublica)) {
                 return "{$referencia}: a assinatura criptográfica JWS é inválida ou o payload foi adulterado.";
             }
-        } catch (AssinaturaFiscalException|\\InvalidArgumentException $e) {
+        } catch (AssinaturaFiscalException|InvalidArgumentException $e) {
             return "{$referencia}: falha ao verificar a assinatura JWS: ".$e->getMessage();
         }
 
