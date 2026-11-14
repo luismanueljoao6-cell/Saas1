@@ -17,6 +17,7 @@ use Tests\TestCase;
 
 class CompraFornecedorTest extends TestCase
 {
+
     use RefreshDatabase;
 
     protected Empresa $empresa;
@@ -552,5 +553,4 @@ class CompraFornecedorTest extends TestCase
             'quantidade' => '2.000',
         ]);
     }
-
 }
