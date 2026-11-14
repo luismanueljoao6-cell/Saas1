@@ -19,6 +19,9 @@ use Throwable;
  */
 class ReciboService
 {
+    /** Valores aceites pelo contrato persistido em recibos.meio_pagamento. */
+    private const MEIOS_PAGAMENTO = ['dinheiro', 'transferencia', 'multicaixa', 'outro'];
+
     public function __construct(
         protected NumeracaoService $numeracaoService,
         protected AssinaturaFiscalService $assinaturaFiscalService,
