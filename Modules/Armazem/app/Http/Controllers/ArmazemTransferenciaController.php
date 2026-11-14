@@ -72,7 +72,7 @@ class ArmazemTransferenciaController extends Controller
                 'required',
                 'integer',
                 'different:armazem_destino_id',
-                'exists:armazens,id,empresa_id,'.$empresaId.',ativo,1',
+                'exists:armazens,id,empresa_id,' . $empresaId . ',ativo,1',
             ],
             'armazem_destino_id' => [
                 'required',
@@ -86,7 +86,7 @@ class ArmazemTransferenciaController extends Controller
                 'required',
                 'integer',
                 'distinct',
-                'exists:produtos,id,empresa_id,'.$empresaId.',ativo,1,controla_stock,1',
+                'exists:produtos,id,empresa_id,' . $empresaId . ',ativo,1,controla_stock,1',
             ],
             'linhas.*.quantidade' => [
                 'required',
