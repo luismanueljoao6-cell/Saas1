@@ -225,7 +225,6 @@ class SafTPreValidacaoTest extends TestCase
         );
     }
 
-
     public function test_pre_validacao_bloqueia_documento_sem_chave_publica_historica(): void
     {
         $fatura = $this->emitir('Documento sem chave histórica');
