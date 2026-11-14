@@ -10,6 +10,7 @@
                 <p class="mt-1 text-sm text-slate-500 dark:text-zinc-400">Organiza os locais onde a empresa guarda os seus produtos.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+                <a href="{{ route('armazem.inventarios.index') }}" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Inventários</a>
                 <a href="{{ route('armazem.transferencias.index') }}" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Transferências</a>
                 <span class="rounded-full bg-indigo-50 px-3 py-1 text-sm font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
                     {{ $armazens->total() }} {{ $armazens->total() === 1 ? 'local' : 'locais' }}
