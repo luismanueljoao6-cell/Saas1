@@ -110,7 +110,11 @@ class ArmazemTransferenciaController extends Controller
         return back()->with('sucesso', 'Transferência criada em rascunho.');
     }
 
-    public function expedir(Request $request, int $transferencia, ArmazemTransferenciaService $service): RedirectResponse
+    public function expedir(
+        Request $request,
+        int $transferencia,
+        ArmazemTransferenciaService $service
+    ): RedirectResponse
     {
         $alvo = $this->obterTransferencia($request, $transferencia);
 
@@ -123,7 +127,11 @@ class ArmazemTransferenciaController extends Controller
         return back()->with('sucesso', 'Transferência expedida. O stock saiu da origem e está em trânsito.');
     }
 
-    public function receber(Request $request, int $transferencia, ArmazemTransferenciaService $service): RedirectResponse
+    public function receber(
+        Request $request,
+        int $transferencia,
+        ArmazemTransferenciaService $service
+    ): RedirectResponse
     {
         $alvo = $this->obterTransferencia($request, $transferencia);
 
@@ -136,7 +144,11 @@ class ArmazemTransferenciaController extends Controller
         return back()->with('sucesso', 'Transferência recebida. O stock foi creditado no destino.');
     }
 
-    public function rececaoParcial(Request $request, int $transferencia, ArmazemTransferenciaService $service): RedirectResponse
+    public function rececaoParcial(
+        Request $request,
+        int $transferencia,
+        ArmazemTransferenciaService $service
+    ): RedirectResponse
     {
         $alvo = $this->obterTransferencia($request, $transferencia);
         $dados = $request->validate([
@@ -169,7 +181,11 @@ class ArmazemTransferenciaController extends Controller
         return back()->with('sucesso', 'Receção parcial registada. Podes continuar a receber as quantidades em falta.');
     }
 
-    public function cancelar(Request $request, int $transferencia, ArmazemTransferenciaService $service): RedirectResponse
+    public function cancelar(
+        Request $request,
+        int $transferencia,
+        ArmazemTransferenciaService $service
+    ): RedirectResponse
     {
         $alvo = $this->obterTransferencia($request, $transferencia);
 
