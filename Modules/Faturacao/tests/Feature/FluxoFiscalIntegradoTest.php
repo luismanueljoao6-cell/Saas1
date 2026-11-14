@@ -59,7 +59,17 @@ class FluxoFiscalIntegradoTest extends TestCase
         ]);
 
         $this->empresa = Empresa::create(['nome_comercial' => 'Loja A', 'nif' => '5001636863']);
+        file_put_contents($this->tmp.'/'.$this->empresa->nif.'.pem', $pem);
         $this->cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cliente A', 'nif' => null]);
+    }
+
+    protected function garantirChaveDaEmpresa(Empresa $empresa): void
+    {
+        $caminho = $this->tmp.'/'.$empresa->nif.'.pem';
+
+        if (! is_file($caminho)) {
+            copy($this->tmp.'/chave.pem', $caminho);
+        }
     }
 
     /** FA de 1140.00 (1000 + 14%), emitido e totalmente recebido. */
@@ -67,6 +77,7 @@ class FluxoFiscalIntegradoTest extends TestCase
     {
         $empresa ??= $this->empresa;
         $cliente ??= $this->cliente;
+        $this->garantirChaveDaEmpresa($empresa);
 
         $faturas = app(FaturaService::class);
         $fa = $faturas->emitir($faturas->criarRascunhoAdiantamento($empresa, $cliente, [
