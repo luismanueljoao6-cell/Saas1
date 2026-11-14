@@ -385,7 +385,7 @@ class ArmazemTransferenciaServiceTest extends TestCase
         try {
             app(ArmazemTransferenciaService::class)->expedir($empresa, $transferencia);
             $this->fail('Não deve expedir um produto que foi desativado.');
-        } catch (\\Illuminate\\Database\\Eloquent\\ModelNotFoundException) {
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
             $this->assertSame('rascunho', $transferencia->fresh()->estado);
             $this->assertSame('5.000', (string) ArmazemStockSaldo::withoutGlobalScopes()
                 ->where('armazem_id', $origem->id)
