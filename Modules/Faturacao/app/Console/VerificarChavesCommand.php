@@ -2,10 +2,12 @@
 
 namespace Modules\Faturacao\Console;
 
+use InvalidArgumentException;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Services\AssinaturaFiscalService;
 
 /**
@@ -189,6 +191,15 @@ class VerificarChavesCommand extends Command
         ];
 
         foreach ($tabelas as $tabela => $estados) {
+            $semVersao = DB::table($tabela)
+                ->whereIn('estado', $estados)
+                ->whereNull('chave_versao')
+                ->count();
+
+            if ($semVersao > 0) {
+                $problemas[] = [$tabela, "{$semVersao} documento(s) final(is) sem versão de chave de assinatura"];
+            }
+
             $documentos = DB::table($tabela)
                 ->whereIn('estado', $estados)
                 ->whereNotNull('chave_versao')
@@ -212,7 +223,12 @@ class VerificarChavesCommand extends Command
         $versaoAtual = (int) config('faturacao.chave_versao', 1);
 
         foreach (Empresa::query()->orderBy('id')->get(['id', 'nif']) as $empresa) {
-            $chaveInstalada = $assinatura->chavePublicaDaEmpresa((int) $empresa->id);
+            try {
+                $chaveInstalada = $assinatura->chavePublicaDaEmpresa((int) $empresa->id);
+            } catch (AssinaturaFiscalException|InvalidArgumentException) {
+                continue; // O erro já foi reportado na verificação do ficheiro privado.
+            }
+
             $chaveArquivada = $assinatura->chavePublicaDaVersao((int) $empresa->id, $versaoAtual);
 
             if ($chaveInstalada === null || $chaveArquivada === null) {
