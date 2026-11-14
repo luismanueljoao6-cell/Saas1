@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Modules\Armazem\Http\Controllers\ArmazemController;
 use Modules\Armazem\Http\Controllers\ArmazemInventarioController;
+use Modules\Armazem\Http\Controllers\ArmazemStockExportacaoController;
 use Modules\Armazem\Http\Controllers\ArmazemStockRelatorioController;
 use Modules\Armazem\Http\Controllers\ArmazemTransferenciaController;
 
@@ -13,6 +14,10 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa'])
         Route::middleware('permission:armazem.ver')->group(function (): void {
             Route::get('/', [ArmazemController::class, 'index'])->name('index');
         });
+
+        Route::get('/relatorios/stock/exportar', [ArmazemStockExportacaoController::class, 'saldos'])
+            ->middleware(['permission:armazem.stock.relatorios.ver', 'throttle:10,1'])
+            ->name('relatorios.stock.exportar');
 
         Route::get('/relatorios/stock', [ArmazemStockRelatorioController::class, 'index'])
             ->middleware('permission:armazem.stock.relatorios.ver')
