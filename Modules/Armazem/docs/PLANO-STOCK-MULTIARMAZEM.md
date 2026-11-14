@@ -145,3 +145,23 @@ A transferência passa a admitir várias sessões de receção, com histórico i
 - Ainda falta política para devolução/compensação depois da expedição.
 - O saldo legado da Faturação continua separado e não foi alterado.
 - Esta implementação só deve ser ativada após CI verde e revisão visual/funcional.
+
+
+## Inventário físico — implementação inicial
+
+O módulo passa a disponibilizar sessões de inventário físico por armazém:
+
+- A abertura exige seleção explícita dos produtos a contar e guarda um snapshot do saldo de cada produto naquele armazém.
+- Cada linha regista quantidade contada e diferença face ao snapshot, com precisão até três casas decimais.
+- Enquanto uma sessão está em contagem, as operações normais de entrada, saída e ajuste para os produtos incluídos ficam bloqueadas naquele armazém.
+- A conclusão exige contagem de todas as linhas e aplica cada diferença através de `ArmazemStockService::ajustar()`, com chave idempotente determinística por sessão/produto.
+- A conclusão decorre numa única transação. Se um ajuste falhar, a sessão e todos os movimentos são revertidos.
+- O estado intermédio `a_finalizar` permite ao serviço aplicar os próprios ajustes sem desbloquear movimentos externos.
+- O cancelamento liberta os produtos sem alterar os saldos.
+- A interface permite abrir sessões, registar contagens, rever diferenças e concluir/cancelar.
+
+### Limites desta fase
+
+- A seleção de produtos é explícita; não é criado automaticamente um inventário de todo o catálogo.
+- O inventário só cobre o novo stock multi-armazém. O stock legado da Faturação continua separado.
+- A implementação ainda precisa de CI verde, teste visual em browser/telemóvel e validação de concorrência real no MySQL antes de produção.
