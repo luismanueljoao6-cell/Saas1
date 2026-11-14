@@ -52,7 +52,6 @@ class AssinaturaChavesPublicasTest extends TestCase
         file_put_contents($this->diretorio.'/'.$nif.'.pem', $pem);
     }
 
-
     /** @return array{0: string, 1: string} [chave privada, chave pública] */
     protected function gerarParChaves(): array
     {
@@ -166,7 +165,6 @@ class AssinaturaChavesPublicasTest extends TestCase
 
         $this->assertSame($chaveOriginal, $servico->chavePublicaDaVersao((int) $empresa->id, 1));
     }
-
 
     public function test_rotacao_preserva_a_chave_publica_historica(): void
     {
