@@ -68,6 +68,8 @@ class ArmazemInventarioServiceTest extends TestCase
 
         $linha = $service->registarContagem($empresa, $inventario, $linhas->get($produtoA->id)->id, '8.500');
         $this->assertSame('-1.500', (string) $linha->diferenca);
+        $this->assertNotNull($linha->contado_em);
+        $this->assertNull($linha->contado_por);
     }
 
     public function test_bloqueia_movimentos_dos_produtos_durante_a_contagem(): void
