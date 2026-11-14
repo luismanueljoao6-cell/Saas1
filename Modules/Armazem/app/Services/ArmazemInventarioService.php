@@ -242,7 +242,7 @@ class ArmazemInventarioService
     {
         $tenant = app(TenantManager::class);
 
-        if ($tenant->has() && !$tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
+        if ($tenant->has() && ! $tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
             throw new DomainException('O contexto atual não corresponde à empresa do inventário.');
         }
     }
