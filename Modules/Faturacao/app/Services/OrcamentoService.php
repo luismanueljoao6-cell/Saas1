@@ -43,7 +43,7 @@ class OrcamentoService
      * Atualiza apenas rascunhos. O lock e a consulta sem scopes garantem
      * isolamento por empresa mesmo em jobs ou chamadas sem tenant ambiente.
      *
-     * @param array<int, array<string, mixed>> $linhas
+     * @param  array<int, array<string, mixed>>  $linhas
      */
     public function atualizarRascunho(Orcamento $orcamento, Cliente $cliente, array $linhas, ?string $validade, ?string $observacoes): Orcamento
     {
