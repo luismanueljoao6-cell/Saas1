@@ -78,7 +78,7 @@ class ArmazemInventarioController extends Controller
         Request $request,
         int $inventario,
         int $linha,
-        ArmazemInventarioService $service
+        ArmazemInventarioService $service,
     ): RedirectResponse {
         $dados = $request->validate([
             'quantidade_contada' => ['required', 'numeric', 'gte:0', 'decimal:0,3'],
