@@ -393,5 +393,4 @@ class ArmazemTransferenciaServiceTest extends TestCase
                 ->value('quantidade'));
         }
     }
-
 }
