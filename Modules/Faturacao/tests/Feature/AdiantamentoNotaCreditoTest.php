@@ -102,7 +102,7 @@ class AdiantamentoNotaCreditoTest extends TestCase
         $tenant->set((int) $this->empresa->id + 1000);
 
         try {
-            $this->expectException(\\DomainException::class);
+            $this->expectException(\DomainException::class);
             $this->expectExceptionMessage('A operação não pertence à empresa do contexto atual.');
             $notas->eliminarRascunho($rascunho);
         } finally {
