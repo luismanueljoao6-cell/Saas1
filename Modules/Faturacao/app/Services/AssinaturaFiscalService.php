@@ -140,20 +140,7 @@ class AssinaturaFiscalService
         }
 
         $fingerprint = hash('sha256', preg_replace('/\\s+/', '', $pem) ?: $pem);
-        $existente = DB::table('faturacao_chaves_publicas')
-            ->where('empresa_id', $empresaId)
-            ->where('versao', $versao)
-            ->first();
-
-        if ($existente !== null) {
-            if (! hash_equals((string) $existente->fingerprint, $fingerprint)) {
-                throw AssinaturaFiscalException::dadosEmFalta('a versão de chave já está associada a outra chave pública; incrementa FATURACAO_CHAVE_VERSAO antes de emitir.');
-            }
-
-            return;
-        }
-
-        DB::table('faturacao_chaves_publicas')->insert([
+        DB::table('faturacao_chaves_publicas')->insertOrIgnore([
             'empresa_id' => $empresaId,
             'versao' => $versao,
             'chave_publica_pem' => $pem,
@@ -161,6 +148,17 @@ class AssinaturaFiscalService
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        // A restrição única empresa/versão torna a operação segura sob
+        // emissões concorrentes em séries diferentes.
+        $existente = DB::table('faturacao_chaves_publicas')
+            ->where('empresa_id', $empresaId)
+            ->where('versao', $versao)
+            ->first();
+
+        if ($existente === null || ! hash_equals((string) $existente->fingerprint, $fingerprint)) {
+            throw AssinaturaFiscalException::dadosEmFalta('a versão de chave já está associada a outra chave pública; incrementa FATURACAO_CHAVE_VERSAO antes de emitir.');
+        }
     }
 
     /** Resolve exclusivamente a chave histórica da empresa e da versão do documento. */
