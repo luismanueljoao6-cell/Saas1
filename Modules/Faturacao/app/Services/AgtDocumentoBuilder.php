@@ -45,6 +45,12 @@ class AgtDocumentoBuilder
             if (! $servicoAssinatura->verificarComPem($payload, $assinatura, $chavePublica)) {
                 throw AgtException::configuracaoInvalida("a assinatura criptográfica do documento {$documento->numero_documento} é inválida ou foi adulterada.");
             }
+
+            $payloadEsperado = $documento->construirStringParaAssinar();
+
+            if (! hash_equals($payloadEsperado, $payload)) {
+                throw AgtException::configuracaoInvalida("os dados fiscais persistidos do documento {$documento->numero_documento} divergem do payload originalmente assinado.");
+            }
         } catch (AssinaturaFiscalException|InvalidArgumentException $e) {
             throw AgtException::configuracaoInvalida("não foi possível verificar a assinatura do documento {$documento->numero_documento}: ".$e->getMessage());
         }
