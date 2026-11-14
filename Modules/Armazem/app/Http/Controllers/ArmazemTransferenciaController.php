@@ -6,6 +6,7 @@ use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use InvalidArgumentException;
@@ -72,7 +73,9 @@ class ArmazemTransferenciaController extends Controller
                 'required',
                 'integer',
                 'different:armazem_destino_id',
-                'exists:armazens,id,empresa_id,' . $empresaId . ',ativo,1',
+                Rule::exists('armazens', 'id')->where(fn ($query) => $query
+                    ->where('empresa_id', $empresaId)
+                    ->where('ativo', true)),
             ],
             'armazem_destino_id' => [
                 'required',
@@ -86,7 +89,10 @@ class ArmazemTransferenciaController extends Controller
                 'required',
                 'integer',
                 'distinct',
-                'exists:produtos,id,empresa_id,' . $empresaId . ',ativo,1,controla_stock,1',
+                Rule::exists('produtos', 'id')->where(fn ($query) => $query
+                    ->where('empresa_id', $empresaId)
+                    ->where('ativo', true)
+                    ->where('controla_stock', true)),
             ],
             'linhas.*.quantidade' => [
                 'required',
