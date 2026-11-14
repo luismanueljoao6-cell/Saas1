@@ -243,12 +243,7 @@ class ArmazemTransferenciaService
      * Regista uma entrega parcial. Quantidades em falta/danificadas ficam
      * auditadas e nunca são creditadas no saldo do armazém de destino.
      *
-     * @param array<int, array{
-     *     linha_id: int,
-     *     quantidade_recebida: string,
-     *     quantidade_em_falta: string,
-     *     quantidade_danificada: string,
-     * }> $linhas
+     * @param array<int, array<string, mixed>> $linhas
      */
     public function registarRececaoParcial(
         Empresa $empresa,
