@@ -200,7 +200,7 @@ class RecibosInterfaceTest extends TestCase
 
     public function test_servico_recusa_meio_de_pagamento_fora_do_contrato_da_base_de_dados(): void
     {
-        $this->expectException(\\InvalidArgumentException::class);
+        $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('Meio de pagamento inválido.');
 
         app(ReciboService::class)->emitir(
