@@ -106,12 +106,9 @@ class AssinaturaFiscalService
             return null;
         }
 
-        $chave = openssl_pkey_get_private((string) file_get_contents($caminho));
-
-        if (! $chave) {
-            throw AssinaturaFiscalException::chavePrivadaInvalida();
-        }
-
+        // Reutiliza a mesma chave privada já carregada para assinar o documento,
+        // evitando arquivar a chave nova se houver rotação entre assinatura e arquivo.
+        $chave = $this->carregarChavePrivada($empresaId);
         $publica = (openssl_pkey_get_details($chave) ?: [])['key'] ?? null;
 
         return is_string($publica) ? $publica : null;
