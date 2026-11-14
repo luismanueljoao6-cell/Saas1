@@ -20,6 +20,7 @@ class CompraFornecedorTest extends TestCase
     use RefreshDatabase;
 
     protected Empresa $empresa;
+
     protected User $utilizador;
 
     protected function setUp(): void
