@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Armazem\Models\ArmazemInventario;
 use Modules\Armazem\Models\ArmazemStockMovimento;
 use Modules\Armazem\Models\ArmazemStockSaldo;
 use Modules\Armazem\Services\ArmazemInventarioService;
