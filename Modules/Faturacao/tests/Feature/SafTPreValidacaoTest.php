@@ -48,11 +48,13 @@ class SafTPreValidacaoTest extends TestCase
 
         config([
             'faturacao.chave_privada_path' => $this->tmp.'/chave.pem',
+            'faturacao.chaves_dir' => $this->tmp,
             'faturacao.agt.ativo' => false,
             'faturacao.taxas_iva_permitidas' => [14.0],
         ]);
 
         $this->empresa = Empresa::create(['nome_comercial' => 'Loja Fase3', 'nif' => '5001636863']);
+        file_put_contents($this->tmp.'/'.$this->empresa->nif.'.pem', $pem);
         $this->cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cliente', 'nif' => null]);
     }
 
