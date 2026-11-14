@@ -51,7 +51,13 @@ class ArmazemTransferenciaController extends Controller
             fn (ArmazemTransferencia $transferencia): array => [$transferencia->id => (string) Str::uuid()]
         );
 
-        return view('armazem::transferencias.index', compact('armazens', 'produtos', 'transferencias', 'empresa', 'chavesRececao'));
+        return view('armazem::transferencias.index', compact(
+            'armazens',
+            'produtos',
+            'transferencias',
+            'empresa',
+            'chavesRececao',
+        ));
     }
 
     public function store(Request $request, ArmazemTransferenciaService $service): RedirectResponse
