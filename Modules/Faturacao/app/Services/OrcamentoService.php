@@ -169,6 +169,7 @@ class OrcamentoService
     public function converter(Orcamento $orcamento, Empresa $empresa, FaturaService $faturas): Fatura
     {
         $this->validarTenant((int) $empresa->id);
+
         return DB::transaction(function () use ($orcamento, $empresa, $faturas) {
             $atual = Orcamento::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
