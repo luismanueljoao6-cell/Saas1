@@ -145,7 +145,7 @@ class SafTPreValidacao
                 if (Dinheiro::centimos($recibo->valor) <= 0) {
                     $erros[] = "{$ref}: o valor do recibo tem de ser superior a zero.";
                 }
-            } catch (\InvalidArgumentException $e) {
+            } catch (InvalidArgumentException $e) {
                 $erros[] = "{$ref}: {$e->getMessage()}";
             }
 
