@@ -186,7 +186,7 @@ class SafTPreValidacaoTest extends TestCase
 
     public function test_calculo_proporcional_usa_divisao_inteira_segura(): void
     {
-        $resultado = \\Modules\\Faturacao\\Support\\Dinheiro::multiplicarDividirPorExcesso(
+        $resultado = \Modules\Faturacao\Support\Dinheiro::multiplicarDividirPorExcesso(
             123456789012345,
             23456789,
             123456789,
@@ -197,9 +197,9 @@ class SafTPreValidacaoTest extends TestCase
 
     public function test_calculo_proporcional_recusa_overflow_em_vez_de_corromper_valor(): void
     {
-        $this->expectException(\\InvalidArgumentException::class);
+        $this->expectException(\InvalidArgumentException::class);
 
-        \\Modules\\Faturacao\\Support\\Dinheiro::multiplicarDividirPorExcesso(
+        \Modules\Faturacao\Support\Dinheiro::multiplicarDividirPorExcesso(
             PHP_INT_MAX,
             PHP_INT_MAX,
             1,
@@ -212,7 +212,7 @@ class SafTPreValidacaoTest extends TestCase
         $outroCliente = Cliente::create(['empresa_id' => $outraEmpresa->id, 'nome' => 'Outro Cliente', 'nif' => null]);
         app(TenantManager::class)->set((int) $this->empresa->id);
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
 
         app(FaturaService::class)->criarRascunhoAdiantamento(
             $outraEmpresa,
