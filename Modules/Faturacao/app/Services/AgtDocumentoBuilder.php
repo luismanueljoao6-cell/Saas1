@@ -34,15 +34,10 @@ class AgtDocumentoBuilder
         try {
             $servicoAssinatura = app(AssinaturaFiscalService::class);
             $versaoDocumento = (int) $documento->chave_versao;
-            $versaoConfigurada = (int) config('faturacao.chave_versao', 1);
-            $chavePublica = $servicoAssinatura->chavePublicaDaEmpresa((int) $documento->empresa_id);
-
-            if ($versaoDocumento < 1 || $versaoDocumento !== $versaoConfigurada) {
-                throw AgtException::configuracaoInvalida("a versão da chave do documento {$documento->numero_documento} não está disponível para verificação. O envio foi bloqueado; é necessário recuperar a chave pública histórica correspondente.");
-            }
+            $chavePublica = $servicoAssinatura->chavePublicaDaVersao((int) $documento->empresa_id, $versaoDocumento);
 
             if (! is_string($chavePublica) || $chavePublica === '') {
-                throw AgtException::configuracaoInvalida("não existe chave pública da empresa para verificar o documento {$documento->numero_documento}; o envio foi bloqueado.");
+                throw AgtException::configuracaoInvalida("não existe chave pública arquivada para a empresa e versão {$versaoDocumento} do documento {$documento->numero_documento}; o envio foi bloqueado. Documentos antigos sem arquivo histórico exigem recuperação da chave original.");
             }
 
             $payload = (string) Jws::payload($assinatura);
