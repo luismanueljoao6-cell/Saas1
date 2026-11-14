@@ -128,6 +128,17 @@ class ArmazemStockRelatorioController extends Controller
             ['quantidade_minima' => $dados['quantidade_minima']]
         );
 
+        // Garante que artigos recém-configurados aparecem no relatório mesmo
+        // antes da primeira entrada física de stock.
+        DB::table('armazem_stock_saldos')->insertOrIgnore([
+            'empresa_id' => $empresaId,
+            'armazem_id' => $armazem->id,
+            'produto_id' => $produto->id,
+            'quantidade' => '0.000',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         return back()->with('sucesso', 'Stock mínimo atualizado com sucesso.');
     }
 }
