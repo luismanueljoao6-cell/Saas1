@@ -155,6 +155,7 @@ class AssinaturaChavesPublicasTest extends TestCase
         $chaveOriginal = $servico->chavePublicaDaVersao((int) $empresa->id, 1);
 
         $this->guardarChavePrivada($empresa->nif);
+        $servico = new AssinaturaFiscalService();
 
         try {
             $servico->arquivarChavePublicaDaEmpresa((int) $empresa->id, 1);
@@ -164,6 +165,24 @@ class AssinaturaChavesPublicasTest extends TestCase
         }
 
         $this->assertSame($chaveOriginal, $servico->chavePublicaDaVersao((int) $empresa->id, 1));
+    }
+
+
+    public function test_rotacao_preserva_a_chave_publica_historica(): void
+    {
+        $empresa = $this->empresa('5001636867');
+        $this->guardarChavePrivada($empresa->nif);
+
+        $primeiroServico = new AssinaturaFiscalService();
+        $primeiroServico->arquivarChavePublicaDaEmpresa((int) $empresa->id, 1);
+        $chaveVersaoUm = $primeiroServico->chavePublicaDaVersao((int) $empresa->id, 1);
+
+        $this->guardarChavePrivada($empresa->nif);
+        $segundoServico = new AssinaturaFiscalService();
+        $segundoServico->arquivarChavePublicaDaEmpresa((int) $empresa->id, 2);
+
+        $this->assertSame($chaveVersaoUm, $segundoServico->chavePublicaDaVersao((int) $empresa->id, 1));
+        $this->assertNotSame($chaveVersaoUm, $segundoServico->chavePublicaDaVersao((int) $empresa->id, 2));
     }
 
     public function test_chaves_de_empresas_diferentes_ficam_isoladas(): void
