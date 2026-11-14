@@ -35,10 +35,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('empresa_id')->constrained('empresas')->cascadeOnDelete();
             $table->foreignId('rececao_id')->constrained('armazem_transferencia_rececoes')->cascadeOnDelete();
-                        $table->foreignId('transferencia_linha_id');
-            $table->foreign('transferencia_linha_id', 'arr_rec_linhas_trans_linha_fk')
-                ->references('id')
-                ->on('armazem_transferencia_linhas')
+            $table->foreignId('transferencia_linha_id')
+                ->constrained('armazem_transferencia_linhas', null, 'arr_rec_linhas_trans_linha_fk')
                 ->restrictOnDelete();
             $table->decimal('quantidade_recebida', 14, 3)->default(0);
             $table->decimal('quantidade_em_falta', 14, 3)->default(0);
@@ -58,6 +56,5 @@ return new class extends Migration
         Schema::table('armazem_transferencia_linhas', function (Blueprint $table): void {
             $table->dropColumn(['quantidade_em_falta', 'quantidade_danificada']);
         });
-
     }
 };

@@ -11,6 +11,7 @@ use Modules\Armazem\Services\ArmazemInventarioService;
 use Modules\Armazem\Services\ArmazemService;
 use Modules\Armazem\Services\ArmazemStockService;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Core\Support\Servico;
 use Modules\Faturacao\Models\Produto;
 use Tests\TestCase;
@@ -26,6 +27,7 @@ class ArmazemInventarioServiceTest extends TestCase
             'nif' => $nif,
         ]);
         $empresa->aderirServicos([Servico::Faturacao]);
+        app(TenantManager::class)->set((int) $empresa->id);
 
         $produtoA = Produto::create([
             'empresa_id' => $empresa->id,

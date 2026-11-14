@@ -26,6 +26,7 @@ class ArmazemTransferenciaServiceTest extends TestCase
             'nif' => $nif,
         ]);
         $empresa->aderirServicos([Servico::Faturacao]);
+        app(TenantManager::class)->set((int) $empresa->id);
 
         $produto = Produto::create([
             'empresa_id' => $empresa->id,
@@ -141,6 +142,7 @@ class ArmazemTransferenciaServiceTest extends TestCase
         [$empresaA, $origemA, $destinoA, $produtoA] = $this->preparar('630100205');
         [$empresaB, $origemB] = $this->preparar('630100206');
         $service = app(ArmazemTransferenciaService::class);
+        app(TenantManager::class)->set((int) $empresaA->id);
 
         try {
             $service->criar(
