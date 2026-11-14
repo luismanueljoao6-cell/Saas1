@@ -59,17 +59,25 @@ class ArmazemInventarioServiceTest extends TestCase
         $stock = app(ArmazemStockService::class);
         $stock->entrada($empresa, $armazem, $produtoA, '10.000', 'Entrada inicial');
 
+        $utilizador = User::factory()->create(['empresa_id' => $empresa->id]);
         $service = app(ArmazemInventarioService::class);
-        $inventario = $service->abrir($empresa, $armazem, [$produtoA->id, $produtoB->id]);
+        $inventario = $service->abrir($empresa, $armazem, [$produtoA->id, $produtoB->id], $utilizador->id);
         $linhas = $inventario->linhas->keyBy('produto_id');
 
         $this->assertSame('10.000', (string) $linhas->get($produtoA->id)->quantidade_sistema);
         $this->assertSame('0.000', (string) $linhas->get($produtoB->id)->quantidade_sistema);
 
-        $linha = $service->registarContagem($empresa, $inventario, $linhas->get($produtoA->id)->id, '8.500');
+        $linha = $service->registarContagem(
+            $empresa,
+            $inventario,
+            $linhas->get($produtoA->id)->id,
+            '8.500',
+            $utilizador->id,
+        );
         $this->assertSame('-1.500', (string) $linha->diferenca);
         $this->assertNotNull($linha->contado_em);
-        $this->assertNull($linha->contado_por);
+        $this->assertSame($utilizador->id, $linha->contado_por);
+        $this->assertSame($utilizador->id, $linha->utilizadorContagem->id);
     }
 
     public function test_bloqueia_movimentos_dos_produtos_durante_a_contagem(): void
