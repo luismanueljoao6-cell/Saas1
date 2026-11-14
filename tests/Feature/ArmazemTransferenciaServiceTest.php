@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use DomainException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Armazem\Models\ArmazemStockMovimento;
 use Modules\Armazem\Models\ArmazemStockSaldo;
@@ -385,7 +386,7 @@ class ArmazemTransferenciaServiceTest extends TestCase
         try {
             app(ArmazemTransferenciaService::class)->expedir($empresa, $transferencia);
             $this->fail('Não deve expedir um produto que foi desativado.');
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+        } catch (ModelNotFoundException) {
             $this->assertSame('rascunho', $transferencia->fresh()->estado);
             $this->assertSame('5.000', (string) ArmazemStockSaldo::withoutGlobalScopes()
                 ->where('armazem_id', $origem->id)
