@@ -152,17 +152,21 @@ grace period, consegues consultar faturas antigas mas não criar novas
 
 1. **Copiar o módulo** (a seguir ao Core) e `composer dump-autoload`.
 
-2. **Gerar o par de chaves RSA** (nunca committer a privada):
+2. **Gerar uma chave RSA de desenvolvimento** (nunca committer a privada):
    ```bash
-   mkdir -p storage/app/faturacao
-   openssl genrsa -out storage/app/faturacao/chave-privada.pem 2048
-   openssl rsa -in storage/app/faturacao/chave-privada.pem -pubout -out storage/app/faturacao/chave-publica.pem
+   mkdir -p storage/app/faturacao/chaves
+   openssl genrsa -out storage/app/faturacao/chave-privada-local.pem 2048
    echo "storage/app/faturacao/" >> .gitignore
    ```
+   A chave genérica é aceite apenas em `local/testing` com a comunicação AGT desligada.
+   A implementação de produção procura a chave privada por NIF em
+   `FATURACAO_CHAVES_DIR/{NIF}.pem`. O âmbito jurídico da chave (produtor do software
+   ou empresa emitente) continua pendente de confirmação na homologação; ver H10.
 
 3. **Variáveis de ambiente**:
    ```
-   FATURACAO_CHAVE_PRIVADA_PATH=storage/app/faturacao/chave-privada.pem
+   FATURACAO_CHAVE_PRIVADA_PATH=storage/app/faturacao/chave-privada-local.pem
+   FATURACAO_CHAVES_DIR=storage/app/faturacao/chaves
    FATURACAO_CHAVE_VERSAO=1
    FATURACAO_TAXA_IVA_GERAL=14.0
    FATURACAO_SAFT_NUMERO_CERTIFICADO=0
@@ -172,6 +176,12 @@ grace period, consegues consultar faturas antigas mas não criar novas
    ```bash
    php artisan migrate
    ```
+   A migration `faturacao_chaves_publicas` guarda a chave pública e o fingerprint
+   por empresa/versão no momento da emissão. O registo é imutável por versão e é
+   usado para verificar JWS na submissão AGT e na pré-validação SAF-T.
+   Documentos emitidos antes desta migration não são preenchidos automaticamente:
+   sem a chave original correspondente, ficam bloqueados para envio/exportação fiscal.
+   Não associes a chave actual a documentos antigos sem prova de que foi a chave usada.
    Não há seeder — as séries de numeração criam-se sozinhas na primeira
    emissão de cada ano (ver `NumeracaoService::obterOuCriarSerie`).
 
