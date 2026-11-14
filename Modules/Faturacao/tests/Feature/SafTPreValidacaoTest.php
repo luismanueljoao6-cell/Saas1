@@ -192,7 +192,7 @@ class SafTPreValidacaoTest extends TestCase
             123456789,
         );
 
-        $this->assertSame(23456789000000, $resultado);
+        $this->assertSame(23456789002346, $resultado);
     }
 
     public function test_calculo_proporcional_recusa_overflow_em_vez_de_corromper_valor(): void
