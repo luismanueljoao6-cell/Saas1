@@ -440,7 +440,7 @@ class SafTPreValidacao
             if (Dinheiro::centimos($documento->valor_sem_iva) + Dinheiro::centimos($documento->valor_iva) !== Dinheiro::centimos($documento->valor_total)) {
                 $erros[] = "{$referencia}: valor sem IVA + IVA não é igual ao total.";
             }
-        } catch (\InvalidArgumentException $e) {
+        } catch (InvalidArgumentException $e) {
             $erros[] = "{$referencia}: {$e->getMessage()}";
         }
 
@@ -465,7 +465,7 @@ class SafTPreValidacao
             if ($motivo !== null && app()->isProduction() && ! config('faturacao.motivos_isencao_confirmados')) {
                 $erros[] = "{$referencia} (linha {$numero}): usa o código {$motivo}, mas a tabela de motivos de isenção ainda não foi confirmada contra o anexo oficial (FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS).";
             }
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             $erros[] = "{$referencia} (linha {$numero}): {$e->getMessage()}";
         }
 
@@ -479,7 +479,7 @@ class SafTPreValidacao
                     || Dinheiro::centimos($v['total']) !== Dinheiro::centimos($linha->valor_total)) {
                     $erros[] = "{$referencia} (linha {$numero}): os valores gravados não correspondem ao recálculo (quantidade × preço, IVA arredondado por excesso).";
                 }
-            } catch (\InvalidArgumentException $e) {
+            } catch (InvalidArgumentException $e) {
                 $erros[] = "{$referencia} (linha {$numero}): {$e->getMessage()}";
             }
         }
