@@ -3,7 +3,9 @@
 namespace Modules\Armazem\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Modules\Armazem\Support\PapeisArmazem;
 use Modules\Core\Services\MenuRegistry;
+use Modules\Core\Services\TenantProvisionerRegistry;
 
 class ArmazemServiceProvider extends ServiceProvider
 {
@@ -13,30 +15,18 @@ class ArmazemServiceProvider extends ServiceProvider
         $this->loadViewsFrom(__DIR__.'/../../resources/views', 'armazem');
         $this->app->register(RouteServiceProvider::class);
 
-        $this->app->make(TenantProvisionerRegistry::class)->register(\n            'faturacao',\n            fn (int $empresaId) => PapeisArmazem::provisionar($empresaId),\n        );\n\n        $menu = $this->app->make(MenuRegistry::class);
-
-        $menu->adicionar(
-            'armazem.index',
-            'Armazéns',
-            46,
-            null,
-            fn () => auth()->user()?->hasAnyPermission(PapeisArmazem::PERMISSOES) ?? false,
+        // O Armazém acompanha o serviço de Faturação e é provisionado
+        // automaticamente no registo, ativação ou reparação do serviço.
+        $this->app->make(TenantProvisionerRegistry::class)->register(
+            'faturacao',
+            fn (int $empresaId) => PapeisArmazem::provisionar($empresaId),
         );
 
-        $menu->adicionar(
-            'armazem.transferencias.index',
-            'Transferências',
-            47,
-            null,
-            fn () => auth()->user()?->hasRole('Administrador') ?? false,
-        );
+        $menu = $this->app->make(MenuRegistry::class);
+        $podeConsultar = fn () => auth()->user()?->hasAnyPermission(PapeisArmazem::PERMISSOES) ?? false;
 
-        $menu->adicionar(
-            'armazem.inventarios.index',
-            'Inventários',
-            48,
-            null,
-            fn () => auth()->user()?->hasRole('Administrador') ?? false,
-        );
+        $menu->adicionar('armazem.index', 'Armazéns', 46, null, $podeConsultar);
+        $menu->adicionar('armazem.transferencias.index', 'Transferências', 47, null, $podeConsultar);
+        $menu->adicionar('armazem.inventarios.index', 'Inventários', 48, null, $podeConsultar);
     }
 }
