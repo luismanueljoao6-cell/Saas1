@@ -169,7 +169,6 @@ class VerificarChavesCommand extends Command
         }
     }
 
-
     /**
      * Verifica se todos os documentos finais têm uma chave pública histórica
      * íntegra e se a chave instalada não foi trocada sem incrementar a versão.
