@@ -27,6 +27,7 @@
         @if ($compra->estado === 'recebida' && (float) $compra->total_pago < (float) $compra->total)
             <form method="POST" action="{{ route('faturacao.compras.pagamentos.store', $compra) }}" class="mt-5 space-y-3 border-t pt-4 dark:border-zinc-700">
                 @csrf
+                <input type="hidden" name="chave_idempotencia" value="{{ old('chave_idempotencia') ?? (string) \\Illuminate\\Support\\Str::uuid() }}">
                 <h2 class="font-semibold">Registar pagamento</h2>
                 <div class="grid gap-3 sm:grid-cols-2">
                     <label class="grid gap-1 text-sm">Valor (Kz)<input name="valor" type="number" min="0.01" max="{{ number_format((float) $compra->total - (float) $compra->total_pago, 2, '.', '') }}" step="0.01" required class="rounded-md border px-3 py-2"></label>
