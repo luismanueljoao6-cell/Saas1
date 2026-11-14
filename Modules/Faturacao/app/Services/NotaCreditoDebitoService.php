@@ -109,6 +109,8 @@ class NotaCreditoDebitoService
         array $linhas,
         ?int $faturaId = null,
     ): NotaCreditoDebito {
+        GuardaEmissao::garantirTenant($empresaId);
+
         if (! in_array($tipo, ['credito', 'debito'], true)) {
             throw new \InvalidArgumentException("Tipo inválido: usa 'credito' ou 'debito'.");
         }
