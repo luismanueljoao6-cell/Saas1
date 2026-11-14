@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
+use Modules\Core\Services\TenantManager;
 use Modules\Core\Support\Servico;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
@@ -209,6 +210,50 @@ class RecibosInterfaceTest extends TestCase
             '10.00',
             'bitcoin',
         );
+    }
+
+
+    public function test_servico_de_recibos_recusa_empresa_fora_do_tenant_ativo(): void
+    {
+        $tenant = app(TenantManager::class);
+        $tenant->set((int) $this->empresa->id + 1000);
+
+        try {
+            app(ReciboService::class)->emitir(
+                (int) $this->empresa->id,
+                (int) $this->cliente->id,
+                '10.00',
+                'dinheiro',
+            );
+
+            $this->fail('O serviço devia rejeitar uma empresa diferente do tenant ativo.');
+        } catch (\\DomainException $exception) {
+            $this->assertSame('A operação não pertence à empresa do contexto atual.', $exception->getMessage());
+        } finally {
+            $tenant->clear();
+        }
+    }
+
+    public function test_servico_de_notas_recusa_criar_rascunho_fora_do_tenant_ativo(): void
+    {
+        $tenant = app(TenantManager::class);
+        $tenant->set((int) $this->empresa->id + 1000);
+
+        try {
+            app(NotaCreditoDebitoService::class)->criarRascunho(
+                (int) $this->empresa->id,
+                (int) $this->cliente->id,
+                'debito',
+                'Teste de isolamento',
+                [['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => '10.00', 'taxa_iva' => 0]],
+            );
+
+            $this->fail('O serviço devia rejeitar uma empresa diferente do tenant ativo.');
+        } catch (\\DomainException $exception) {
+            $this->assertSame('A operação não pertence à empresa do contexto atual.', $exception->getMessage());
+        } finally {
+            $tenant->clear();
+        }
     }
 
     public function test_meio_de_pagamento_e_valor_sao_validados(): void
