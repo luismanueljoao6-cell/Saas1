@@ -101,7 +101,7 @@ class ArmazemInventarioController extends Controller
     public function concluir(
         Request $request,
         int $inventario,
-        ArmazemInventarioService $service
+        ArmazemInventarioService $service,
     ): RedirectResponse {
         try {
             $service->concluir(
@@ -119,7 +119,7 @@ class ArmazemInventarioController extends Controller
     public function cancelar(
         Request $request,
         int $inventario,
-        ArmazemInventarioService $service
+        ArmazemInventarioService $service,
     ): RedirectResponse {
         try {
             $service->cancelar(
