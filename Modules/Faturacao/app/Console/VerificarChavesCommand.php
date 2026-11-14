@@ -98,7 +98,7 @@ class VerificarChavesCommand extends Command
 
         if ($problemas !== []) {
             $this->table(['Âmbito', 'Problema'], $problemas);
-            $this->error(count($problemas).' problema(s) nas chaves de assinatura (ver docs/CHAVES.md do módulo Faturação).');
+            $this->error(count($problemas).' problema(s) nas chaves de assinatura (ver docs/CHAVES.md).');
 
             return self::FAILURE;
         }
