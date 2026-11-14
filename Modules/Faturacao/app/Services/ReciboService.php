@@ -77,8 +77,8 @@ class ReciboService
             throw new \InvalidArgumentException('O valor do recibo tem de ser superior a zero.');
         }
 
-        if (trim($meioPagamento) === '') {
-            throw new \InvalidArgumentException('O meio de pagamento é obrigatório.');
+        if (! in_array($meioPagamento, self::MEIOS_PAGAMENTO, true)) {
+            throw new \InvalidArgumentException('Meio de pagamento inválido. Usa dinheiro, transferencia, multicaixa ou outro.');
         }
 
         if ($tipo === 'RG' && $faturaId === null) {
