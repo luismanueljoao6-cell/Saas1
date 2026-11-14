@@ -27,7 +27,6 @@ class ArmazemTransferenciaService
 
     /**
      * Cria um rascunho. Cada produto só pode aparecer uma vez na transferência.
-     *
      */
     public function criar(
         Empresa $empresa,
@@ -241,7 +240,6 @@ class ArmazemTransferenciaService
     /**
      * Regista uma entrega parcial. Quantidades em falta/danificadas ficam
      * auditadas e nunca são creditadas no saldo do armazém de destino.
-     *
      */
     public function registarRececaoParcial(
         Empresa $empresa,
