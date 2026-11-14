@@ -30,5 +30,13 @@ class ArmazemServiceProvider extends ServiceProvider
             null,
             fn () => auth()->user()?->hasRole('Administrador') ?? false,
         );
+
+        $menu->adicionar(
+            'armazem.inventarios.index',
+            'Inventários',
+            48,
+            null,
+            fn () => auth()->user()?->hasRole('Administrador') ?? false,
+        );
     }
 }
