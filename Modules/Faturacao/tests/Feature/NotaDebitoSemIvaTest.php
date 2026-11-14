@@ -15,21 +15,32 @@ class NotaDebitoSemIvaTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected string $diretorioChaves;
+
+    protected string $pemChave;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $recurso = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
-        openssl_pkey_export($recurso, $pem);
-        $caminho = sys_get_temp_dir().'/faturacao-teste-'.uniqid().'.pem';
-        file_put_contents($caminho, $pem);
-        config(['faturacao.chave_privada_path' => $caminho]);
-        $this->beforeApplicationDestroyed(fn () => @unlink($caminho));
+        openssl_pkey_export($recurso, $this->pemChave);
+        $this->diretorioChaves = sys_get_temp_dir().'/faturacao-teste-'.uniqid();
+        mkdir($this->diretorioChaves, 0700, true);
+        config(['faturacao.chaves_dir' => $this->diretorioChaves]);
+        $this->beforeApplicationDestroyed(function (): void {
+            foreach (glob($this->diretorioChaves.'/*') ?: [] as $ficheiro) {
+                @unlink($ficheiro);
+            }
+
+            @rmdir($this->diretorioChaves);
+        });
     }
 
     protected function cenario(string $nif): array
     {
         $empresa = Empresa::create(['nome_comercial' => 'Loja '.$nif, 'nif' => $nif]);
+        file_put_contents($this->diretorioChaves.'/'.$nif.'.pem', $this->pemChave);
         $cliente = Cliente::create(['empresa_id' => $empresa->id, 'nome' => 'Cliente', 'nif' => null]);
 
         return [$empresa, $cliente];
