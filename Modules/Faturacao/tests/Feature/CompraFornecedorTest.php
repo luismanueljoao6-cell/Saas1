@@ -113,6 +113,7 @@ class CompraFornecedorTest extends TestCase
 
         $this->actingAs($this->utilizador)
             ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '11111111-1111-4111-8111-111111111111',
                 'valor' => '5000.00',
                 'data_pagamento' => today()->toDateString(),
                 'metodo' => 'transferencia',
@@ -124,8 +125,37 @@ class CompraFornecedorTest extends TestCase
         $this->assertSame('5000.00', (string) $compra->total_pago);
         $this->assertSame('parcial', $compra->estado_pagamento);
 
+        // Repetir exatamente o mesmo pedido não pode criar um segundo pagamento.
         $this->actingAs($this->utilizador)
             ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '11111111-1111-4111-8111-111111111111',
+                'valor' => '5000.00',
+                'data_pagamento' => today()->toDateString(),
+                'metodo' => 'transferencia',
+                'referencia' => 'TRF-001',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseCount('compra_pagamentos', 1);
+        $this->assertSame('5000.00', (string) $compra->fresh()->total_pago);
+
+        // A mesma chave com dados diferentes é recusada sem alterar o saldo.
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '11111111-1111-4111-8111-111111111111',
+                'valor' => '5001.00',
+                'data_pagamento' => today()->toDateString(),
+                'metodo' => 'transferencia',
+                'referencia' => 'TRF-001',
+            ])
+            ->assertSessionHasErrors(['pagamento']);
+
+        $this->assertDatabaseCount('compra_pagamentos', 1);
+        $this->assertSame('5000.00', (string) $compra->fresh()->total_pago);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '22222222-2222-4222-8222-222222222222',
                 'valor' => '5488.00',
                 'data_pagamento' => today()->toDateString(),
                 'metodo' => 'multicaixa',
@@ -138,6 +168,7 @@ class CompraFornecedorTest extends TestCase
 
         $this->actingAs($this->utilizador)
             ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '33333333-3333-4333-8333-333333333333',
                 'valor' => '0.01',
                 'data_pagamento' => today()->toDateString(),
                 'metodo' => 'dinheiro',
@@ -183,6 +214,7 @@ class CompraFornecedorTest extends TestCase
 
         $this->actingAs($this->utilizador)
             ->post(route('faturacao.compras.pagamentos.store', $compra), [
+                'chave_idempotencia' => '44444444-4444-4444-8444-444444444444',
                 'valor' => '50.00',
                 'data_pagamento' => today()->toDateString(),
                 'metodo' => 'dinheiro',
@@ -407,6 +439,117 @@ class CompraFornecedorTest extends TestCase
         $this->assertDatabaseMissing('stock_movimentos', [
             'empresa_id' => $outraEmpresa->id,
             'produto_id' => $produto->id,
+        ]);
+    }
+
+    public function test_pode_cancelar_rascunho_sem_alterar_stock(): void
+    {
+        $fornecedor = Fornecedor::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Fornecedor para cancelamento',
+            'pais' => 'AO',
+            'ativo' => true,
+        ]);
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Produto não recebido',
+            'unidade' => 'un',
+            'preco_unitario' => '150.00',
+            'taxa_iva' => '0',
+            'ativo' => true,
+            'controla_stock' => true,
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.guardar'), [
+                'fornecedor_id' => $fornecedor->id,
+                'data_documento' => today()->toDateString(),
+                'linhas' => [[
+                    'selecionado' => '1',
+                    'produto_id' => $produto->id,
+                    'quantidade' => '3.000',
+                    'preco_unitario' => '150.00',
+                    'taxa_iva' => '0',
+                ]],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $compra = Compra::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa->id)
+            ->firstOrFail();
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.cancelar', $compra))
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('sucesso', 'Compra cancelada. O stock não foi alterado.');
+
+        $this->assertDatabaseHas('compras', [
+            'id' => $compra->id,
+            'empresa_id' => $this->empresa->id,
+            'estado' => 'cancelada',
+        ]);
+        $this->assertDatabaseMissing('stock_movimentos', [
+            'empresa_id' => $this->empresa->id,
+            'produto_id' => $produto->id,
+        ]);
+        $this->assertDatabaseMissing('stock_saldos', [
+            'empresa_id' => $this->empresa->id,
+            'produto_id' => $produto->id,
+        ]);
+    }
+
+    public function test_nao_permite_cancelar_compra_ja_recebida(): void
+    {
+        $fornecedor = Fornecedor::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Fornecedor compra recebida',
+            'pais' => 'AO',
+            'ativo' => true,
+        ]);
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Produto recebido',
+            'unidade' => 'un',
+            'preco_unitario' => '200.00',
+            'taxa_iva' => '0',
+            'ativo' => true,
+            'controla_stock' => true,
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.guardar'), [
+                'fornecedor_id' => $fornecedor->id,
+                'data_documento' => today()->toDateString(),
+                'linhas' => [[
+                    'selecionado' => '1',
+                    'produto_id' => $produto->id,
+                    'quantidade' => '2.000',
+                    'preco_unitario' => '200.00',
+                    'taxa_iva' => '0',
+                ]],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $compra = Compra::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa->id)
+            ->firstOrFail();
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.receber', $compra))
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.cancelar', $compra))
+            ->assertSessionHasErrors(['compra']);
+
+        $this->assertDatabaseHas('compras', [
+            'id' => $compra->id,
+            'estado' => 'recebida',
+        ]);
+        $this->assertDatabaseHas('stock_saldos', [
+            'empresa_id' => $this->empresa->id,
+            'produto_id' => $produto->id,
+            'quantidade' => '2.000',
         ]);
     }
 }

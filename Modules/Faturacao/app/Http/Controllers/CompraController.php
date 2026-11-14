@@ -134,6 +134,7 @@ class CompraController extends Controller
         $compra = Compra::query()->findOrFail($compraId);
         $dados = $request->validate([
             'valor' => ['required', 'numeric', 'gt:0', 'decimal:0,2', 'max:999999999999.99'],
+            'chave_idempotencia' => ['required', 'uuid'],
             'data_pagamento' => ['required', 'date'],
             'metodo' => ['required', 'in:dinheiro,transferencia,referencia,multicaixa,outro'],
             'referencia' => ['nullable', 'string', 'max:100'],
@@ -142,13 +143,36 @@ class CompraController extends Controller
 
         $dados['observacoes'] = $dados['observacoes'] ?? null;
 
+        $chaveIdempotencia = $dados['chave_idempotencia'];
+        unset($dados['chave_idempotencia']);
+
         try {
-            $compras->registarPagamento($empresa, $compra, $dados, (int) $request->user()->id);
+            $compras->registarPagamento(
+                $empresa,
+                $compra,
+                $dados,
+                (int) $request->user()->id,
+                $chaveIdempotencia
+            );
         } catch (DomainException $exception) {
-            return back()->withErrors(['pagamento' => $exception->getMessage()]);
+            return back()->withInput()->withErrors(['pagamento' => $exception->getMessage()]);
         }
 
         return back()->with('sucesso', 'Pagamento registado.');
+    }
+
+    public function cancelar(Request $request, int $compraId, CompraService $compras): RedirectResponse
+    {
+        $empresa = Empresa::query()->findOrFail($request->user()->empresa_id);
+        $compra = Compra::query()->findOrFail($compraId);
+
+        try {
+            $compras->cancelarRascunho($empresa, $compra);
+        } catch (DomainException $exception) {
+            return back()->withErrors(['compra' => $exception->getMessage()]);
+        }
+
+        return back()->with('sucesso', 'Compra cancelada. O stock não foi alterado.');
     }
 
     public function receber(Request $request, int $compraId, CompraService $compras): RedirectResponse
