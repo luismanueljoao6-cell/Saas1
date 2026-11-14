@@ -17,10 +17,44 @@ use Throwable;
 
 class OrcamentoController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
+        $empresa = $request->user()->empresa;
+        abort_if($empresa === null, 403);
+
+        $filtros = $request->validate([
+            'pesquisa' => ['nullable', 'string', 'max:120'],
+            'estado' => ['nullable', Rule::in(['rascunho', 'enviado', 'aceite', 'recusado', 'expirado', 'convertido'])],
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date', 'after_or_equal:data_inicio'],
+        ]);
+
+        $consulta = Orcamento::query()
+            ->with('cliente')
+            ->where('empresa_id', $empresa->id)
+            ->when($filtros['pesquisa'] ?? null, function ($query, $termo) {
+                $query->where(function ($subquery) use ($termo) {
+                    $subquery->where('numero', 'like', '%'.$termo.'%')
+                        ->orWhereHas('cliente', fn ($cliente) => $cliente->where('nome', 'like', '%'.$termo.'%'));
+                });
+            })
+            ->when(($filtros['estado'] ?? null) === 'expirado', function ($query) {
+                $query->where(function ($subquery) {
+                    $subquery->where('estado', 'expirado')
+                        ->orWhere(function ($validade) {
+                            $validade->whereNotNull('data_validade')
+                                ->whereDate('data_validade', '<', today())
+                                ->whereNotIn('estado', ['convertido', 'recusado']);
+                        });
+                });
+            })
+            ->when(isset($filtros['estado']) && $filtros['estado'] !== 'expirado', fn ($query) => $query->where('estado', $filtros['estado']))
+            ->when($filtros['data_inicio'] ?? null, fn ($query, $data) => $query->whereDate('created_at', '>=', $data))
+            ->when($filtros['data_fim'] ?? null, fn ($query, $data) => $query->whereDate('created_at', '<=', $data));
+
         return view('faturacao::orcamentos.index', [
-            'orcamentos' => Orcamento::with('cliente')->latest('id')->paginate(20),
+            'orcamentos' => $consulta->latest('id')->paginate(20)->withQueryString(),
+            'filtros' => $filtros,
         ]);
     }
 
@@ -89,6 +123,7 @@ class OrcamentoController extends Controller
                 $dados['observacoes'] ?? null,
             );
         } catch (\DomainException|\InvalidArgumentException $e) {
+
             return back()->withInput()->withErrors(['orcamento' => $e->getMessage()]);
         }
 
@@ -156,6 +191,7 @@ class OrcamentoController extends Controller
                 $dados['observacoes'] ?? null,
             );
         } catch (\DomainException|\InvalidArgumentException $e) {
+
             return back()->withInput()->withErrors(['orcamento' => $e->getMessage()]);
         }
 
@@ -171,13 +207,45 @@ class OrcamentoController extends Controller
         ));
     }
 
-    public function estado(Request $request, int $orcamento, OrcamentoService $service): RedirectResponse
+    public function duplicar(Request $request, int $orcamento, OrcamentoService $service): RedirectResponse
     {
-        $dados = $request->validate(['estado' => ['required', Rule::in(['enviado', 'aceite', 'recusado'])]]);
+        $empresa = $request->user()->empresa;
+        abort_if($empresa === null, 403);
+
+        $dados = $request->validate([
+            'cliente_id' => ['nullable', 'integer', Rule::exists('clientes', 'id')->where('empresa_id', $empresa->id)],
+            'data_validade' => ['nullable', 'date', 'after_or_equal:today'],
+        ]);
+
+        $origem = Orcamento::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->findOrFail($orcamento);
+        $cliente = isset($dados['cliente_id'])
+            ? Cliente::query()->findOrFail($dados['cliente_id'])
+            : null;
 
         try {
-            $service->alterarEstado(Orcamento::query()->findOrFail($orcamento), $dados['estado']);
+            $novo = $service->duplicar($origem, $empresa, $cliente, $dados['data_validade'] ?? null);
         } catch (\DomainException|\InvalidArgumentException $e) {
+
+            return back()->with('erro', $e->getMessage());
+        }
+
+        return redirect()->route('faturacao.orcamentos.editar', $novo->id)
+            ->with('sucesso', 'Foi criada uma cópia em rascunho. Revê os dados antes de enviar.');
+    }
+
+    public function estado(Request $request, int $orcamento, OrcamentoService $service): RedirectResponse
+    {
+        $empresa = $request->user()->empresa;
+        abort_if($empresa === null, 403);
+        $dados = $request->validate(['estado' => ['required', Rule::in(['enviado', 'aceite', 'recusado'])]]);
+        $documento = Orcamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->findOrFail($orcamento);
+
+        try {
+            $service->alterarEstado($documento, $dados['estado']);
+        } catch (\DomainException|\InvalidArgumentException $e) {
+
             return back()->with('erro', $e->getMessage());
         }
 
@@ -190,11 +258,14 @@ class OrcamentoController extends Controller
         abort_if($empresa === null, 403);
 
         try {
-            $fatura = $service->converter(Orcamento::query()->findOrFail($orcamento), $empresa, $faturas);
+            $documento = Orcamento::withoutGlobalScopes()->where('empresa_id', $empresa->id)->findOrFail($orcamento);
+            $fatura = $service->converter($documento, $empresa, $faturas);
         } catch (\DomainException|\InvalidArgumentException $e) {
+
             return back()->with('erro', $e->getMessage());
         } catch (Throwable $e) {
             report($e);
+
             return back()->with('erro', 'Não foi possível converter o orçamento. Tenta novamente.');
         }
 

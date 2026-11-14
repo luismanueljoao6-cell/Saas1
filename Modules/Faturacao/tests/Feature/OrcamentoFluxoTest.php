@@ -19,8 +19,8 @@ class OrcamentoFluxoTest extends TestCase
     {
         $empresa = Empresa::create(['nome_comercial' => 'Empresa '.$nif, 'nif' => $nif]);
         $empresa->aderirServicos([Servico::Faturacao]);
-        $cliente = Cliente::create(['empresa_id' => $empresa->id, 'nome' => 'Cliente '.$nif, 'nif' => null]);
         app(TenantManager::class)->set((int) $empresa->id);
+        $cliente = Cliente::create(['empresa_id' => $empresa->id, 'nome' => 'Cliente '.$nif, 'nif' => null]);
 
         return [$empresa, $cliente];
     }
@@ -182,6 +182,7 @@ class OrcamentoFluxoTest extends TestCase
     {
         [$empresaA, $clienteA] = $this->criarContexto('630000209');
         [$empresaB, $clienteB] = $this->criarContexto('630000210');
+        app(TenantManager::class)->set((int) $empresaA->id);
         $orcamento = app(OrcamentoService::class)->criar($empresaA, $clienteA, [[
             'descricao' => 'Serviço',
             'quantidade' => '1',
@@ -200,4 +201,92 @@ class OrcamentoFluxoTest extends TestCase
         ]], null, null);
     }
 
+    public function test_tenant_atual_nao_pode_editar_orcamento_de_outra_empresa(): void
+    {
+        [$empresaA, $clienteA] = $this->criarContexto('630000215');
+        app(TenantManager::class)->set((int) $empresaA->id);
+        $orcamento = app(OrcamentoService::class)->criar($empresaA, $clienteA, [[
+            'descricao' => 'Serviço',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+
+        $this->criarContexto('630000216');
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('O contexto atual não corresponde à empresa do orçamento.');
+        app(OrcamentoService::class)->atualizarRascunho($orcamento, $clienteA, [[
+            'descricao' => 'Tentativa de edição',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+    }
+
+    public function test_duplicacao_cria_novo_rascunho_sem_reutilizar_fatura_ou_numero(): void
+    {
+        [$empresa, $cliente] = $this->criarContexto('630000211');
+        $service = app(OrcamentoService::class);
+        $origem = $service->criar($empresa, $cliente, [[
+            'descricao' => 'Serviço para duplicar',
+            'quantidade' => '2',
+            'preco_unitario' => '150.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], today()->addDays(10)->toDateString(), 'Condições originais');
+        $service->alterarEstado($origem, 'aceite');
+
+        $copia = $service->duplicar($origem, $empresa);
+
+        $this->assertNotSame($origem->id, $copia->id);
+        $this->assertNotSame($origem->numero, $copia->numero);
+        $this->assertSame((int) $empresa->id, (int) $copia->empresa_id);
+        $this->assertSame((int) $cliente->id, (int) $copia->cliente_id);
+        $this->assertSame('rascunho', $copia->estado);
+        $this->assertSame('aceite', $origem->fresh()->estado, 'A duplicação não deve alterar o documento original.');
+        $this->assertNull($copia->fatura_id);
+        $this->assertNull($copia->data_validade);
+        $this->assertSame('342.00', $copia->valor_total);
+        $this->assertSame('Condições originais', $copia->observacoes);
+    }
+
+    public function test_duplicacao_nao_permite_cliente_de_outra_empresa(): void
+    {
+        [$empresaA, $clienteA] = $this->criarContexto('630000212');
+        app(TenantManager::class)->set((int) $empresaA->id);
+        $origem = app(OrcamentoService::class)->criar($empresaA, $clienteA, [[
+            'descricao' => 'Serviço',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+
+        [$empresaB, $clienteB] = $this->criarContexto('630000213');
+        $this->assertNotSame((int) $empresaA->id, (int) $empresaB->id);
+        $this->assertNotSame((int) $empresaA->id, (int) $clienteB->empresa_id);
+        app(TenantManager::class)->set((int) $empresaB->id);
+
+        $this->expectException(\DomainException::class);
+        app(OrcamentoService::class)->duplicar($origem, $empresaA, $clienteB);
+    }
+
+    public function test_orcamento_com_estado_expirado_nao_pode_mudar_de_estado(): void
+    {
+        [$empresa, $cliente] = $this->criarContexto('630000214');
+        $orcamento = app(OrcamentoService::class)->criar($empresa, $cliente, [[
+            'descricao' => 'Serviço expirado',
+            'quantidade' => '1',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'operation_type' => 'SG',
+        ]], null, null);
+        $orcamento->update(['estado' => 'expirado']);
+
+        $this->expectException(\DomainException::class);
+        app(OrcamentoService::class)->alterarEstado($orcamento->fresh(), 'aceite');
+    }
 }

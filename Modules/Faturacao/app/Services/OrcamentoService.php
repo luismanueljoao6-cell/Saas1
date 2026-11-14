@@ -2,9 +2,11 @@
 
 namespace Modules\Faturacao\Services;
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\Orcamento;
@@ -15,6 +17,7 @@ class OrcamentoService
 {
     public function criar(Empresa $empresa, Cliente $cliente, array $linhas, ?string $validade, ?string $observacoes): Orcamento
     {
+        $this->validarTenant((int) $empresa->id);
         if ((int) $cliente->empresa_id !== (int) $empresa->id) {
             throw new \DomainException('O cliente não pertence a esta empresa.');
         }
@@ -42,10 +45,11 @@ class OrcamentoService
      * Atualiza apenas rascunhos. O lock e a consulta sem scopes garantem
      * isolamento por empresa mesmo em jobs ou chamadas sem tenant ambiente.
      *
-     * @param array<int, array<string, mixed>> $linhas
+     * @param  array<int, array<string, mixed>>  $linhas
      */
     public function atualizarRascunho(Orcamento $orcamento, Cliente $cliente, array $linhas, ?string $validade, ?string $observacoes): Orcamento
     {
+        $this->validarTenant((int) $orcamento->empresa_id);
         if ((int) $cliente->empresa_id !== (int) $orcamento->empresa_id) {
             throw new \DomainException('O cliente não pertence a esta empresa.');
         }
@@ -54,7 +58,7 @@ class OrcamentoService
             throw new \InvalidArgumentException('O orçamento deve conter entre 1 e 100 linhas.');
         }
 
-        if ($validade !== null && \Illuminate\Support\Carbon::parse($validade)->startOfDay()->isBefore(today())) {
+        if ($validade !== null && Carbon::parse($validade)->startOfDay()->isBefore(today())) {
             throw new \DomainException('A data de validade não pode estar no passado.');
         }
 
@@ -83,20 +87,67 @@ class OrcamentoService
         }, attempts: 3);
     }
 
+    /**
+     * Cria uma nova proposta comercial a partir de outra, sem reutilizar
+     * número, estado, fatura associada ou identidade do documento original.
+     */
+    public function duplicar(Orcamento $origem, Empresa $empresa, ?Cliente $cliente = null, ?string $validade = null): Orcamento
+    {
+        $this->validarTenant((int) $empresa->id);
+        if ($validade !== null && Carbon::parse($validade)->startOfDay()->isBefore(today())) {
+            throw new \DomainException('A data de validade não pode estar no passado.');
+        }
+
+        return DB::transaction(function () use ($origem, $empresa, $cliente, $validade) {
+            $atual = Orcamento::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->lockForUpdate()
+                ->findOrFail($origem->id);
+
+            if ($cliente !== null && (int) $cliente->empresa_id !== (int) $empresa->id) {
+                throw new \DomainException('O cliente selecionado não pertence a esta empresa.');
+            }
+
+            $clienteFinal = $cliente ?? Cliente::query()
+                ->where('empresa_id', $empresa->id)
+                ->findOrFail($atual->cliente_id);
+
+            $linhas = array_values($atual->linhas ?? []);
+            ValidacaoLinhas::validar($linhas, (int) $empresa->id);
+            $totais = $this->totais($linhas);
+
+            return Orcamento::create([
+                'empresa_id' => $empresa->id,
+                'cliente_id' => $clienteFinal->id,
+                'numero' => 'ORC-'.now()->format('Ymd').'-'.Str::upper(Str::random(8)),
+                'estado' => 'rascunho',
+                'data_validade' => $validade,
+                'linhas' => $linhas,
+                ...$totais,
+                'observacoes' => $atual->observacoes,
+                'fatura_id' => null,
+            ]);
+        }, attempts: 3);
+    }
+
     public function alterarEstado(Orcamento $orcamento, string $estado): Orcamento
     {
-        if (! in_array($estado, ['enviado', 'aceite', 'recusado'], true)) {
+        $this->validarTenant((int) $orcamento->empresa_id);
+        if (in_array($estado, ['enviado', 'aceite', 'recusado'], true) === false) {
             throw new \InvalidArgumentException('Estado de orçamento inválido.');
         }
 
         return DB::transaction(function () use ($orcamento, $estado) {
-            $atual = Orcamento::query()->lockForUpdate()->findOrFail($orcamento->id);
+            $atual = Orcamento::withoutGlobalScopes()
+                ->where('empresa_id', $orcamento->empresa_id)
+                ->lockForUpdate()
+                ->findOrFail($orcamento->id);
 
             if ($atual->estado === 'convertido' || $atual->fatura_id !== null) {
                 throw new \DomainException('Um orçamento convertido não pode mudar de estado.');
             }
 
-            if ($atual->data_validade && $atual->data_validade->isBefore(today())) {
+            if ($atual->estado === 'expirado' || ($atual->data_validade && $atual->data_validade->isBefore(today()))) {
                 throw new \DomainException('Este orçamento expirou e já não pode ser alterado.');
             }
 
@@ -105,7 +156,7 @@ class OrcamentoService
                 'enviado' => ['aceite', 'recusado'],
             ];
 
-            if (! in_array($estado, $transicoesPermitidas[$atual->estado] ?? [], true)) {
+            if (in_array($estado, $transicoesPermitidas[$atual->estado] ?? [], true) === false) {
                 throw new \DomainException('Transição de estado do orçamento não permitida.');
             }
 
@@ -117,8 +168,13 @@ class OrcamentoService
 
     public function converter(Orcamento $orcamento, Empresa $empresa, FaturaService $faturas): Fatura
     {
+        $this->validarTenant((int) $empresa->id);
+
         return DB::transaction(function () use ($orcamento, $empresa, $faturas) {
-            $atual = Orcamento::query()->lockForUpdate()->findOrFail($orcamento->id);
+            $atual = Orcamento::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->lockForUpdate()
+                ->findOrFail($orcamento->id);
 
             if ((int) $atual->empresa_id !== (int) $empresa->id) {
                 throw new \DomainException('Orçamento de outra empresa.');
@@ -128,7 +184,7 @@ class OrcamentoService
                 throw new \DomainException('Só é possível converter um orçamento aceite e ainda não convertido.');
             }
 
-            if ($atual->data_validade && $atual->data_validade->isBefore(today())) {
+            if ($atual->estado === 'expirado' || ($atual->data_validade && $atual->data_validade->isBefore(today()))) {
                 throw new \DomainException('O orçamento expirou.');
             }
 
@@ -142,6 +198,15 @@ class OrcamentoService
 
             return $fatura;
         }, attempts: 3);
+    }
+
+    private function validarTenant(int $empresaId): void
+    {
+        $tenant = app(TenantManager::class);
+
+        if ($tenant->has() && $tenant->emBypass() === false && $tenant->id() !== $empresaId) {
+            throw new \DomainException('O contexto atual não corresponde à empresa do orçamento.');
+        }
     }
 
     protected function totais(array $linhas): array
