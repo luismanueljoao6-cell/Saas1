@@ -20,6 +20,7 @@ use Tests\TestCase;
 class ArmazemInventarioServiceTest extends TestCase
 {
     use RefreshDatabase;
+
     private function preparar(string $nif = '630100201'): array
     {
         $empresa = Empresa::create([
