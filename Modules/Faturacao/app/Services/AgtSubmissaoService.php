@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Exceptions\AgtException;
+use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Models\AgtSubmissao;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\NotaCreditoDebito;
@@ -65,6 +66,7 @@ class AgtSubmissaoService
             ->where(fn ($q) => $q->whereNull('ultima_consulta_em')->orWhere('ultima_consulta_em', '<=', now()->subSeconds($intervalo)))
             ->orderBy('id')
             ->get()
+            ->filter(fn (AgtSubmissao $s) => $this->consultaDevida($s, $intervalo))
             ->groupBy(fn (AgtSubmissao $s) => $s->empresa_id.'|'.$s->request_id);
 
         foreach ($pedidos as $grupo) {
@@ -77,6 +79,15 @@ class AgtSubmissaoService
                 }
 
                 $parcial = $this->aguardar($grupo->all(), ['validos' => 0, 'invalidos' => 0, 'erros' => 0, 'pendentes' => 0]);
+            } catch (AssinaturaFiscalException $e) {
+                // A chave (ou o NIF) de UMA empresa em falta/inválida não pode parar a consulta de todas as outras.
+                Log::error('Consulta AGT adiada: chave de assinatura indisponível.', [
+                    'empresa_id' => $grupo->first()->empresa_id,
+                    'request_id' => $grupo->first()->request_id,
+                    'erro' => $e->getMessage(),
+                ]);
+
+                $parcial = $this->aguardar($grupo->all(), ['validos' => 0, 'invalidos' => 0, 'erros' => 0, 'pendentes' => 0]);
             }
 
             foreach ($parcial as $chave => $valor) {
@@ -85,6 +96,21 @@ class AgtSubmissaoService
         }
 
         return $total;
+    }
+
+    /**
+     * Pedidos já "a aguardar intervenção" não se consultam ao ritmo de um pedido recente:
+     * abrandam para `agt.consulta_intervalo_intervencao` (1 h por omissão).
+     */
+    protected function consultaDevida(AgtSubmissao $submissao, int $intervalo): bool
+    {
+        if ($submissao->estado !== AgtSubmissao::AGUARDA_INTERVENCAO || $submissao->ultima_consulta_em === null) {
+            return true;
+        }
+
+        $espera = max($intervalo, (int) config('faturacao.agt.consulta_intervalo_intervencao', 3600));
+
+        return $submissao->ultima_consulta_em->lte(now()->subSeconds($espera));
     }
 
     /**
@@ -321,17 +347,22 @@ class AgtSubmissaoService
 
         // Aceite — ou pedido duplicado (E09), caso em que a AGT devolve o requestID original.
         if ($requestId !== '') {
-            foreach ($enviar as $submissao) {
-                $submissao->update([
-                    'estado' => AgtSubmissao::ENVIADO,
-                    'submission_uuid' => $uuid,
-                    'request_id' => $requestId,
-                    'tentativas' => $submissao->tentativas + 1,
-                    'enviado_em' => now(),
-                    'erros' => null,
-                ]);
-                $res['enviados']++;
-            }
+            // A AGT já aceitou o pedido: o lote inteiro passa a "enviado" ou nenhum documento muda
+            // (sem meio-estados se a base de dados falhar a meio).
+            DB::transaction(function () use ($enviar, $uuid, $requestId): void {
+                foreach ($enviar as $submissao) {
+                    $submissao->update([
+                        'estado' => AgtSubmissao::ENVIADO,
+                        'submission_uuid' => $uuid,
+                        'request_id' => $requestId,
+                        'tentativas' => $submissao->tentativas + 1,
+                        'enviado_em' => now(),
+                        'erros' => null,
+                    ]);
+                }
+            });
+
+            $res['enviados'] += count($enviar);
 
             return $res;
         }

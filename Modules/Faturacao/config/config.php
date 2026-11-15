@@ -220,6 +220,7 @@ return [
         'lote_maximo' => 30, // máx. de documentos por pedido registarFactura
         'max_tentativas' => (int) env('FATURACAO_AGT_MAX_TENTATIVAS', 5),
         'consulta_intervalo' => (int) env('FATURACAO_AGT_CONSULTA_INTERVALO', 60), // segundos entre consultas de estado
+        'consulta_intervalo_intervencao' => (int) env('FATURACAO_AGT_CONSULTA_INTERVALO_INTERVENCAO', 3600), // segundos entre consultas de pedidos "a aguardar intervenção"
         'sem_resposta_horas' => (int) env('FATURACAO_AGT_SEM_RESPOSTA_HORAS', 24), // horas até um "enviado" sem estado final exigir intervenção
         'operation_type_padrao' => env('FATURACAO_AGT_OPERATION_TYPE', 'SG'), // tipo de operação das linhas (SG = serviço geral)
         'unidade_padrao' => 'UN',

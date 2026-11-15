@@ -73,14 +73,25 @@ class AgtCorrecaoService
                 ->pluck('id')
                 ->all();
 
-            $linhas = $original->linhas->map(fn ($linha) => [
-                'produto_id' => in_array($linha->produto_id, $produtosAtivos, true) ? $linha->produto_id : null,
-                'descricao' => $linha->descricao,
-                'quantidade' => $linha->quantidade,
-                'preco_unitario' => $linha->preco_unitario,
-                'taxa_iva' => $linha->taxa_iva,
-                'motivo_isencao' => $linha->motivo_isencao,
-            ])->all();
+            $linhas = $original->linhas->map(function ($linha) use ($produtosAtivos) {
+                $item = [
+                    'produto_id' => in_array($linha->produto_id, $produtosAtivos, true) ? $linha->produto_id : null,
+                    'descricao' => $linha->descricao,
+                    'quantidade' => $linha->quantidade,
+                    'preco_unitario' => $linha->preco_unitario,
+                    'taxa_iva' => $linha->taxa_iva,
+                    'motivo_isencao' => $linha->motivo_isencao,
+                ];
+
+                // A correção não pode perder o tipo de operação nem o preço base (desconto) da linha rejeitada.
+                foreach (['preco_unitario_base', 'operation_type'] as $campo) {
+                    if (($linha->{$campo} ?? null) !== null) {
+                        $item[$campo] = $linha->{$campo};
+                    }
+                }
+
+                return $item;
+            })->all();
 
             $rascunho = $this->faturas->criarRascunho($empresa, $cliente, $linhas, $original->observacoes);
             $rascunho->update(['rejeitado_documento_no' => $atual->documento_no]);

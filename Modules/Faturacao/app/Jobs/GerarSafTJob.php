@@ -9,6 +9,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Modules\Core\Models\Empresa;
@@ -70,7 +71,13 @@ class GerarSafTJob implements ShouldBeUnique, ShouldQueue
         $inicio = Carbon::createFromFormat('Y-m-d', $this->dataInicio)->startOfDay();
         $fim = Carbon::createFromFormat('Y-m-d', $this->dataFim)->endOfDay();
 
-        $errosRegras = $regras->validar($this->empresa, $inicio, $fim);
+        // Pré-validação e geração leem o MESMO instantâneo da base de dados (REPEATABLE READ no MySQL):
+        // um documento emitido entre as duas leituras não pode entrar no ficheiro sem ter sido validado.
+        [$errosRegras, $xml] = DB::transaction(function () use ($regras, $safTExportService, $inicio, $fim): array {
+            $erros = $regras->validar($this->empresa, $inicio, $fim);
+
+            return [$erros, $erros === [] ? $safTExportService->gerar($this->empresa, $inicio, $fim) : null];
+        });
 
         if ($errosRegras !== []) {
             $this->registarRejeicaoPorRegras($inicio, $fim, $errosRegras);
@@ -79,8 +86,6 @@ class GerarSafTJob implements ShouldBeUnique, ShouldQueue
                 'O SAF-T não foi gerado: '.count($errosRegras).' problema(s) de regras fiscais ou de coerência dos documentos (ver o .json em rejeitados/). Primeiro: '.$errosRegras[0]
             );
         }
-
-        $xml = $safTExportService->gerar($this->empresa, $inicio, $fim);
 
         $erros = [];
 

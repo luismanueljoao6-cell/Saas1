@@ -94,6 +94,10 @@ class AgtSerieService
         $ultimo = $this->numeroDe($resultado['lastDocumentNo'] ?? null);
         $quantidade = $this->numeroDe($resultado['authorizedQuantity'] ?? null, obrigatorio: false) ?? max(0, $ultimo - $primeiro + 1);
 
+        if ($ultimo < $primeiro) {
+            throw AgtException::configuracaoInvalida("a AGT devolveu um intervalo de numeração incoerente para a série {$codigo} ({$primeiro} a {$ultimo}).");
+        }
+
         return $this->tenantManager->semTenant(fn () => DB::transaction(function () use ($empresa, $tipoDocumento, $ano, $estabelecimento, $contingencia, $codigo, $primeiro, $ultimo, $quantidade) {
             $serie = Serie::query()
                 ->where('empresa_id', $empresa->id)

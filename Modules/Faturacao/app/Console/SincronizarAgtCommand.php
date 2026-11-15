@@ -4,6 +4,7 @@ namespace Modules\Faturacao\Console;
 
 use Illuminate\Console\Command;
 use Modules\Faturacao\Exceptions\AgtException;
+use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Services\AgtSubmissaoService;
 
 /**
@@ -23,7 +24,7 @@ class SincronizarAgtCommand extends Command
         try {
             $envio = $servico->enviarPendentes($empresa);
             $estado = $servico->consultarEstados($empresa);
-        } catch (AgtException $e) {
+        } catch (AgtException|AssinaturaFiscalException $e) {
             $this->error($e->getMessage());
 
             return self::FAILURE;

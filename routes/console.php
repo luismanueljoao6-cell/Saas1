@@ -2,6 +2,7 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 use Modules\Subscricoes\Models\Plano;
 
@@ -36,5 +37,7 @@ Artisan::command('planos:preco {slug : Slug do plano} {preco : Novo preço em Kz
 // Só faz algo com FATURACAO_AGT_ATIVO=true. Requer o agendador (php artisan schedule:work / cron).
 Schedule::command('faturacao:agt-sincronizar')
     ->everyMinute()
-    ->withoutOverlapping()
-    ->when(fn () => (bool) config('faturacao.agt.ativo'));
+    ->withoutOverlapping(10) // um processo morto não pode bloquear a sincronização durante 24 h
+    ->onOneServer()
+    ->when(fn () => (bool) config('faturacao.agt.ativo'))
+    ->onFailure(fn () => Log::error('faturacao:agt-sincronizar terminou com erro; ver os logs da AGT.'));

@@ -46,3 +46,9 @@ homologação fiscal** e não devem ser apresentados como tal.
 - `true` afirma que a representação fiscal está definida **e implementada**. Só se muda depois de fechar o ponto H3
   com a especificação da AGT; nunca para desbloquear a exportação.
 - Testes: `AbatimentoReconciliacaoSafTTest`, `AbatimentoIdempotenciaConcorrenteTest`.
+
+## 5. Fase 5 — auditoria e correções de robustez
+
+- Relatório: `docs/auditoria-fase5-saft-agt.md` (achados F5-01 a F5-21, com estado por achado).
+- As correções da Fase 5 melhoram a **robustez** da comunicação e da geração do SAF-T; **não fecham** os pontos H1–H9
+  e não autorizam a afirmação «homologado» ou «conforme à AGT».
