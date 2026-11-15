@@ -71,10 +71,12 @@
                         @if ($inventario->submetido_em)
                             <p class="mt-1 text-xs text-slate-500 dark:text-zinc-400">Enviado por {{ $inventario->utilizadorSubmissao?->name ?? 'Utilizador removido' }} em {{ $inventario->submetido_em->format('d/m/Y H:i') }}</p>
                         @endif
-                        @if ($inventario->concluido_em && (int) $inventario->concluido_por !== (int) $inventario->submetido_por)
+                        @if ($inventario->concluido_em && $inventario->submetido_em && (int) $inventario->concluido_por !== (int) $inventario->submetido_por)
                             <p class="mt-1 text-xs text-emerald-700 dark:text-emerald-300">Aprovado por {{ $inventario->utilizadorConclusao?->name ?? 'Utilizador removido' }} em {{ $inventario->concluido_em->format('d/m/Y H:i') }}</p>
-                        @elseif ($inventario->concluido_em)
+                        @elseif ($inventario->concluido_em && $inventario->submetido_em)
                             <p class="mt-1 text-xs text-emerald-700 dark:text-emerald-300">Concluído sem divergências por {{ $inventario->utilizadorConclusao?->name ?? 'Utilizador removido' }} em {{ $inventario->concluido_em->format('d/m/Y H:i') }}</p>
+                        @elseif ($inventario->concluido_em)
+                            <p class="mt-1 text-xs text-slate-500 dark:text-zinc-400">Concluído em {{ $inventario->concluido_em->format('d/m/Y H:i') }} · {{ $inventario->utilizadorConclusao?->name ?? 'Utilizador removido' }}</p>
                         @elseif ($inventario->rejeitado_em)
                             <p class="mt-1 text-xs text-red-700 dark:text-red-300">Rejeitado por {{ $inventario->utilizadorRejeicao?->name ?? 'Utilizador removido' }} em {{ $inventario->rejeitado_em->format('d/m/Y H:i') }}</p>
                         @endif
@@ -174,9 +176,9 @@
                                 ->filter()
                                 ->map(fn ($id) => (int) $id);
                             $podeAprovarInventario = auth()->user()->can('armazem.inventarios.aprovar')
-                                && !$autoresInventario->contains((int) auth()->id());
+                                && ! $autoresInventario->contains((int) auth()->id());
                             $podeRejeitarInventario = auth()->user()->can('armazem.inventarios.rejeitar')
-                                && !$autoresInventario->contains((int) auth()->id());
+                                && ! $autoresInventario->contains((int) auth()->id());
                         @endphp
                         <div class="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-zinc-800">
                             @if ($podeAprovarInventario)
@@ -194,7 +196,7 @@
                                     <button class="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/10" type="submit">Rejeitar inventário</button>
                                 </form>
                             @endif
-                            @if (!$podeAprovarInventario && !$podeRejeitarInventario)
+                            @if (! $podeAprovarInventario && ! $podeRejeitarInventario)
                                 <p class="text-sm text-slate-500 dark:text-zinc-400">A decisão exige um utilizador com permissão de aprovação que não tenha aberto, submetido ou contado este inventário.</p>
                             @endif
                         </div>
