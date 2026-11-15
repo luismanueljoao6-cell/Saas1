@@ -304,4 +304,18 @@ class ArmazemInventarioServiceTest extends TestCase
         $this->expectException(ModelNotFoundException::class);
         $service->aprovar($empresaB, $inventario, $aprovadorB->id);
     }
+
+    public function test_impede_novo_inventario_enquanto_aguarda_aprovacao(): void
+    {
+        [$empresa, $armazem, $produtoA, $produtoB] = $this->preparar('630100216');
+        $criador = User::factory()->create(['empresa_id' => $empresa->id]);
+        $service = app(ArmazemInventarioService::class);
+        $inventario = $service->abrir($empresa, $armazem, [$produtoA->id], $criador->id);
+        $service->registarContagem($empresa, $inventario, $inventario->linhas->first()->id, '1.000', $criador->id);
+        $service->concluir($empresa, $inventario, $criador->id);
+
+        $this->expectException(DomainException::class);
+        $service->abrir($empresa, $armazem, [$produtoB->id], $criador->id);
+    }
+
 }
