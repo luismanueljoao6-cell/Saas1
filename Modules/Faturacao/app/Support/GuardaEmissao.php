@@ -33,11 +33,7 @@ final class GuardaEmissao
     /** Impede que um serviço opere sobre outra empresa quando existe tenant HTTP ativo. */
     public static function garantirTenant(int $empresaId): void
     {
-        $tenant = app(TenantManager::class);
-
-        if ($tenant->has() && (int) $tenant->id() !== $empresaId) {
-            throw new DomainException('A operação não pertence à empresa do contexto atual.');
-        }
+        app(TenantManager::class)->garantirEmpresa($empresaId);
     }
 
     /**

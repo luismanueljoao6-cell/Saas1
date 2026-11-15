@@ -2,6 +2,8 @@
 
 namespace Modules\Core\Services;
 
+use DomainException;
+
 /**
  * Guarda, durante o ciclo de vida de um pedido (ou de um comando artisan/job),
  * qual é a empresa "atual". É registado como scoped no CoreServiceProvider,
@@ -40,10 +42,9 @@ class TenantManager
     }
 
     /**
-     * Permite a um super admin, de forma explícita e temporária, ver dados
-     * de todas as empresas (ex.: painel de administração da plataforma).
-     * Deve ser sempre emparelhado com semTenant() dentro de um try/finally
-     * para garantir que o bypass não "escapa" para outros pedidos.
+     * Executa o callback fora do contexto de qualquer empresa, de forma explícita
+     * e temporária (painel de administração da plataforma, serviços de sistema).
+     * O tenant e o bypass anteriores são sempre repostos no fim, mesmo com exceção.
      */
     public function semTenant(callable $callback): mixed
     {
@@ -58,6 +59,17 @@ class TenantManager
         } finally {
             $this->tenantId = $anterior;
             $this->bypassGlobal = $bypassAnterior;
+        }
+    }
+
+    /**
+     * Regra única: se há um tenant ativo, a operação tem de ser sobre essa empresa.
+     * Sem tenant ativo (consola, jobs, semTenant) não restringe.
+     */
+    public function garantirEmpresa(int $empresaId, string $mensagem = 'A operação não pertence à empresa do contexto atual.'): void
+    {
+        if ($this->has() && $this->tenantId !== $empresaId) {
+            throw new DomainException($mensagem);
         }
     }
 

@@ -115,10 +115,7 @@ class StockService
 
     protected function saldoBloqueado(Empresa $empresa, Produto $produto): StockSaldo
     {
-        $tenant = app(TenantManager::class);
-        if ($tenant->has() && ! $tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
-            throw new DomainException('O contexto atual não corresponde à empresa do movimento.');
-        }
+        app(TenantManager::class)->garantirEmpresa((int) $empresa->id, 'O contexto atual não corresponde à empresa do movimento.');
 
         if ((int) $produto->empresa_id !== (int) $empresa->id || ! $produto->controla_stock) {
             throw new DomainException('O produto não pertence à empresa ou não controla stock.');
