@@ -8,7 +8,6 @@
         "transferencias"
     ],
     "priority": 2,
-    "requires": ["Core", "Faturacao"],
     "providers": [
         "Modules\\Armazem\\Providers\\ArmazemServiceProvider"
     ],

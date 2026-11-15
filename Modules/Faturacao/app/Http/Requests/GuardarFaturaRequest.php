@@ -4,8 +4,8 @@ namespace Modules\Faturacao\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Modules\Faturacao\Support\ConfiguracaoFiscalEmpresa;
 use Modules\Faturacao\Support\ValidacaoLinhas;
+use Modules\Faturacao\Support\ConfiguracaoFiscalEmpresa;
 
 class GuardarFaturaRequest extends FormRequest
 {
