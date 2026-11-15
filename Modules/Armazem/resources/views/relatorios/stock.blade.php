@@ -98,8 +98,8 @@
                             <tr>
                                 <td class="px-5 py-3 font-medium text-slate-900 dark:text-zinc-100">{{ $saldo->produto_nome }}</td>
                                 <td class="px-5 py-3 text-slate-600 dark:text-zinc-300">{{ $saldo->armazem_nome }}</td>
-                                <td class="px-5 py-3 tabular-nums">{{ number_format((float) $saldo->quantidade, 3, ',', '.') }}</td>
-                                <td class="px-5 py-3 tabular-nums">{{ $saldo->quantidade_minima === null ? 'Não definido' : number_format((float) $saldo->quantidade_minima, 3, ',', '.') }}</td>
+                                <td class="px-5 py-3 tabular-nums">{{ \Modules\Armazem\Support\QuantidadeDecimal::formatar((string) $saldo->quantidade, ',', '.') }}</td>
+                                <td class="px-5 py-3 tabular-nums">{{ $saldo->quantidade_minima === null ? 'Não definido' : \Modules\Armazem\Support\QuantidadeDecimal::formatar((string) $saldo->quantidade_minima, ',', '.') }}</td>
                                 <td class="px-5 py-3">
                                     @if ($saldo->abaixo_minimo)
                                         <span class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">Repor stock</span>
@@ -133,8 +133,8 @@
                                 <td class="whitespace-nowrap px-5 py-3 text-slate-600 dark:text-zinc-300">{{ $movimento->created_at?->format('d/m/Y H:i') }}</td>
                                 <td class="px-5 py-3"><p class="font-medium text-slate-900 dark:text-zinc-100">{{ $movimento->produto?->nome ?? 'Produto removido' }}</p><p class="text-xs text-slate-500 dark:text-zinc-400">{{ $movimento->armazem?->nome ?? 'Armazém removido' }}</p></td>
                                 <td class="px-5 py-3">{{ ucfirst($movimento->tipo) }}</td>
-                                <td class="px-5 py-3 tabular-nums {{ str_starts_with((string) $movimento->quantidade, '-') ? 'text-rose-600' : 'text-emerald-600' }}">{{ number_format((float) $movimento->quantidade, 3, ',', '.') }}</td>
-                                <td class="px-5 py-3 tabular-nums">{{ number_format((float) $movimento->saldo_posterior, 3, ',', '.') }}</td>
+                                <td class="px-5 py-3 tabular-nums {{ str_starts_with((string) $movimento->quantidade, '-') ? 'text-rose-600' : 'text-emerald-600' }}">{{ \Modules\Armazem\Support\QuantidadeDecimal::formatar((string) $movimento->quantidade, ',', '.') }}</td>
+                                <td class="px-5 py-3 tabular-nums">{{ \Modules\Armazem\Support\QuantidadeDecimal::formatar((string) $movimento->saldo_posterior, ',', '.') }}</td>
                                 <td class="px-5 py-3"><p>{{ $movimento->motivo }}</p><p class="text-xs text-slate-500 dark:text-zinc-400">{{ $movimento->utilizador?->name ?? 'Sistema' }}</p></td>
                             </tr>
                         @empty
