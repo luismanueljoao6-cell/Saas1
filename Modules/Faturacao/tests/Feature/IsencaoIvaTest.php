@@ -176,5 +176,4 @@ class IsencaoIvaTest extends TestCase
         $this->assertSame('M02', $fatura->linhas()->first()->motivo_isencao);
         $this->assertSame('0.00', $fatura->valor_iva);
     }
-
 }
