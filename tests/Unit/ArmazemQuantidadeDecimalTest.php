@@ -1,10 +1,10 @@
 <?php
 
-namespace Tests\\Unit;
+namespace Tests\Unit;
 
 use InvalidArgumentException;
-use Modules\\Armazem\\Support\\QuantidadeDecimal;
-use PHPUnit\\Framework\\TestCase;
+use Modules\Armazem\Support\QuantidadeDecimal;
+use PHPUnit\Framework\TestCase;
 
 class ArmazemQuantidadeDecimalTest extends TestCase
 {
