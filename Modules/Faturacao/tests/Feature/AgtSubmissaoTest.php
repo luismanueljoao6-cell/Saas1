@@ -54,6 +54,7 @@ class AgtSubmissaoTest extends TestCase
             'faturacao.agt.software.chave_privada_path' => $privadaSoftware,
             'faturacao.agt.software.signature_version' => 1,
             'faturacao.saft_numero_certificado' => 'C_134',
+            'faturacao.agt.backoff_base' => 0, // estes testes repetem o envio de seguida
         ]);
 
         $this->empresa = Empresa::create(['nome_comercial' => 'Loja AGT', 'nif' => '5001636863']);

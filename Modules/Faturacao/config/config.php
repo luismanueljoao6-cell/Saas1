@@ -218,9 +218,11 @@ return [
         'timeout' => (int) env('FATURACAO_AGT_TIMEOUT', 20),
         'estabelecimento_padrao' => env('FATURACAO_AGT_ESTABELECIMENTO', 'SEDE'),
         'lote_maximo' => 30, // máx. de documentos por pedido registarFactura
-        'max_tentativas' => (int) env('FATURACAO_AGT_MAX_TENTATIVAS', 5),
+        'max_tentativas' => (int) env('FATURACAO_AGT_MAX_TENTATIVAS', 8),
         'consulta_intervalo' => (int) env('FATURACAO_AGT_CONSULTA_INTERVALO', 60), // segundos entre consultas de estado
         'consulta_intervalo_intervencao' => (int) env('FATURACAO_AGT_CONSULTA_INTERVALO_INTERVENCAO', 3600), // segundos entre consultas de pedidos "a aguardar intervenção"
+        'backoff_base' => (int) env('FATURACAO_AGT_BACKOFF_BASE', 60), // 1.ª espera após falha de envio (dobra a cada tentativa)
+        'backoff_maximo' => (int) env('FATURACAO_AGT_BACKOFF_MAXIMO', 1800), // teto da espera entre tentativas (segundos)
         'sem_resposta_horas' => (int) env('FATURACAO_AGT_SEM_RESPOSTA_HORAS', 24), // horas até um "enviado" sem estado final exigir intervenção
         'operation_type_padrao' => env('FATURACAO_AGT_OPERATION_TYPE', 'SG'), // tipo de operação das linhas (SG = serviço geral)
         'unidade_padrao' => 'UN',

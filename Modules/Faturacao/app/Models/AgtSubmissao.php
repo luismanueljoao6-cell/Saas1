@@ -52,6 +52,7 @@ class AgtSubmissao extends Model
         'enviado_em',
         'ultima_consulta_em',
         'validado_em',
+        'proxima_tentativa_em',
     ];
 
     public function rotulo(): string
@@ -74,6 +75,7 @@ class AgtSubmissao extends Model
             'enviado_em' => 'datetime',
             'ultima_consulta_em' => 'datetime',
             'validado_em' => 'datetime',
+            'proxima_tentativa_em' => 'datetime',
         ];
     }
 }

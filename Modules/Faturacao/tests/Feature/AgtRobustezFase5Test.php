@@ -3,6 +3,7 @@
 namespace Modules\Faturacao\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
@@ -29,6 +30,8 @@ class AgtRobustezFase5Test extends TestCase
     protected Cliente $cliente;
 
     protected string $dirChaves;
+
+    protected bool $falharRede = false;
 
     /** @var array{0: string, 1: string} */
     protected array $intervaloSerie = ['1', '1000'];
@@ -74,7 +77,9 @@ class AgtRobustezFase5Test extends TestCase
                     'lastDocumentNo' => $this->intervaloSerie[1],
                 ],
             ], 200),
-            '*registarFactura' => Http::response(['requestID' => '202500000010689', 'errorList' => []], 200),
+            '*registarFactura' => fn () => $this->falharRede
+                ? throw new ConnectionException('timeout')
+                : Http::response(['requestID' => '202500000010689', 'errorList' => []], 200),
             '*obterEstado' => Http::response(['resultCode' => '8'], 200),
         ]);
     }
@@ -181,5 +186,43 @@ class AgtRobustezFase5Test extends TestCase
         $this->expectException(AgtException::class);
 
         app(AgtSerieService::class)->solicitar($this->empresa, 'FT', now()->year);
+    }
+
+    public function test_falha_de_rede_aplica_backoff_e_nao_reenvia_antes_da_hora(): void
+    {
+        $this->emitirFatura();
+
+        $this->falharRede = true;
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $this->assertSame(AgtSubmissao::PENDENTE, $submissao->estado);
+        $this->assertNotNull($submissao->proxima_tentativa_em);
+        $this->assertTrue($submissao->proxima_tentativa_em->isFuture());
+
+        $antes = $this->pedidosPara('registarFactura')->count();
+
+        $this->falharRede = false;
+        app(AgtSubmissaoService::class)->enviarPendentes();
+        $this->assertCount($antes, $this->pedidosPara('registarFactura'), 'Antes da hora de nova tentativa não há pedido à AGT.');
+
+        $submissao->update(['proxima_tentativa_em' => now()->subSecond()]);
+
+        $this->assertSame(1, app(AgtSubmissaoService::class)->enviarPendentes()['enviados']);
+    }
+
+    public function test_esgotadas_as_tentativas_passa_a_erro_sem_nova_tentativa_agendada(): void
+    {
+        config(['faturacao.agt.max_tentativas' => 2, 'faturacao.agt.backoff_base' => 0]);
+        $this->emitirFatura();
+
+        $this->falharRede = true;
+        app(AgtSubmissaoService::class)->enviarPendentes();
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $this->assertSame(AgtSubmissao::ERRO, $submissao->estado);
+        $this->assertSame('REDE', $submissao->erros[0]['codigo']);
+        $this->assertNull($submissao->proxima_tentativa_em);
     }
 }

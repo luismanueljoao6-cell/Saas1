@@ -187,7 +187,7 @@ class AgtSubmissaoService
             ]);
 
             $codigoErro = $atual->erros[0]['codigo'] ?? null;
-            $dados = ['estado' => AgtSubmissao::PENDENTE, 'tentativas' => 0, 'erros' => null, 'request_id' => null];
+            $dados = ['estado' => AgtSubmissao::PENDENTE, 'tentativas' => 0, 'erros' => null, 'request_id' => null, 'proxima_tentativa_em' => null];
 
             // Falha de transporte: a AGT pode ter aceite o pedido apesar do timeout.
             // Mantém UUID e timestamp para repetir exactamente a mesma submissão.
@@ -234,13 +234,15 @@ class AgtSubmissaoService
         $comUuid = AgtSubmissao::query()
             ->where('empresa_id', $empresaId)
             ->where('estado', AgtSubmissao::PENDENTE)
+            ->where(fn ($q) => $q->whereNull('proxima_tentativa_em')->orWhere('proxima_tentativa_em', '<=', now()))
             ->whereNotNull('submission_uuid')
             ->orderBy('id')
             ->first();
 
         $consultaLote = AgtSubmissao::query()
             ->where('empresa_id', $empresaId)
-            ->where('estado', AgtSubmissao::PENDENTE);
+            ->where('estado', AgtSubmissao::PENDENTE)
+            ->where(fn ($q) => $q->whereNull('proxima_tentativa_em')->orWhere('proxima_tentativa_em', '<=', now()));
 
         if ($comUuid) {
             $consultaLote->where('submission_uuid', $comUuid->submission_uuid);
@@ -422,10 +424,11 @@ class AgtSubmissaoService
 
         foreach ($lote as $submissao) {
             $tentativas = $submissao->tentativas + 1;
-            $dados = ['tentativas' => $tentativas];
+            $dados = ['tentativas' => $tentativas, 'proxima_tentativa_em' => now()->addSeconds($this->esperaAteNovaTentativa($tentativas))];
 
             if ($tentativas >= $maximo) {
                 $dados += ['estado' => AgtSubmissao::ERRO, 'erros' => [['codigo' => 'REDE', 'descricao' => $motivo]]];
+                $dados['proxima_tentativa_em'] = null;
                 $res['erros']++;
             }
 
@@ -433,6 +436,15 @@ class AgtSubmissaoService
         }
 
         return $res;
+    }
+
+    /** Espera exponencial: base, 2×base, 4×base… até `agt.backoff_maximo` (segundos). */
+    protected function esperaAteNovaTentativa(int $tentativas): int
+    {
+        $base = max(0, (int) config('faturacao.agt.backoff_base', 60));
+        $maximo = max(0, (int) config('faturacao.agt.backoff_maximo', 1800));
+
+        return min($maximo, $base * (2 ** max(0, $tentativas - 1)));
     }
 
     /**
