@@ -71,8 +71,10 @@
                         @if ($inventario->submetido_em)
                             <p class="mt-1 text-xs text-slate-500 dark:text-zinc-400">Enviado por {{ $inventario->utilizadorSubmissao?->name ?? 'Utilizador removido' }} em {{ $inventario->submetido_em->format('d/m/Y H:i') }}</p>
                         @endif
-                        @if ($inventario->concluido_em)
+                        @if ($inventario->concluido_em && (int) $inventario->concluido_por !== (int) $inventario->submetido_por)
                             <p class="mt-1 text-xs text-emerald-700 dark:text-emerald-300">Aprovado por {{ $inventario->utilizadorConclusao?->name ?? 'Utilizador removido' }} em {{ $inventario->concluido_em->format('d/m/Y H:i') }}</p>
+                        @elseif ($inventario->concluido_em)
+                            <p class="mt-1 text-xs text-emerald-700 dark:text-emerald-300">Concluído sem divergências por {{ $inventario->utilizadorConclusao?->name ?? 'Utilizador removido' }} em {{ $inventario->concluido_em->format('d/m/Y H:i') }}</p>
                         @elseif ($inventario->rejeitado_em)
                             <p class="mt-1 text-xs text-red-700 dark:text-red-300">Rejeitado por {{ $inventario->utilizadorRejeicao?->name ?? 'Utilizador removido' }} em {{ $inventario->rejeitado_em->format('d/m/Y H:i') }}</p>
                         @endif
@@ -153,9 +155,10 @@
 
                     @if ($inventario->estado === 'em_contagem')
                         <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4 dark:border-zinc-800">
+                            <p class="w-full text-xs text-slate-500 dark:text-zinc-400">Se existirem diferenças, o stock só será alterado depois da aprovação por outra pessoa.</p>
                             <form method="POST" action="{{ route('armazem.inventarios.concluir', $inventario->id) }}">
                                 @csrf
-                                <button class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500" type="submit">Enviar para aprovação</button>
+                                <button class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500" type="submit">Concluir contagem</button>
                             </form>
                             <form method="POST" action="{{ route('armazem.inventarios.cancelar', $inventario->id) }}" onsubmit="return confirm('Cancelar este inventário? Nenhum ajuste será aplicado.')">
                                 @csrf
