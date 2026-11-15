@@ -98,6 +98,7 @@ class CompraService
             }
 
             foreach ($linhas as $linha) {
+                // O produto pode ter sido inativado depois da criação do rascunho.
                 $produto = Produto::query()
                     ->where('empresa_id', $empresa->id)
                     ->where('controla_stock', true)
