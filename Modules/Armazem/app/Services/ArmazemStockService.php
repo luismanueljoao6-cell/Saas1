@@ -165,10 +165,6 @@ class ArmazemStockService
             throw new DomainException('Não é possível movimentar stock de um produto inativo.');
         }
 
-        if (! $produtoValidado->ativo) {
-            throw new DomainException('Não é possível movimentar stock de um produto inativo.');
-        }
-
         if (! $produtoValidado->controla_stock) {
             throw new DomainException('O produto não está configurado para controlar stock.');
         }
@@ -177,7 +173,7 @@ class ArmazemStockService
             ->join('armazem_inventarios as inventarios', 'inventarios.id', '=', 'linhas.inventario_id')
             ->where('inventarios.empresa_id', $empresa->id)
             ->where('inventarios.armazem_id', $armazemBloqueado->id)
-            ->where('inventarios.estado', 'em_contagem')
+            ->whereIn('inventarios.estado', ['em_contagem', 'aguarda_aprovacao'])
             ->where('linhas.produto_id', $produtoValidado->id)
             ->exists();
 
