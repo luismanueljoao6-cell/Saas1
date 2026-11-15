@@ -5,9 +5,9 @@ namespace Modules\EstudioMusica\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Modules\Core\Models\User;
+use Modules\Core\Services\RegistoEmpresaService;
 use Modules\EstudioMusica\Support\PapeisEstudio;
 use Spatie\Permission\Models\Permission;
-use Modules\Core\Services\RegistoEmpresaService;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -124,7 +124,7 @@ class ProvisionamentoPapeisTest extends TestCase
 
         PapeisEstudio::provisionar((int) $admin->empresa_id);
 
-        $this->assertSame($admin->empresa_id, $registrar->getPermissionsTeamId());
+        $this->assertSame((int) $admin->empresa_id, (int) $registrar->getPermissionsTeamId());
         $this->assertTrue($papelAdmin->fresh()->hasPermissionTo($permissaoAdmin));
         $this->assertTrue($papelRececao->fresh()->hasPermissionTo($permissaoRececao));
         $this->assertTrue($papelAdmin->fresh()->hasPermissionTo('estudiomusica.gerir-salas'));
