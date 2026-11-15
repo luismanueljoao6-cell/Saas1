@@ -5,6 +5,8 @@ namespace Modules\EstudioMusica\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Modules\Core\Models\User;
+use Modules\EstudioMusica\Support\PapeisEstudio;
+use Spatie\Permission\Models\Permission;
 use Modules\Core\Services\RegistoEmpresaService;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -91,4 +93,42 @@ class ProvisionamentoPapeisTest extends TestCase
             ->post(route('estudiomusica.equipa.atribuir'), ['utilizador_id' => $admin->id, 'papel' => 'Engenheiro'])
             ->assertForbidden();
     }
+
+    public function test_reprovisionamento_preserva_permissoes_personalizadas_dos_papeis(): void
+    {
+        $admin = $this->registar('510000006', 'f@example.test', ['estudio']);
+        $registrar = app(PermissionRegistrar::class);
+        $equipaAnterior = $registrar->getPermissionsTeamId();
+        $registrar->setPermissionsTeamId($admin->empresa_id);
+
+        $permissaoAdmin = Permission::firstOrCreate([
+            'name' => 'faturacao.permissao-personalizada',
+            'guard_name' => 'web',
+        ]);
+        $permissaoRececao = Permission::firstOrCreate([
+            'name' => 'atelier.permissao-personalizada',
+            'guard_name' => 'web',
+        ]);
+
+        $papelAdmin = Role::where([
+            'name' => 'Administrador',
+            'empresa_id' => $admin->empresa_id,
+        ])->firstOrFail();
+        $papelRececao = Role::where([
+            'name' => PapeisEstudio::RECECAO,
+            'empresa_id' => $admin->empresa_id,
+        ])->firstOrFail();
+
+        $papelAdmin->givePermissionTo($permissaoAdmin);
+        $papelRececao->givePermissionTo($permissaoRececao);
+
+        PapeisEstudio::provisionar((int) $admin->empresa_id);
+
+        $registrar->setPermissionsTeamId($admin->empresa_id);
+        $this->assertTrue($papelAdmin->fresh()->hasPermissionTo($permissaoAdmin));
+        $this->assertTrue($papelRececao->fresh()->hasPermissionTo($permissaoRececao));
+        $this->assertTrue($papelAdmin->fresh()->hasPermissionTo('estudiomusica.gerir-salas'));
+        $this->assertSame($equipaAnterior, $registrar->getPermissionsTeamId());
+    }
+
 }
