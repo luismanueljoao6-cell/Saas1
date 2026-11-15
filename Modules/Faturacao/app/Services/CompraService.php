@@ -102,7 +102,11 @@ class CompraService
                     ->where('empresa_id', $empresa->id)
                     ->where('controla_stock', true)
                     ->where('ativo', true)
-                    ->findOrFail($linha->produto_id);
+                    ->find($linha->produto_id);
+
+                if ($produto === null) {
+                    throw new DomainException('A compra contém um produto inativo ou indisponível para movimentação de stock.');
+                }
 
                 $this->stock->entrada(
                     $empresa,
