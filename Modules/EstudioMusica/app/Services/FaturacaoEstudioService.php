@@ -157,7 +157,7 @@ class FaturacaoEstudioService
         $sala = $sessao->salaEstudio;
         $minutos = $sessao->duracaoMinutos();
         $precoHora = Dinheiro::centimos($sala->preco_hora);
-        $total = intdiv($minutos * $precoHora + 30, 60);
+        $total = Dinheiro::porMinutos($minutos, $precoHora);
 
         // Sala gratuita ou sessão sem duração: não há nada a cobrar, e um
         // documento fiscal de valor zero não faz sentido.
@@ -274,9 +274,7 @@ class FaturacaoEstudioService
     /** $percentual% de um valor em cêntimos, arredondado a meio para cima (40,00% de 100000,00 → 40000,00). */
     protected function percentagemEmCentimos(int $centimos, string|int|float $percentual): int
     {
-        $pontosBase = Dinheiro::pontosBase(is_float($percentual) ? (string) $percentual : $percentual);
-
-        return intdiv($centimos * $pontosBase + 5000, 10000);
+        return Dinheiro::percentagem($centimos, is_float($percentual) ? (string) $percentual : $percentual);
     }
 
     /** 80 → "1h20min"; 60 → "1h"; 45 → "45min". */

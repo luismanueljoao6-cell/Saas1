@@ -78,6 +78,44 @@ final class Dinheiro
     }
 
     /**
+     * $percentagem% de um valor em cêntimos, arredondado a meio para cima
+     * (40% de 100000 → 40000). Valores não positivos dão 0; rejeita overflow
+     * em vez de devolver um valor errado.
+     */
+    public static function percentagem(int $centimos, mixed $percentagem): int
+    {
+        $pontosBase = self::pontosBase($percentagem);
+
+        if ($centimos <= 0 || $pontosBase <= 0) {
+            return 0;
+        }
+
+        if ($centimos > intdiv(PHP_INT_MAX - 5000, $pontosBase)) {
+            throw new \InvalidArgumentException('O cálculo percentual excede o limite inteiro seguro.');
+        }
+
+        return intdiv($centimos * $pontosBase + 5000, 10000);
+    }
+
+    /**
+     * Valor de $minutos ao preço de $precoHoraCentimos por hora, ao cêntimo
+     * (meio para cima), a partir dos minutos e sem float. Valores não
+     * positivos dão 0; rejeita overflow.
+     */
+    public static function porMinutos(int $minutos, int $precoHoraCentimos): int
+    {
+        if ($minutos <= 0 || $precoHoraCentimos <= 0) {
+            return 0;
+        }
+
+        if ($minutos > intdiv(PHP_INT_MAX - 30, $precoHoraCentimos)) {
+            throw new \InvalidArgumentException('O valor da sessão excede o limite inteiro seguro.');
+        }
+
+        return intdiv($minutos * $precoHoraCentimos + 30, 60);
+    }
+
+    /**
      * Calcula ceil(($a * $b) / $divisor) sem permitir overflow silencioso.
      * Reduz fatores comuns antes da multiplicação; se o produto continuar
      * fora do intervalo inteiro suportado pelo PHP, rejeita a operação.
