@@ -304,5 +304,4 @@ class ArmazemInventarioServiceTest extends TestCase
         $this->expectException(ModelNotFoundException::class);
         $service->aprovar($empresaB, $inventario, $aprovadorB->id);
     }
-
 }
