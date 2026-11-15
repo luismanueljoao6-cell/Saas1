@@ -159,19 +159,15 @@ class ArmazemInventarioService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($sessao->estado === 'concluido') {
+            if (in_array($sessao->estado, ['aguarda_aprovacao', 'concluido'], true)) {
                 return $sessao->load('linhas.produto', 'armazem');
             }
 
             if ($sessao->estado !== 'em_contagem') {
-                throw new DomainException('Só é possível concluir um inventário em contagem.');
+                throw new DomainException('Só é possível enviar para aprovação um inventário em contagem.');
             }
 
-            if ($utilizadorId !== null && User::withoutGlobalScopes()
-                ->where('empresa_id', $empresa->id)->whereKey($utilizadorId)->exists() === false) {
-                throw new DomainException('O utilizador não pertence à empresa.');
-            }
-
+            $utilizadorId = $this->validarUtilizador($empresa, $utilizadorId);
             $linhas = ArmazemInventarioLinha::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
                 ->where('inventario_id', $sessao->id)
@@ -179,19 +175,91 @@ class ArmazemInventarioService
                 ->lockForUpdate()
                 ->get();
 
-            if ($linhas->isEmpty() || $linhas->contains(fn (ArmazemInventarioLinha $linha): bool => $linha->quantidade_contada === null)) {
-                throw new DomainException('Regista a contagem de todos os produtos antes de concluir.');
+            if ($linhas->isEmpty() || $linhas->contains(
+                fn (ArmazemInventarioLinha $linha): bool => $linha->quantidade_contada === null
+            )) {
+                throw new DomainException('Regista a contagem de todos os produtos antes de enviar para aprovação.');
             }
 
-            // Estado intermédio dentro da transação: impede novos movimentos,
-            // mas permite que o próprio fecho aplique os ajustes de forma atómica.
+            $temDivergencias = $linhas->contains(
+                fn (ArmazemInventarioLinha $linha): bool => $this->emMilhares((string) ($linha->diferenca ?? '0.000')) !== 0
+            );
+            $momento = now();
+
+            if ($temDivergencias) {
+                $sessao->forceFill([
+                    'estado' => 'aguarda_aprovacao',
+                    'submetido_por' => $utilizadorId,
+                    'submetido_em' => $momento,
+                ])->save();
+            } else {
+                // Sem diferenças não há ajuste de stock que exija segregação de funções.
+                $sessao->forceFill([
+                    'estado' => 'concluido',
+                    'submetido_por' => $utilizadorId,
+                    'submetido_em' => $momento,
+                    'concluido_por' => $utilizadorId,
+                    'concluido_em' => $momento,
+                ])->save();
+            }
+
+            return $sessao->load('linhas.produto', 'armazem');
+        }, attempts: 3);
+    }
+
+    public function aprovar(
+        Empresa $empresa,
+        ArmazemInventario $inventario,
+        int $utilizadorId
+    ): ArmazemInventario {
+        return DB::transaction(function () use ($empresa, $inventario, $utilizadorId): ArmazemInventario {
+            $this->validarTenant($empresa);
+            Empresa::query()->whereKey($empresa->id)->lockForUpdate()->firstOrFail();
+
+            $sessao = ArmazemInventario::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->whereKey($inventario->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($sessao->estado === 'concluido') {
+                return $sessao->load('linhas.produto', 'armazem');
+            }
+
+            if ($sessao->estado !== 'aguarda_aprovacao') {
+                throw new DomainException('Só é possível aprovar inventários que aguardam aprovação.');
+            }
+
+            $utilizadorId = $this->validarUtilizador($empresa, $utilizadorId);
+            $linhas = ArmazemInventarioLinha::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->where('inventario_id', $sessao->id)
+                ->orderBy('produto_id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($linhas->isEmpty() || $linhas->contains(
+                fn (ArmazemInventarioLinha $linha): bool => $linha->quantidade_contada === null
+            )) {
+                throw new DomainException('O inventário não contém todas as contagens necessárias.');
+            }
+
+            $this->garantirSegregacao($sessao, $linhas, $utilizadorId);
+
+            // Estado transitório dentro da transação: permite ao serviço de stock
+            // aplicar os ajustes sem reabrir a janela para movimentos concorrentes.
             $sessao->forceFill(['estado' => 'a_finalizar'])->save();
+
             $armazem = Armazem::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
                 ->whereKey($sessao->armazem_id)
                 ->firstOrFail();
 
             foreach ($linhas as $linha) {
+                if ($this->emMilhares((string) ($linha->diferenca ?? '0.000')) === 0) {
+                    continue;
+                }
+
                 $produto = Produto::withoutGlobalScopes()
                     ->where('empresa_id', $empresa->id)
                     ->whereKey($linha->produto_id)
@@ -202,7 +270,7 @@ class ArmazemInventarioService
                     $armazem,
                     $produto,
                     (string) $linha->quantidade_contada,
-                    sprintf('Inventário físico %d', $sessao->id),
+                    sprintf('Inventário físico %d aprovado', $sessao->id),
                     $utilizadorId,
                     sprintf('inventario:%d:produto:%d', $sessao->id, $produto->id)
                 );
@@ -212,6 +280,57 @@ class ArmazemInventarioService
                 'estado' => 'concluido',
                 'concluido_por' => $utilizadorId,
                 'concluido_em' => now(),
+            ])->save();
+
+            return $sessao->load('linhas.produto', 'armazem');
+        }, attempts: 3);
+    }
+
+    public function rejeitar(
+        Empresa $empresa,
+        ArmazemInventario $inventario,
+        int $utilizadorId,
+        string $motivo
+    ): ArmazemInventario {
+        $motivo = trim($motivo);
+
+        if (mb_strlen($motivo) < 10 || mb_strlen($motivo) > 2000) {
+            throw new InvalidArgumentException('Indica um motivo de rejeição entre 10 e 2000 caracteres.');
+        }
+
+        return DB::transaction(function () use ($empresa, $inventario, $utilizadorId, $motivo): ArmazemInventario {
+            $this->validarTenant($empresa);
+            Empresa::query()->whereKey($empresa->id)->lockForUpdate()->firstOrFail();
+
+            $sessao = ArmazemInventario::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->whereKey($inventario->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($sessao->estado === 'rejeitado') {
+                return $sessao->load('linhas.produto', 'armazem');
+            }
+
+            if ($sessao->estado !== 'aguarda_aprovacao') {
+                throw new DomainException('Só é possível rejeitar inventários que aguardam aprovação.');
+            }
+
+            $utilizadorId = $this->validarUtilizador($empresa, $utilizadorId);
+            $linhas = ArmazemInventarioLinha::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->where('inventario_id', $sessao->id)
+                ->orderBy('produto_id')
+                ->lockForUpdate()
+                ->get();
+
+            $this->garantirSegregacao($sessao, $linhas, $utilizadorId);
+
+            $sessao->forceFill([
+                'estado' => 'rejeitado',
+                'rejeitado_por' => $utilizadorId,
+                'rejeitado_em' => now(),
+                'motivo_rejeicao' => $motivo,
             ])->save();
 
             return $sessao->load('linhas.produto', 'armazem');
@@ -242,6 +361,34 @@ class ArmazemInventarioService
 
             return $sessao;
         }, attempts: 3);
+    }
+
+    private function validarUtilizador(Empresa $empresa, ?int $utilizadorId): int
+    {
+        if ($utilizadorId === null || User::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->whereKey($utilizadorId)
+            ->exists() === false) {
+            throw new DomainException('O utilizador não pertence à empresa ou não foi identificado.');
+        }
+
+        return $utilizadorId;
+    }
+
+    private function garantirSegregacao(
+        ArmazemInventario $sessao,
+        \Illuminate\Support\Collection $linhas,
+        int $utilizadorId
+    ): void {
+        $autores = collect([$sessao->aberto_por, $sessao->submetido_por])
+            ->merge($linhas->pluck('contado_por'))
+            ->filter(fn ($id): bool => $id !== null)
+            ->map(fn ($id): int => (int) $id)
+            ->unique();
+
+        if ($autores->contains($utilizadorId)) {
+            throw new DomainException('Quem abriu, submeteu ou registou contagens neste inventário não pode aprovar nem rejeitar os seus ajustes.');
+        }
     }
 
     private function validarTenant(Empresa $empresa): void
