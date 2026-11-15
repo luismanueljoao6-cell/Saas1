@@ -86,5 +86,4 @@ class PapeisArmazemTest extends TestCase
         $this->assertTrue($administrador->hasPermissionTo('armazem.inventarios.aprovar'));
         $this->assertTrue($administrador->hasPermissionTo('armazem.inventarios.rejeitar'));
     }
-
 }
