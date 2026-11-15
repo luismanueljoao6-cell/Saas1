@@ -317,6 +317,7 @@ class ArmazemInventarioServiceTest extends TestCase
         $this->expectException(DomainException::class);
         $service->abrir($empresa, $armazem, [$produtoB->id], $criador->id);
     }
+
     public function test_contador_anterior_nao_pode_aprovar_apos_recontagem_por_outro_utilizador(): void
     {
         [$empresa, $armazem, $produtoA] = $this->preparar('630100217');
@@ -363,5 +364,4 @@ class ArmazemInventarioServiceTest extends TestCase
             ->where('produto_id', $produtoA->id)
             ->value('quantidade'));
     }
-
 }
