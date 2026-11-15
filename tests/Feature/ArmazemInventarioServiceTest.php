@@ -187,6 +187,7 @@ class ArmazemInventarioServiceTest extends TestCase
         $this->expectException(ModelNotFoundException::class);
         app(ArmazemInventarioService::class)->registarContagem($empresaB, $inventario, $inventario->linhas->first()->id, '1.000');
     }
+
     public function test_utilizador_que_criou_o_ajuste_nao_pode_aprova_lo(): void
     {
         [$empresa, $armazem, $produtoA] = $this->preparar('630100209');
