@@ -6,7 +6,9 @@ use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
+use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\Recibo;
+use Modules\Faturacao\Support\ConfiguracaoFiscalEmpresa;
 
 /**
  * Fachada estável para os módulos consumidores da Faturação.
@@ -18,6 +20,7 @@ class FaturacaoGatewayService implements FaturacaoGateway
         protected FaturaService $faturas,
         protected ReciboService $recibos,
         protected AbatimentoAdiantamentoService $abatimentos,
+        protected NotaCreditoDebitoService $notas,
     ) {}
 
     public function criarRascunho(
@@ -36,6 +39,41 @@ class FaturacaoGatewayService implements FaturacaoGateway
         ?string $observacoes = null,
     ): Fatura {
         return $this->faturas->criarRascunhoAdiantamento($empresa, $cliente, $linhas, $observacoes);
+    }
+
+    public function criarNotaCredito(
+        int $empresaId,
+        int $clienteId,
+        int $faturaId,
+        string $motivo,
+        array $linhas,
+    ): NotaCreditoDebito {
+        return $this->notas->criarRascunho($empresaId, $clienteId, 'credito', $motivo, $linhas, $faturaId);
+    }
+
+    public function criarNotaDebito(
+        int $empresaId,
+        int $clienteId,
+        string $motivo,
+        array $linhas,
+        ?int $faturaId = null,
+    ): NotaCreditoDebito {
+        return $this->notas->criarRascunho($empresaId, $clienteId, 'debito', $motivo, $linhas, $faturaId);
+    }
+
+    public function anularFatura(Fatura $fatura, string $motivo): NotaCreditoDebito
+    {
+        return $this->notas->criarParaAnularFatura($fatura, $motivo);
+    }
+
+    public function emitirNota(NotaCreditoDebito $nota): NotaCreditoDebito
+    {
+        return $this->notas->emitir($nota);
+    }
+
+    public function taxaIvaPadrao(int $empresaId): string
+    {
+        return ConfiguracaoFiscalEmpresa::taxaPadrao($empresaId);
     }
 
     public function emitirRegularizacao(

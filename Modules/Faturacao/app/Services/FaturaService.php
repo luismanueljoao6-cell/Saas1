@@ -217,6 +217,8 @@ class FaturaService
      */
     public function atualizarRascunho(Fatura $fatura, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
     {
+        GuardaEmissao::garantirTenant((int) $fatura->empresa_id);
+
         if (empty($linhas)) {
             throw new \InvalidArgumentException('Uma fatura precisa de pelo menos uma linha.');
         }
@@ -242,6 +244,8 @@ class FaturaService
     /** Elimina um RASCUNHO (sem número nem assinatura). Documentos emitidos nunca se apagam. */
     public function eliminarRascunho(Fatura $fatura): void
     {
+        GuardaEmissao::garantirTenant((int) $fatura->empresa_id);
+
         DB::transaction(function () use ($fatura) {
             $atual = $this->rascunhoComLock($fatura);
 

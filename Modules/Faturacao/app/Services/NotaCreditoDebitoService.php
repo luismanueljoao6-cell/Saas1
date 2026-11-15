@@ -77,9 +77,6 @@ class NotaCreditoDebitoService
         return $this->criarRascunho($fatura->empresa_id, $fatura->cliente_id, 'credito', $motivo, $linhas, $fatura->id);
     }
 
-    /**
-     * @param  array<int, array{descricao: string, quantidade: float, preco_unitario: float, preco_unitario_base?: float, taxa_iva: float, operation_type?: string|null}>  $linhas
-     */
     /** Elimina uma nota ainda em rascunho; uma nota emitida é um documento fiscal e não se apaga. */
     public function eliminarRascunho(NotaCreditoDebito $nota): void
     {
@@ -105,6 +102,9 @@ class NotaCreditoDebitoService
         ]);
     }
 
+    /**
+     * @param  array<int, array{descricao: string, quantidade: int|string, preco_unitario: int|string, preco_unitario_base?: int|string|null, taxa_iva: int|string, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
+     */
     public function criarRascunho(
         int $empresaId,
         int $clienteId,

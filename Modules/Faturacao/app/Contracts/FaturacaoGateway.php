@@ -5,6 +5,7 @@ namespace Modules\Faturacao\Contracts;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
+use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\Recibo;
 
 /**
@@ -43,6 +44,46 @@ interface FaturacaoGateway
 
     /** Emite um rascunho pela sequência fiscal central. */
     public function emitirFatura(Fatura $fatura): Fatura;
+
+    /**
+     * Cria o rascunho de uma NOTA DE CRÉDITO sobre uma fatura emitida do mesmo cliente (correção total
+     * ou parcial); emite-se com emitirNota(). Uma fatura emitida nunca se edita: corrige-se por nota de crédito.
+     *
+     * @param  array<int, array{descricao: string, quantidade: int|string, preco_unitario: int|string, preco_unitario_base?: int|string|null, taxa_iva: int|string, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
+     */
+    public function criarNotaCredito(
+        int $empresaId,
+        int $clienteId,
+        int $faturaId,
+        string $motivo,
+        array $linhas,
+    ): NotaCreditoDebito;
+
+    /**
+     * Cria o rascunho de uma NOTA DE DÉBITO (sem IVA, salvo configuração em contrário); emite-se com emitirNota().
+     *
+     * @param  array<int, array<string, mixed>>  $linhas  mesmo formato de criarNotaCredito()
+     */
+    public function criarNotaDebito(
+        int $empresaId,
+        int $clienteId,
+        string $motivo,
+        array $linhas,
+        ?int $faturaId = null,
+    ): NotaCreditoDebito;
+
+    /** Cria o rascunho da nota de crédito que anula TOTALMENTE uma fatura emitida (uma única vez por fatura). */
+    public function anularFatura(Fatura $fatura, string $motivo): NotaCreditoDebito;
+
+    /** Emite uma nota de crédito/débito pela sequência fiscal central (idempotente). */
+    public function emitirNota(NotaCreditoDebito $nota): NotaCreditoDebito;
+
+    /**
+     * Taxa de IVA padrão da empresa em texto decimal (ex.: '14.00'): a preferência fiscal da empresa,
+     * validada contra as taxas permitidas. Os módulos verticais usam isto ao montar linhas e nunca
+     * leem config('faturacao.taxa_iva_geral') diretamente.
+     */
+    public function taxaIvaPadrao(int $empresaId): string;
 
     /** Emite um recibo pela sequência fiscal central. */
     public function emitirRecibo(

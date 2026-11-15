@@ -26,6 +26,8 @@ class OrcamentoService
             throw new \InvalidArgumentException('O orçamento deve conter entre 1 e 100 linhas.');
         }
 
+        $this->garantirValidadeNaoPassada($validade);
+
         ValidacaoLinhas::validar($linhas, (int) $empresa->id);
         $totais = $this->totais($linhas);
 
@@ -58,9 +60,7 @@ class OrcamentoService
             throw new \InvalidArgumentException('O orçamento deve conter entre 1 e 100 linhas.');
         }
 
-        if ($validade !== null && Carbon::parse($validade)->startOfDay()->isBefore(today())) {
-            throw new \DomainException('A data de validade não pode estar no passado.');
-        }
+        $this->garantirValidadeNaoPassada($validade);
 
         ValidacaoLinhas::validar($linhas, (int) $orcamento->empresa_id);
         $totais = $this->totais($linhas);
@@ -94,9 +94,7 @@ class OrcamentoService
     public function duplicar(Orcamento $origem, Empresa $empresa, ?Cliente $cliente = null, ?string $validade = null): Orcamento
     {
         $this->validarTenant((int) $empresa->id);
-        if ($validade !== null && Carbon::parse($validade)->startOfDay()->isBefore(today())) {
-            throw new \DomainException('A data de validade não pode estar no passado.');
-        }
+        $this->garantirValidadeNaoPassada($validade);
 
         return DB::transaction(function () use ($origem, $empresa, $cliente, $validade) {
             $atual = Orcamento::withoutGlobalScopes()
@@ -108,7 +106,7 @@ class OrcamentoService
                 throw new \DomainException('O cliente selecionado não pertence a esta empresa.');
             }
 
-            $clienteFinal = $cliente ?? Cliente::query()
+            $clienteFinal = $cliente ?? Cliente::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
                 ->findOrFail($atual->cliente_id);
 
@@ -184,11 +182,14 @@ class OrcamentoService
                 throw new \DomainException('Só é possível converter um orçamento aceite e ainda não convertido.');
             }
 
-            if ($atual->estado === 'expirado' || ($atual->data_validade && $atual->data_validade->isBefore(today()))) {
+            if ($atual->data_validade && $atual->data_validade->isBefore(today())) {
                 throw new \DomainException('O orçamento expirou.');
             }
 
-            $cliente = Cliente::query()->findOrFail($atual->cliente_id);
+            // Sem depender do tenant ambiente (jobs e comandos): o cliente é sempre o da empresa do orçamento.
+            $cliente = Cliente::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->findOrFail($atual->cliente_id);
             $fatura = $faturas->criarRascunho($empresa, $cliente, $atual->linhas, $atual->observacoes);
 
             $atual->update([
@@ -202,10 +203,14 @@ class OrcamentoService
 
     private function validarTenant(int $empresaId): void
     {
-        $tenant = app(TenantManager::class);
+        app(TenantManager::class)->garantirEmpresa($empresaId, 'O contexto atual não corresponde à empresa do orçamento.');
+    }
 
-        if ($tenant->has() && $tenant->emBypass() === false && $tenant->id() !== $empresaId) {
-            throw new \DomainException('O contexto atual não corresponde à empresa do orçamento.');
+    /** Uma proposta não nasce já expirada: a mesma regra para criar, editar e duplicar. */
+    private function garantirValidadeNaoPassada(?string $validade): void
+    {
+        if ($validade !== null && Carbon::parse($validade)->startOfDay()->isBefore(today())) {
+            throw new \DomainException('A data de validade não pode estar no passado.');
         }
     }
 

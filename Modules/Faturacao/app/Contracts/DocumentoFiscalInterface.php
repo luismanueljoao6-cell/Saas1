@@ -21,8 +21,6 @@ interface DocumentoFiscalInterface
 
     public function getNumeroSequencial(): ?int;
 
-    public function getValorTotalDocumento(): float;
-
     public function getHashAnterior(): ?string;
 
     public function estaEmitido(): bool;
