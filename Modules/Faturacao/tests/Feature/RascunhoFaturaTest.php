@@ -13,6 +13,7 @@ use Modules\Faturacao\Models\StockMovimento;
 use Modules\Faturacao\Models\StockSaldo;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
+use Modules\Faturacao\Services\StockService;
 use Tests\TestCase;
 
 class RascunhoFaturaTest extends TestCase
@@ -152,7 +153,7 @@ class RascunhoFaturaTest extends TestCase
             'empresa_id' => $empresa->id, 'nome' => 'Produto vendável', 'unidade' => 'un',
             'preco_unitario' => '100.00', 'taxa_iva' => '14', 'ativo' => true, 'controla_stock' => true,
         ]);
-        app(\Modules\Faturacao\Services\StockService::class)->entrada($empresa, $produto, '5.000', 'Stock inicial');
+        app(StockService::class)->entrada($empresa, $produto, '5.000', 'Stock inicial');
 
         $servico = app(FaturaService::class);
         $rascunho = $servico->criarRascunho($empresa, $cliente, [[
@@ -175,7 +176,7 @@ class RascunhoFaturaTest extends TestCase
             'empresa_id' => $empresa->id, 'nome' => 'Produto de adiantamento', 'unidade' => 'un',
             'preco_unitario' => '100.00', 'taxa_iva' => '14', 'ativo' => true, 'controla_stock' => true,
         ]);
-        app(\Modules\Faturacao\Services\StockService::class)->entrada($empresa, $produto, '5.000', 'Stock inicial');
+        app(StockService::class)->entrada($empresa, $produto, '5.000', 'Stock inicial');
 
         $servico = app(FaturaService::class);
         $servico->emitir($servico->criarRascunhoAdiantamento($empresa, $cliente, [[
@@ -194,7 +195,7 @@ class RascunhoFaturaTest extends TestCase
             'empresa_id' => $empresa->id, 'nome' => 'Produto limitado', 'unidade' => 'un',
             'preco_unitario' => '100.00', 'taxa_iva' => '14', 'ativo' => true, 'controla_stock' => true,
         ]);
-        $stock = app(\Modules\Faturacao\Services\StockService::class);
+        $stock = app(StockService::class);
         $stock->entrada($empresa, $produto, '1.000', 'Stock inicial');
 
         $servico = app(FaturaService::class);
@@ -214,5 +215,4 @@ class RascunhoFaturaTest extends TestCase
         $this->assertSame('1.000', StockSaldo::withoutGlobalScopes()->where('produto_id', $produto->id)->value('quantidade'));
         $this->assertSame(1, StockMovimento::withoutGlobalScopes()->where('produto_id', $produto->id)->count());
     }
-
 }
