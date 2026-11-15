@@ -115,14 +115,17 @@ class ArmazemInventarioController extends Controller
             return back()->with('erro', $exception->getMessage());
         }
 
-        $estado = $this->obterInventario($request, $inventario)->fresh()->estado;
+        $sessaoAtualizada = $this->obterInventario($request, $inventario)->fresh();
 
-        return back()->with(
-            'sucesso',
-            $estado === 'aguarda_aprovacao'
-                ? 'Inventário enviado para aprovação. Os ajustes ainda não foram aplicados ao stock.'
-                : 'Inventário concluído sem diferenças que exigissem aprovação.'
-        );
+        $mensagem = match ($sessaoAtualizada->estado) {
+            'aguarda_aprovacao' => 'Inventário enviado para aprovação. Os ajustes ainda não foram aplicados ao stock.',
+            'concluido' => (int) $sessaoAtualizada->concluido_por === (int) $sessaoAtualizada->submetido_por
+                ? 'Inventário concluído sem diferenças que exigissem aprovação.'
+                : 'Inventário já aprovado. Os ajustes estão registados no histórico de movimentos.',
+            default => 'Estado do inventário atualizado.',
+        };
+
+        return back()->with('sucesso', $mensagem);
     }
 
     public function aprovar(
