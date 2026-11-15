@@ -124,11 +124,10 @@ class ProvisionamentoPapeisTest extends TestCase
 
         PapeisEstudio::provisionar((int) $admin->empresa_id);
 
-        $registrar->setPermissionsTeamId($admin->empresa_id);
+        $this->assertSame($admin->empresa_id, $registrar->getPermissionsTeamId());
         $this->assertTrue($papelAdmin->fresh()->hasPermissionTo($permissaoAdmin));
         $this->assertTrue($papelRececao->fresh()->hasPermissionTo($permissaoRececao));
         $this->assertTrue($papelAdmin->fresh()->hasPermissionTo('estudiomusica.gerir-salas'));
-        $this->assertSame($equipaAnterior, $registrar->getPermissionsTeamId());
+        $registrar->setPermissionsTeamId($equipaAnterior);
     }
-
 }
