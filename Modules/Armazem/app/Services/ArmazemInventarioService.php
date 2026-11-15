@@ -51,11 +51,11 @@ class ArmazemInventarioService
             $aberto = ArmazemInventario::withoutGlobalScopes()
                 ->where('empresa_id', $empresa->id)
                 ->where('armazem_id', $local->id)
-                ->where('estado', 'em_contagem')
+                ->whereIn('estado', ['em_contagem', 'aguarda_aprovacao', 'a_finalizar'])
                 ->exists();
 
             if ($aberto) {
-                throw new DomainException('Já existe um inventário em contagem neste armazém.');
+                throw new DomainException('Já existe um inventário em curso ou aguardando aprovação neste armazém.');
             }
 
             $produtos = Produto::withoutGlobalScopes()
