@@ -13,7 +13,6 @@ use Tests\TestCase;
 class PapeisArmazemTest extends TestCase
 {
     use RefreshDatabase;
-
     public function test_provisiona_permissoes_para_administrador_de_cada_empresa(): void
     {
         $empresaA = Empresa::create([
