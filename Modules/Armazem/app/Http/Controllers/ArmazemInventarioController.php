@@ -119,9 +119,11 @@ class ArmazemInventarioController extends Controller
 
         $mensagem = match ($sessaoAtualizada->estado) {
             'aguarda_aprovacao' => 'Inventário enviado para aprovação. Os ajustes ainda não foram aplicados ao stock.',
-            'concluido' => (int) $sessaoAtualizada->concluido_por === (int) $sessaoAtualizada->submetido_por
-                ? 'Inventário concluído sem diferenças que exigissem aprovação.'
-                : 'Inventário já aprovado. Os ajustes estão registados no histórico de movimentos.',
+            'concluido' => $sessaoAtualizada->submetido_em === null
+                ? 'Inventário já estava concluído antes do fluxo de aprovação.'
+                : ((int) $sessaoAtualizada->concluido_por === (int) $sessaoAtualizada->submetido_por
+                    ? 'Inventário concluído sem diferenças que exigissem aprovação.'
+                    : 'Inventário já aprovado. Os ajustes estão registados no histórico de movimentos.'),
             default => 'Estado do inventário atualizado.',
         };
 
