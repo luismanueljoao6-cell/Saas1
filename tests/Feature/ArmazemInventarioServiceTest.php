@@ -317,5 +317,4 @@ class ArmazemInventarioServiceTest extends TestCase
         $this->expectException(DomainException::class);
         $service->abrir($empresa, $armazem, [$produtoB->id], $criador->id);
     }
-
 }
