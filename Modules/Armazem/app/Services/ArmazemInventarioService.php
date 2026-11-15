@@ -3,6 +3,7 @@
 namespace Modules\Armazem\Services;
 
 use DomainException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Modules\Armazem\Models\Armazem;
@@ -377,7 +378,7 @@ class ArmazemInventarioService
 
     private function garantirSegregacao(
         ArmazemInventario $sessao,
-        \Illuminate\Support\Collection $linhas,
+        Collection $linhas,
         int $utilizadorId
     ): void {
         $autores = collect([$sessao->aberto_por, $sessao->submetido_por])
