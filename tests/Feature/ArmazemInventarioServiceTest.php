@@ -349,6 +349,11 @@ class ArmazemInventarioServiceTest extends TestCase
             'utilizador_id' => $segundoContador->id,
             'quantidade_contada' => '3.500',
         ]);
+        $historico = $linha->fresh()->contagens()->get();
+        $this->assertSame(
+            [$primeiroContador->id, $segundoContador->id],
+            $historico->pluck('utilizador_id')->all(),
+        );
 
         try {
             $service->aprovar($empresa, $inventario, $primeiroContador->id);
