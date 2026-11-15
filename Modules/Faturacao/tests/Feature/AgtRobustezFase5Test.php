@@ -33,6 +33,11 @@ class AgtRobustezFase5Test extends TestCase
 
     protected bool $falharRede = false;
 
+    /** @var array<string, mixed> */
+    protected array $respostaEstado = ['resultCode' => '8'];
+
+    protected int $codigoEstado = 200;
+
     /** @var array{0: string, 1: string} */
     protected array $intervaloSerie = ['1', '1000'];
 
@@ -80,7 +85,7 @@ class AgtRobustezFase5Test extends TestCase
             '*registarFactura' => fn () => $this->falharRede
                 ? throw new ConnectionException('timeout')
                 : Http::response(['requestID' => '202500000010689', 'errorList' => []], 200),
-            '*obterEstado' => Http::response(['resultCode' => '8'], 200),
+            '*obterEstado' => fn () => Http::response($this->respostaEstado, $this->codigoEstado),
         ]);
     }
 
@@ -209,6 +214,22 @@ class AgtRobustezFase5Test extends TestCase
         $submissao->update(['proxima_tentativa_em' => now()->subSecond()]);
 
         $this->assertSame(1, app(AgtSubmissaoService::class)->enviarPendentes()['enviados']);
+    }
+
+    public function test_estado_com_pedido_mal_formado_nao_deixa_o_documento_orfao(): void
+    {
+        $this->emitirFatura();
+        app(AgtSubmissaoService::class)->enviarPendentes();
+
+        $this->codigoEstado = 400;
+        $this->respostaEstado = ['errorList' => [['idError' => 'E96', 'descriptionError' => 'solicitação mal efectuada']]];
+
+        app(AgtSubmissaoService::class)->consultarEstados();
+
+        $submissao = AgtSubmissao::query()->firstOrFail();
+        $this->assertSame(AgtSubmissao::AGUARDA_INTERVENCAO, $submissao->estado);
+        $this->assertSame('E96', $submissao->erros[0]['codigo']);
+        $this->assertNotNull($submissao->request_id);
     }
 
     public function test_esgotadas_as_tentativas_passa_a_erro_sem_nova_tentativa_agendada(): void

@@ -477,7 +477,7 @@ class AgtSubmissaoService
         $dados = $resposta['corpo'];
 
         if ($http === 400) {
-            return $this->marcarGrupo($grupo, AgtSubmissao::ERRO, AgtClient::normalizarErros($dados['errorList'] ?? $dados['requestErrorList'] ?? [['idError' => 'E96', 'descriptionError' => 'solicitação mal efectuada']]), $res, 'erros');
+            return $this->marcarGrupo($grupo, AgtSubmissao::AGUARDA_INTERVENCAO, AgtClient::normalizarErros($dados['errorList'] ?? $dados['requestErrorList'] ?? [['idError' => 'E96', 'descriptionError' => 'solicitação mal efectuada']]), $res, 'erros');
         }
 
         if ($http === 422 || $http === 429) {
@@ -485,7 +485,7 @@ class AgtSubmissaoService
 
             // E95: NIF do emissor diferente do pedido original — não se resolve a esperar.
             if ($codigo === 'E95') {
-                return $this->marcarGrupo($grupo, AgtSubmissao::ERRO, [['codigo' => 'E95', 'descricao' => 'NIF do emissor diferente do do pedido original']], $res, 'erros');
+                return $this->marcarGrupo($grupo, AgtSubmissao::AGUARDA_INTERVENCAO, [['codigo' => 'E95', 'descricao' => 'NIF do emissor diferente do do pedido original']], $res, 'erros');
             }
 
             return $this->aguardar($grupo, $res);
@@ -498,7 +498,7 @@ class AgtSubmissaoService
         $codigoResultado = (int) ($dados['resultCode'] ?? -1);
 
         if ($codigoResultado === 9) {
-            return $this->marcarGrupo($grupo, AgtSubmissao::ERRO, [['codigo' => 'E99', 'descricao' => 'Processamento cancelado pela AGT']], $res, 'erros');
+            return $this->marcarGrupo($grupo, AgtSubmissao::AGUARDA_INTERVENCAO, [['codigo' => 'E99', 'descricao' => 'Processamento cancelado pela AGT']], $res, 'erros');
         }
 
         if (! in_array($codigoResultado, [0, 1, 2], true)) {
