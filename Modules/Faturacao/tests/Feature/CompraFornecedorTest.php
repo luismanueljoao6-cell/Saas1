@@ -609,5 +609,4 @@ class CompraFornecedorTest extends TestCase
             'produto_id' => $produto->id,
         ]);
     }
-
 }
