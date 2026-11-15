@@ -84,11 +84,6 @@ class Recibo extends Model implements DocumentoFiscalInterface
         return $this->numero_sequencial;
     }
 
-    public function getValorTotalDocumento(): float
-    {
-        return (float) $this->valor;
-    }
-
     public function getHashAnterior(): ?string
     {
         return $this->hash_anterior;

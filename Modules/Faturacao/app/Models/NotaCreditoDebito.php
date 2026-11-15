@@ -98,11 +98,6 @@ class NotaCreditoDebito extends Model implements DocumentoFiscalInterface
         return $this->numero_sequencial;
     }
 
-    public function getValorTotalDocumento(): float
-    {
-        return (float) $this->valor_total;
-    }
-
     public function getHashAnterior(): ?string
     {
         return $this->hash_anterior;
