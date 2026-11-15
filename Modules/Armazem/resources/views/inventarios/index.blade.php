@@ -141,6 +141,20 @@
                                             @else
                                                 —
                                             @endif
+                                            @if ($linha->contagens->isNotEmpty())
+                                                <details class="mt-2 max-w-xs">
+                                                    <summary class="cursor-pointer font-medium text-indigo-600 dark:text-indigo-300">Ver histórico ({{ $linha->contagens->count() }})</summary>
+                                                    <ol class="mt-2 space-y-2 border-l border-slate-200 pl-3 dark:border-zinc-700">
+                                                        @foreach ($linha->contagens as $contagem)
+                                                            <li>
+                                                                <span class="block font-medium text-slate-700 dark:text-zinc-300">{{ $contagem->utilizador?->name ?? ($contagem->utilizador_id ? 'Utilizador removido' : 'Sistema') }}</span>
+                                                                <span class="block">{{ $contagem->registado_em?->format('d/m/Y H:i') }}</span>
+                                                                <span class="block">Sistema {{ str_replace('.', ',', (string) $contagem->quantidade_sistema) }} · Contado {{ str_replace('.', ',', (string) $contagem->quantidade_contada) }} · Δ {{ str_replace('.', ',', (string) $contagem->diferenca) }}</span>
+                                                            </li>
+                                                        @endforeach
+                                                    </ol>
+                                                </details>
+                                            @endif
                                         </td>
                                         <td class="px-3 py-3 text-right tabular-nums">
                                             @if ($linha->diferenca !== null)
@@ -173,6 +187,7 @@
                         @php
                             $autoresInventario = collect([$inventario->aberto_por, $inventario->submetido_por])
                                 ->merge($inventario->linhas->pluck('contado_por'))
+                                ->merge($inventario->linhas->flatMap(fn ($linha) => $linha->contagens->pluck('utilizador_id')))
                                 ->filter()
                                 ->map(fn ($id) => (int) $id);
                             $podeAprovarInventario = auth()->user()->can('armazem.inventarios.aprovar')
