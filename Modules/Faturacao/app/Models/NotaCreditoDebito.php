@@ -76,6 +76,26 @@ class NotaCreditoDebito extends Model implements DocumentoFiscalInterface
         return $this->hasMany(NotaCreditoDebitoLinha::class)->orderBy('ordem');
     }
 
+    /**
+     * Art. 8.º n.º 5 do Regime Jurídico das Facturas (DP 71/25): a nota de crédito tem de conter a
+     * expressão «anulação» ou «rectificação». É anulação quando credita o total da fatura de
+     * origem; qualquer crédito inferior é rectificação. Nas notas de débito não se aplica.
+     */
+    public function expressaoFiscal(): ?string
+    {
+        if ($this->tipo !== 'credito') {
+            return null;
+        }
+
+        $totalOrigem = $this->fatura_id
+            ? Fatura::withoutGlobalScopes()->where('empresa_id', $this->empresa_id)->whereKey($this->fatura_id)->value('valor_total')
+            : null;
+
+        return $totalOrigem !== null && Dinheiro::centimos($this->valor_total) >= Dinheiro::centimos($totalOrigem)
+            ? 'Anulação'
+            : 'Rectificação';
+    }
+
     // --- DocumentoFiscalInterface -----------------------------------
 
     public function tipoDocumentoFiscal(): string
@@ -98,9 +118,9 @@ class NotaCreditoDebito extends Model implements DocumentoFiscalInterface
         return $this->numero_sequencial;
     }
 
-    public function getValorTotalDocumento(): float
+    public function getValorTotalCentimos(): int
     {
-        return (float) $this->valor_total;
+        return Dinheiro::centimos($this->valor_total);
     }
 
     public function getHashAnterior(): ?string

@@ -78,6 +78,11 @@ class ReciboService
             throw new \InvalidArgumentException('O meio de pagamento é obrigatório.');
         }
 
+        // A regra vive no serviço (não só nos FormRequests): qualquer módulo que emita recibos tem a mesma garantia.
+        if (! array_key_exists($meioPagamento, (array) config('faturacao.meios_pagamento', []))) {
+            throw new \InvalidArgumentException("Meio de pagamento inválido: '{$meioPagamento}'.");
+        }
+
         if ($tipo === 'RG' && $faturaId === null) {
             throw new \InvalidArgumentException('Um recibo de regularização (RG) tem de referir a fatura que regulariza.');
         }
@@ -196,7 +201,7 @@ class ReciboService
         return [
             'recebido' => $recebido,
             'creditado' => $creditado,
-                        'abatido' => $abatido,
+            'abatido' => $abatido,
             'saldo' => Dinheiro::centimos($fatura->valor_total) + $debitado - $recebido - $creditado - $abatido,
         ];
     }

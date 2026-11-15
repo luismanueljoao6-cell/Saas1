@@ -108,9 +108,9 @@ class Fatura extends Model implements DocumentoFiscalInterface
         return $this->numero_sequencial;
     }
 
-    public function getValorTotalDocumento(): float
+    public function getValorTotalCentimos(): int
     {
-        return (float) $this->valor_total;
+        return Dinheiro::centimos($this->valor_total);
     }
 
     public function getHashAnterior(): ?string

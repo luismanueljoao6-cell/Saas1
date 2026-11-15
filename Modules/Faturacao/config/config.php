@@ -217,6 +217,8 @@ return [
         'palavra_passe' => env('FATURACAO_AGT_PALAVRA_PASSE'),
         'timeout' => (int) env('FATURACAO_AGT_TIMEOUT', 20),
         'estabelecimento_padrao' => env('FATURACAO_AGT_ESTABELECIMENTO', 'SEDE'),
+        // Art. 17.º n.º 5 do RJF (DP 71/25): falha de comunicação superior a 60 dias bloqueia a emissão. 0 desliga.
+        'bloqueio_dias_sem_comunicacao' => (int) env('FATURACAO_AGT_BLOQUEIO_DIAS', 60),
         'lote_maximo' => 30, // máx. de documentos por pedido registarFactura
         'max_tentativas' => (int) env('FATURACAO_AGT_MAX_TENTATIVAS', 5),
         'consulta_intervalo' => (int) env('FATURACAO_AGT_CONSULTA_INTERVALO', 60), // segundos entre consultas de estado

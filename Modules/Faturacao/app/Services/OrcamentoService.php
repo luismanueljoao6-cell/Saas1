@@ -26,6 +26,10 @@ class OrcamentoService
             throw new \InvalidArgumentException('O orçamento deve conter entre 1 e 100 linhas.');
         }
 
+        if ($validade !== null && Carbon::parse($validade)->startOfDay()->isBefore(today())) {
+            throw new \DomainException('A data de validade não pode estar no passado.');
+        }
+
         ValidacaoLinhas::validar($linhas, (int) $empresa->id);
         $totais = $this->totais($linhas);
 

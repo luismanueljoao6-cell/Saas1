@@ -6,6 +6,7 @@ use DomainException;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Exceptions\EmissaoNaoPermitidaException;
+use Modules\Faturacao\Models\AgtSubmissao;
 use Modules\Faturacao\Models\Fatura;
 
 /**
@@ -24,6 +25,37 @@ final class GuardaEmissao
 
         if (! $empresa->podeEmitirFaturas()) {
             throw EmissaoNaoPermitidaException::subscricaoInativa();
+        }
+
+        self::garantirComunicacaoAgtEmDia($empresaId);
+    }
+
+    /**
+     * Art. 17.º n.º 5 do Regime Jurídico das Facturas (DP 71/25): em caso de falha de comunicação
+     * superior a 60 dias, o sistema bloqueia a emissão de novos documentos. Só conta o que a AGT
+     * ainda não recebeu/aceitou por falha nossa ou de rede (pendente, erro técnico, a aguardar
+     * intervenção): "inválido"/"rejeitado" são respostas da AGT, ou seja, a comunicação funcionou.
+     */
+    public static function garantirComunicacaoAgtEmDia(int $empresaId): void
+    {
+        if (! config('faturacao.agt.ativo')) {
+            return;
+        }
+
+        $dias = (int) config('faturacao.agt.bloqueio_dias_sem_comunicacao', 60);
+
+        if ($dias <= 0) {
+            return;
+        }
+
+        $emFalta = AgtSubmissao::query()
+            ->where('empresa_id', $empresaId)
+            ->whereIn('estado', [AgtSubmissao::PENDENTE, AgtSubmissao::ERRO, AgtSubmissao::AGUARDA_INTERVENCAO])
+            ->where('created_at', '<', now()->subDays($dias))
+            ->exists();
+
+        if ($emFalta) {
+            throw EmissaoNaoPermitidaException::comunicacaoAgtEmFalta($dias);
         }
     }
 

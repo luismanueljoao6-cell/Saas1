@@ -23,6 +23,11 @@
                         <a href="{{ route('faturacao.faturas.mostrar', $nota->fatura->id) }}" class="font-medium text-indigo-600 hover:text-indigo-500">{{ $nota->fatura->numero_documento }}</a>
                     </p>
                 @endif
+                @if ($nota->expressaoFiscal())
+                    <p class="mt-1 text-sm font-medium text-slate-700">
+                        {{ $nota->expressaoFiscal() }}@if ($nota->fatura) da fatura {{ $nota->fatura->numero_documento }}@endif
+                    </p>
+                @endif
                 <p class="mt-1 text-sm text-slate-500">Motivo: {{ $nota->motivo }}</p>
             </div>
             <span class="rounded-full px-3 py-1 text-xs font-medium {{ $nota->estado === 'emitida' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' }}">

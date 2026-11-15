@@ -390,16 +390,24 @@ class NotaCreditoDebitoService
             ->lockForUpdate()
             ->findOrFail($nota->fatura_id);
 
-        $jaCreditado = NotaCreditoDebito::withoutGlobalScopes()
+        $anteriores = NotaCreditoDebito::withoutGlobalScopes()
             ->where('empresa_id', $nota->empresa_id)
             ->where('fatura_id', $fatura->id)
             ->where('tipo', 'credito')
             ->where('estado', 'emitida')
             ->where('id', '!=', $nota->id)
-            ->get(['valor_total'])
-            ->sum(fn ($n) => Dinheiro::centimos($n->valor_total));
+            ->get(['id', 'valor_total']);
 
-        if ($jaCreditado + Dinheiro::centimos($nota->valor_total) > Dinheiro::centimos($fatura->valor_total)) {
+        $jaCreditado = $anteriores->sum(fn ($n) => Dinheiro::centimos($n->valor_total));
+
+        // O IVA de cada linha arredonda-se por excesso: creditar a mesma linha em várias notas pode
+        // somar até 1 cêntimo por linha acima do IVA original. Essa folga é só arredondamento; o valor
+        // líquido (garantirLimitePorTaxa) continua estritamente limitado ao faturado.
+        $linhasCreditadas = (int) DB::table('notas_credito_debito_linhas')
+            ->whereIn('nota_credito_debito_id', $anteriores->pluck('id')->push($nota->id)->all())
+            ->count();
+
+        if ($jaCreditado + Dinheiro::centimos($nota->valor_total) > Dinheiro::centimos($fatura->valor_total) + $linhasCreditadas) {
             throw new \DomainException('O total creditado excede o valor da fatura de origem.');
         }
 

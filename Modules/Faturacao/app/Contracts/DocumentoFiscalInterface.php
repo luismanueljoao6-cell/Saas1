@@ -21,7 +21,8 @@ interface DocumentoFiscalInterface
 
     public function getNumeroSequencial(): ?int;
 
-    public function getValorTotalDocumento(): float;
+    /** Total do documento em cêntimos (inteiro): nunca float em valores monetários. */
+    public function getValorTotalCentimos(): int;
 
     public function getHashAnterior(): ?string;
 
