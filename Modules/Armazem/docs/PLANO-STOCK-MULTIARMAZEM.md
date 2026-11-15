@@ -154,14 +154,27 @@ O módulo passa a disponibilizar sessões de inventário físico por armazém:
 - A abertura exige seleção explícita dos produtos a contar e guarda um snapshot do saldo de cada produto naquele armazém.
 - Cada linha regista quantidade contada e diferença face ao snapshot, com precisão até três casas decimais.
 - Enquanto uma sessão está em contagem, as operações normais de entrada, saída e ajuste para os produtos incluídos ficam bloqueadas naquele armazém.
-- A conclusão exige contagem de todas as linhas e aplica cada diferença através de `ArmazemStockService::ajustar()`, com chave idempotente determinística por sessão/produto.
-- A conclusão decorre numa única transação. Se um ajuste falhar, a sessão e todos os movimentos são revertidos.
-- O estado intermédio `a_finalizar` permite ao serviço aplicar os próprios ajustes sem desbloquear movimentos externos.
-- O cancelamento liberta os produtos sem alterar os saldos.
-- A interface permite abrir sessões, registar contagens, rever diferenças e concluir/cancelar.
+- A submissão exige contagem de todas as linhas e regista quem abriu, contou e submeteu a sessão.
+- Se não houver diferenças, o inventário pode ser concluído sem gerar movimentos de ajuste.
+- Se houver diferenças, a sessão passa a `aguarda_aprovacao`; os saldos permanecem inalterados e os movimentos normais continuam bloqueados.
+- A aprovação exige um utilizador diferente de quem abriu, submeteu ou registou qualquer contagem da sessão. Só depois da aprovação cada diferença é aplicada por `ArmazemStockService::ajustar()`, com chave idempotente determinística por sessão/produto.
+- A aprovação decorre numa única transação. Se um ajuste falhar, a sessão e todos os movimentos são revertidos; repetir a aprovação concluída não duplica movimentos.
+- A rejeição exige motivo e responsável, fica auditada e liberta os produtos sem alterar os saldos.
+- As permissões de aprovar/rejeitar são separadas das permissões de contar/submeter. O provisionamento do módulo acrescenta permissões sem remover as de outros módulos.
+- A interface permite consultar diferenças, responsáveis, estado, motivo de rejeição e ações de submissão/aprovação/rejeição.
 
 ### Limites desta fase
 
 - A seleção de produtos é explícita; não é criado automaticamente um inventário de todo o catálogo.
 - O inventário só cobre o novo stock multi-armazém. O stock legado da Faturação continua separado.
 - A implementação ainda precisa de CI verde, teste visual em browser/telemóvel e validação de concorrência real no MySQL antes de produção.
+
+
+## Aprovação segregada de ajustes — entrega em revisão
+
+- Inventários com divergências aguardam aprovação independente; não alteram o saldo durante a submissão.
+- O aprovador não pode ser quem abriu, submeteu ou contou qualquer linha do inventário.
+- A rejeição regista responsável, data e motivo; a sessão rejeitada deixa de bloquear movimentos.
+- A aprovação aplica apenas diferenças não nulas, com movimentos imutáveis e idempotentes.
+- O comando `php artisan core:provisionar-servicos` repara permissões de empresas existentes; o provisionador foi alterado para acrescentar as permissões do Armazém sem substituir as permissões de outros módulos.
+- Esta entrega ainda depende da CI do PR e de revisão visual; não está ativada em produção.
