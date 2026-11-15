@@ -28,7 +28,7 @@ class ArmazemInventarioController extends Controller
                 ->orderBy('nome')
                 ->get(['id', 'nome']),
             'inventarios' => ArmazemInventario::query()
-                ->with(['armazem:id,nome,codigo', 'utilizadorAbertura:id,name', 'linhas.produto:id,nome', 'linhas.utilizadorContagem:id,name'])
+                ->with(['armazem:id,nome,codigo', 'utilizadorAbertura:id,name', 'utilizadorSubmissao:id,name', 'utilizadorConclusao:id,name', 'utilizadorRejeicao:id,name', 'linhas.produto:id,nome', 'linhas.utilizadorContagem:id,name'])
                 ->where('empresa_id', $empresaId)
                 ->latest()
                 ->paginate(10)
@@ -115,7 +115,55 @@ class ArmazemInventarioController extends Controller
             return back()->with('erro', $exception->getMessage());
         }
 
-        return back()->with('sucesso', 'Inventário concluído. As diferenças foram aplicadas como movimentos de ajuste auditáveis.');
+        $estado = $this->obterInventario($request, $inventario)->fresh()->estado;
+
+        return back()->with(
+            'sucesso',
+            $estado === 'aguarda_aprovacao'
+                ? 'Inventário enviado para aprovação. Os ajustes ainda não foram aplicados ao stock.'
+                : 'Inventário concluído sem diferenças que exigissem aprovação.'
+        );
+    }
+
+    public function aprovar(
+        Request $request,
+        int $inventario,
+        ArmazemInventarioService $service,
+    ): RedirectResponse {
+        try {
+            $service->aprovar(
+                $request->user()->empresa,
+                $this->obterInventario($request, $inventario),
+                (int) $request->user()->id,
+            );
+        } catch (DomainException|InvalidArgumentException $exception) {
+            return back()->with('erro', $exception->getMessage());
+        }
+
+        return back()->with('sucesso', 'Inventário aprovado. As diferenças foram aplicadas como movimentos de ajuste auditáveis.');
+    }
+
+    public function rejeitar(
+        Request $request,
+        int $inventario,
+        ArmazemInventarioService $service,
+    ): RedirectResponse {
+        $dados = $request->validate([
+            'motivo_rejeicao' => ['required', 'string', 'min:10', 'max:2000'],
+        ]);
+
+        try {
+            $service->rejeitar(
+                $request->user()->empresa,
+                $this->obterInventario($request, $inventario),
+                (int) $request->user()->id,
+                (string) $dados['motivo_rejeicao'],
+            );
+        } catch (DomainException|InvalidArgumentException $exception) {
+            return back()->with('erro', $exception->getMessage());
+        }
+
+        return back()->with('sucesso', 'Inventário rejeitado. Nenhum ajuste foi aplicado ao stock.');
     }
 
     public function cancelar(
