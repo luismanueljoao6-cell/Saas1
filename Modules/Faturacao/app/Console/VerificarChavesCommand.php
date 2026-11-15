@@ -53,7 +53,7 @@ class VerificarChavesCommand extends Command
 
             $caminho = $assinatura->caminhoDaChaveDaEmpresa((int) $empresa->id);
 
-            if (! is_file($caminho)) {
+            if (!is_file($caminho)) {
                 $mensagem = 'chave em falta: '.$caminho;
 
                 if ($exigir) {
@@ -122,7 +122,7 @@ class VerificarChavesCommand extends Command
     {
         $generica = (string) config('faturacao.chave_privada_path');
 
-        if ($generica === '' || ! is_file($generica)) {
+        if ($generica === '' || !is_file($generica)) {
             return;
         }
 
@@ -153,13 +153,13 @@ class VerificarChavesCommand extends Command
      */
     protected function verificarChaveDoSoftware(array $utilizadores, array &$problemas): void
     {
-        if (! config('faturacao.agt.ativo')) {
+        if (!config('faturacao.agt.ativo')) {
             return;
         }
 
         $caminho = (string) config('faturacao.agt.software.chave_privada_path');
 
-        if ($caminho === '' || ! is_file($caminho)) {
+        if ($caminho === '' || !is_file($caminho)) {
             $problemas[] = ['chave do software', 'chave privada do software em falta (FATURACAO_AGT_CHAVE_SOFTWARE)'];
 
             return;
@@ -182,7 +182,7 @@ class VerificarChavesCommand extends Command
      */
     protected function verificarArquivoHistorico(AssinaturaFiscalService $assinatura, array &$problemas, ?int $empresaId = null): void
     {
-        if (! Schema::hasTable('faturacao_chaves_publicas')) {
+        if (!Schema::hasTable('faturacao_chaves_publicas')) {
             $problemas[] = ['arquivo histórico', 'a tabela faturacao_chaves_publicas não existe; executa php artisan migrate'];
 
             return;
@@ -195,7 +195,7 @@ class VerificarChavesCommand extends Command
         ];
 
         foreach ($tabelas as $tabela => $estados) {
-            if (! Schema::hasTable($tabela)) {
+            if (!Schema::hasTable($tabela)) {
                 $problemas[] = [$tabela, 'a tabela não existe; confirma as migrations do módulo Faturação'];
 
                 continue;
@@ -250,7 +250,7 @@ class VerificarChavesCommand extends Command
             $fingerprintInstalado = hash('sha256', preg_replace('/\\s+/', '', $chaveInstalada) ?: $chaveInstalada);
             $fingerprintArquivado = hash('sha256', preg_replace('/\\s+/', '', $chaveArquivada) ?: $chaveArquivada);
 
-            if (! hash_equals($fingerprintArquivado, $fingerprintInstalado)) {
+            if (!hash_equals($fingerprintArquivado, $fingerprintInstalado)) {
                 $problemas[] = [
                     "empresa #{$empresa->id}",
                     "a chave privada instalada difere da chave arquivada na versão {$versaoAtual}; incrementa FATURACAO_CHAVE_VERSAO antes de emitir",
@@ -264,7 +264,7 @@ class VerificarChavesCommand extends Command
     {
         $chave = openssl_pkey_get_private((string) file_get_contents($caminho));
 
-        if (! $chave) {
+        if (!$chave) {
             return [null, 'não é uma chave privada PEM válida'];
         }
 
