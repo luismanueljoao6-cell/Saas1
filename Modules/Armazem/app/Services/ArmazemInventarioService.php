@@ -182,7 +182,7 @@ class ArmazemInventarioService
             }
 
             $temDivergencias = $linhas->contains(
-                fn (ArmazemInventarioLinha $linha): bool => $this->emMilhares((string) ($linha->diferenca ?? '0.000')) !== 0
+                fn (ArmazemInventarioLinha $linha): bool => $this->emMilharesAssinado((string) ($linha->diferenca ?? '0.000')) !== 0
             );
             $momento = now();
 
@@ -256,7 +256,7 @@ class ArmazemInventarioService
                 ->firstOrFail();
 
             foreach ($linhas as $linha) {
-                if ($this->emMilhares((string) ($linha->diferenca ?? '0.000')) === 0) {
+                if ($this->emMilharesAssinado((string) ($linha->diferenca ?? '0.000')) === 0) {
                     continue;
                 }
 
@@ -398,6 +398,19 @@ class ArmazemInventarioService
         if ($tenant->has() && $tenant->emBypass() === false && $tenant->id() !== (int) $empresa->id) {
             throw new DomainException('O contexto atual não corresponde à empresa do inventário.');
         }
+    }
+
+    private function emMilharesAssinado(string $valor): int
+    {
+        $valor = trim($valor);
+
+        if (preg_match('/^(-?)(0|[1-9][0-9]{0,10})(?:\.([0-9]{1,3}))?$/', $valor, $partes) !== 1) {
+            throw new InvalidArgumentException('Diferença de inventário inválida.');
+        }
+
+        $unidades = ((int) $partes[2] * 1000) + (int) str_pad($partes[3] ?? '', 3, '0');
+
+        return ($partes[1] ?? '') === '-' ? -$unidades : $unidades;
     }
 
     private function emMilhares(string $valor): int
