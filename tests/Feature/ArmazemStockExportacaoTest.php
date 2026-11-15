@@ -82,12 +82,13 @@ class ArmazemStockExportacaoTest extends TestCase
             ->get(route('armazem.relatorios.stock.exportar'));
 
         $resposta->assertOk()->assertDownload();
-        $csv = $resposta->streamedContent();
+        $csv = ltrim($resposta->streamedContent(), "\xEF\xBB\xBF");
+        $linhas = preg_split('/\r?\n/', trim($csv));
+        $registo = str_getcsv($linhas[1], ';');
 
-        $this->assertStringContainsString('DECIMAL-001;Produto de precisão;', $csv);
-        $this->assertStringContainsString(
-            '99999999999.998;99999999999.999;Abaixo do mínimo',
-            $csv,
-        );
+        $this->assertSame('DECIMAL-001', $registo[0]);
+        $this->assertSame('99999999999.998', $registo[3]);
+        $this->assertSame('99999999999.999', $registo[4]);
+        $this->assertSame('Abaixo do mínimo', $registo[5]);
     }
 }
