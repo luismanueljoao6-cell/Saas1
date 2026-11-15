@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\\Armazem\\Support;
+namespace Modules\Armazem\Support;
 
 use InvalidArgumentException;
 
@@ -28,7 +28,7 @@ final class QuantidadeDecimal
         $inteiro = (string) intdiv($absoluto, 1000);
 
         if ($separadorMilhar !== '') {
-            $inteiro = preg_replace('/\\B(?=(\\d{3})+(?!\\d))/', $separadorMilhar, $inteiro);
+            $inteiro = preg_replace('/\B(?=(\d{3})+(?!\d))/', $separadorMilhar, $inteiro);
         }
 
         return $sinal.$inteiro.$separadorDecimal.sprintf('%03d', $absoluto % 1000);
@@ -38,7 +38,7 @@ final class QuantidadeDecimal
     {
         $valor = trim($valor);
 
-        if (preg_match('/\\A(-?)(0|[1-9][0-9]{0,10})(?:\\.([0-9]{1,3}))?\\z/D', $valor, $partes) !== 1) {
+        if (preg_match('/\A(-?)(0|[1-9][0-9]{0,10})(?:\.([0-9]{1,3}))?\z/D', $valor, $partes) !== 1) {
             throw new InvalidArgumentException('Quantidade decimal inválida. Usa até 11 algarismos inteiros e três casas decimais.');
         }
 
