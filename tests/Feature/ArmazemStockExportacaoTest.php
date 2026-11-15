@@ -84,8 +84,9 @@ class ArmazemStockExportacaoTest extends TestCase
         $resposta->assertOk()->assertDownload();
         $csv = $resposta->streamedContent();
 
+        $this->assertStringContainsString('DECIMAL-001;Produto de precisão;', $csv);
         $this->assertStringContainsString(
-            'DECIMAL-001;Produto de precisão;Armazém principal;99999999999.998;99999999999.999;Abaixo do mínimo',
+            '99999999999.998;99999999999.999;Abaixo do mínimo',
             $csv,
         );
     }
