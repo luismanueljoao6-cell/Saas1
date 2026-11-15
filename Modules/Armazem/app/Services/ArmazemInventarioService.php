@@ -134,12 +134,31 @@ class ArmazemInventarioService
                 ->firstOrFail();
 
             $sistema = $this->emMilhares((string) $linha->quantidade_sistema);
+            $quantidadeFormatada = $this->formatar($contagem);
+            $diferencaFormatada = $this->formatar($contagem - $sistema);
+            $momento = now();
+
             $linha->forceFill([
-                'quantidade_contada' => $this->formatar($contagem),
-                'diferenca' => $this->formatar($contagem - $sistema),
+                'quantidade_contada' => $quantidadeFormatada,
+                'diferenca' => $diferencaFormatada,
                 'contado_por' => $utilizadorId,
-                'contado_em' => now(),
+                'contado_em' => $momento,
             ])->save();
+
+            // Guardar cada submissão, não apenas o último contador da linha.
+            // A trilha é necessária para impedir autoaprovação após uma recontagem.
+            DB::table('armazem_inventario_contagens')->insert([
+                'empresa_id' => $empresa->id,
+                'inventario_id' => $sessao->id,
+                'linha_id' => $linha->id,
+                'utilizador_id' => $utilizadorId,
+                'quantidade_sistema' => $linha->quantidade_sistema,
+                'quantidade_contada' => $quantidadeFormatada,
+                'diferenca' => $diferencaFormatada,
+                'registado_em' => $momento,
+                'created_at' => $momento,
+                'updated_at' => $momento,
+            ]);
 
             return $linha->load('produto');
         }, attempts: 3);
@@ -383,6 +402,12 @@ class ArmazemInventarioService
     ): void {
         $autores = collect([$sessao->aberto_por, $sessao->submetido_por])
             ->merge($linhas->pluck('contado_por'))
+            ->merge(
+                DB::table('armazem_inventario_contagens')
+                    ->where('empresa_id', $sessao->empresa_id)
+                    ->where('inventario_id', $sessao->id)
+                    ->pluck('utilizador_id')
+            )
             ->filter(fn ($id): bool => $id !== null)
             ->map(fn ($id): int => (int) $id)
             ->unique();
