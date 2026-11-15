@@ -4,6 +4,7 @@ namespace Modules\Armazem\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Core\Models\User;
 use Modules\Core\Traits\BelongsToTenant;
 use Modules\Faturacao\Models\Produto;
@@ -48,5 +49,10 @@ class ArmazemInventarioLinha extends Model
     public function utilizadorContagem(): BelongsTo
     {
         return $this->belongsTo(User::class, 'contado_por');
+    }
+
+    public function contagens(): HasMany
+    {
+        return $this->hasMany(ArmazemInventarioContagem::class, 'linha_id')->orderBy('id');
     }
 }
