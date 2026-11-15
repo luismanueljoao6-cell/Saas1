@@ -117,6 +117,7 @@ class ArmazemInventarioServiceTest extends TestCase
             ->where('empresa_id', $empresa->id)->count());
 
         $concluido = $service->aprovar($empresa, $inventario, $aprovador->id);
+        $service->aprovar($empresa, $inventario, $aprovador->id);
         $saldo = ArmazemStockSaldo::withoutGlobalScopes()
             ->where('empresa_id', $empresa->id)
             ->where('armazem_id', $armazem->id)
@@ -283,6 +284,24 @@ class ArmazemInventarioServiceTest extends TestCase
         $this->assertSame($criador->id, $concluido->concluido_por);
         $this->assertSame(1, ArmazemStockMovimento::withoutGlobalScopes()
             ->where('empresa_id', $empresa->id)->count());
+    }
+
+    public function test_aprovacao_de_inventario_de_outra_empresa_e_bloqueada(): void
+    {
+        [$empresaA, $armazemA, $produtoA] = $this->preparar('630100214');
+        $criadorA = User::factory()->create(['empresa_id' => $empresaA->id]);
+        $stock = app(ArmazemStockService::class);
+        $stock->entrada($empresaA, $armazemA, $produtoA, '5.000', 'Entrada');
+        $service = app(ArmazemInventarioService::class);
+        $inventario = $service->abrir($empresaA, $armazemA, [$produtoA->id], $criadorA->id);
+        $service->registarContagem($empresaA, $inventario, $inventario->linhas->first()->id, '4.000', $criadorA->id);
+        $service->concluir($empresaA, $inventario, $criadorA->id);
+
+        [$empresaB] = $this->preparar('630100215');
+        $aprovadorB = User::factory()->create(['empresa_id' => $empresaB->id]);
+
+        $this->expectException(ModelNotFoundException::class);
+        $service->aprovar($empresaB, $inventario, $aprovadorB->id);
     }
 
 }
