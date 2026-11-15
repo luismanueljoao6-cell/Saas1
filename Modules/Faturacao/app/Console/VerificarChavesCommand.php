@@ -264,7 +264,7 @@ class VerificarChavesCommand extends Command
     {
         $chave = openssl_pkey_get_private((string) file_get_contents($caminho));
 
-        if (!$chave) {
+        if (! $chave) {
             return [null, 'não é uma chave privada PEM válida'];
         }
 
