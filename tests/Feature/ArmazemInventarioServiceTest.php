@@ -317,4 +317,51 @@ class ArmazemInventarioServiceTest extends TestCase
         $this->expectException(DomainException::class);
         $service->abrir($empresa, $armazem, [$produtoB->id], $criador->id);
     }
+    public function test_contador_anterior_nao_pode_aprovar_apos_recontagem_por_outro_utilizador(): void
+    {
+        [$empresa, $armazem, $produtoA] = $this->preparar('630100217');
+        $criador = User::factory()->create(['empresa_id' => $empresa->id]);
+        $primeiroContador = User::factory()->create(['empresa_id' => $empresa->id]);
+        $segundoContador = User::factory()->create(['empresa_id' => $empresa->id]);
+        $stock = app(ArmazemStockService::class);
+        $stock->entrada($empresa, $armazem, $produtoA, '5.000', 'Entrada');
+        $service = app(ArmazemInventarioService::class);
+        $inventario = $service->abrir($empresa, $armazem, [$produtoA->id], $criador->id);
+        $linha = $inventario->linhas->first();
+
+        $service->registarContagem($empresa, $inventario, $linha->id, '4.000', $primeiroContador->id);
+        $service->registarContagem($empresa, $inventario, $linha->id, '3.500', $segundoContador->id);
+        $service->concluir($empresa, $inventario, $criador->id);
+
+        $this->assertDatabaseCount('armazem_inventario_contagens', 2);
+        $this->assertDatabaseHas('armazem_inventario_contagens', [
+            'empresa_id' => $empresa->id,
+            'inventario_id' => $inventario->id,
+            'linha_id' => $linha->id,
+            'utilizador_id' => $primeiroContador->id,
+            'quantidade_contada' => '4.000',
+        ]);
+        $this->assertDatabaseHas('armazem_inventario_contagens', [
+            'empresa_id' => $empresa->id,
+            'inventario_id' => $inventario->id,
+            'linha_id' => $linha->id,
+            'utilizador_id' => $segundoContador->id,
+            'quantidade_contada' => '3.500',
+        ]);
+
+        try {
+            $service->aprovar($empresa, $inventario, $primeiroContador->id);
+            $this->fail('Um contador anterior também não pode aprovar o inventário.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('não pode aprovar', $exception->getMessage());
+        }
+
+        $this->assertSame('aguarda_aprovacao', $inventario->fresh()->estado);
+        $this->assertSame('5.000', (string) ArmazemStockSaldo::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->where('armazem_id', $armazem->id)
+            ->where('produto_id', $produtoA->id)
+            ->value('quantidade'));
+    }
+
 }
