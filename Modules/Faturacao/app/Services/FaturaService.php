@@ -183,7 +183,7 @@ class FaturaService
     }
 
     /**
-     * @param  array<int, array{produto_id?: int, descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float, motivo_isencao?: string|null}>  $linhas
+     * @param  array<int, array<string, mixed>>  $linhas  mesmo formato de criarRascunho(): valores em texto decimal ou inteiro, nunca float
      */
     protected function substituirLinhas(Fatura $fatura, array $linhas): void
     {
@@ -213,10 +213,12 @@ class FaturaService
      * serializadas e a segunda vê o estado final. Uma fatura emitida nunca
      * se edita — corrige-se por Nota de Crédito.
      *
-     * @param  array<int, array{produto_id?: int|null, descricao: string, quantidade: float, preco_unitario: float, preco_unitario_base?: float|null, taxa_iva: float, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
+     * @param  array<int, array{produto_id?: int|null, descricao: string, quantidade: int|string, preco_unitario: int|string, preco_unitario_base?: int|string|null, taxa_iva: int|string, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
      */
     public function atualizarRascunho(Fatura $fatura, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
     {
+        GuardaEmissao::garantirTenant((int) $fatura->empresa_id);
+
         if (empty($linhas)) {
             throw new \InvalidArgumentException('Uma fatura precisa de pelo menos uma linha.');
         }
@@ -242,6 +244,8 @@ class FaturaService
     /** Elimina um RASCUNHO (sem número nem assinatura). Documentos emitidos nunca se apagam. */
     public function eliminarRascunho(Fatura $fatura): void
     {
+        GuardaEmissao::garantirTenant((int) $fatura->empresa_id);
+
         DB::transaction(function () use ($fatura) {
             $atual = $this->rascunhoComLock($fatura);
 
