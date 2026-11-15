@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Modules\Faturacao\Http\Requests\GuardarOrcamentoRequest;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Orcamento;
 use Modules\Faturacao\Services\FaturaService;
@@ -60,14 +61,7 @@ class OrcamentoController extends Controller
 
     public function criar(): View
     {
-        return view('faturacao::orcamentos.criar', [
-            'clientes' => Cliente::query()->orderBy('nome')->get(),
-            'taxasIva' => config('faturacao.taxas_iva_permitidas'),
-            'taxaPadrao' => config('faturacao.taxa_iva_geral'),
-            'motivosIsencao' => collect((array) config('faturacao.motivos_isencao', []))
-                ->filter(fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true)),
-            'tiposOperacaoAgt' => ValidacaoLinhas::TIPOS_OPERACAO_AGT,
-        ]);
+        return view('faturacao::orcamentos.criar', $this->dadosFormulario());
     }
 
     public function editar(Request $request, int $orcamento): View
@@ -80,18 +74,10 @@ class OrcamentoController extends Controller
             ->where('estado', 'rascunho')
             ->findOrFail($orcamento);
 
-        return view('faturacao::orcamentos.editar', [
-            'orcamento' => $documento,
-            'clientes' => Cliente::query()->orderBy('nome')->get(),
-            'taxasIva' => config('faturacao.taxas_iva_permitidas'),
-            'taxaPadrao' => config('faturacao.taxa_iva_geral'),
-            'motivosIsencao' => collect((array) config('faturacao.motivos_isencao', []))
-                ->filter(fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true)),
-            'tiposOperacaoAgt' => ValidacaoLinhas::TIPOS_OPERACAO_AGT,
-        ]);
+        return view('faturacao::orcamentos.editar', ['orcamento' => $documento] + $this->dadosFormulario());
     }
 
-    public function atualizar(Request $request, int $orcamento, OrcamentoService $service): RedirectResponse
+    public function atualizar(GuardarOrcamentoRequest $request, int $orcamento, OrcamentoService $service): RedirectResponse
     {
         $empresa = $request->user()->empresa;
         abort_if($empresa === null, 403);
@@ -100,19 +86,7 @@ class OrcamentoController extends Controller
             ->where('empresa_id', $empresa->id)
             ->findOrFail($orcamento);
 
-        $dados = $request->validate([
-            'cliente_id' => ['required', 'integer', Rule::exists('clientes', 'id')->where('empresa_id', $empresa->id)],
-            'data_validade' => ['nullable', 'date', 'after_or_equal:today'],
-            'observacoes' => ['nullable', 'string', 'max:1000'],
-            'linhas' => ['required', 'array', 'min:1', 'max:100'],
-            'linhas.*.produto_id' => ['nullable', 'integer', Rule::exists('produtos', 'id')->where('empresa_id', $empresa->id)],
-            'linhas.*.descricao' => ['required', 'string', 'max:255'],
-            'linhas.*.quantidade' => ['required', 'numeric', 'decimal:0,3', 'gt:0', 'max:10000'],
-            'linhas.*.preco_unitario' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
-            'linhas.*.taxa_iva' => ['required', 'numeric'],
-            'linhas.*.motivo_isencao' => ['nullable', 'string', Rule::in($this->codigosMotivosIsencao())],
-            'linhas.*.operation_type' => ['nullable', 'string', Rule::in(ValidacaoLinhas::TIPOS_OPERACAO_AGT)],
-        ]);
+        $dados = $request->validated();
 
         try {
             $service->atualizarRascunho(
@@ -163,24 +137,12 @@ class OrcamentoController extends Controller
         ]);
     }
 
-    public function guardar(Request $request, OrcamentoService $service): RedirectResponse
+    public function guardar(GuardarOrcamentoRequest $request, OrcamentoService $service): RedirectResponse
     {
         $empresa = $request->user()->empresa;
         abort_if($empresa === null, 403);
 
-        $dados = $request->validate([
-            'cliente_id' => ['required', 'integer', Rule::exists('clientes', 'id')->where('empresa_id', $empresa->id)],
-            'data_validade' => ['nullable', 'date', 'after_or_equal:today'],
-            'observacoes' => ['nullable', 'string', 'max:1000'],
-            'linhas' => ['required', 'array', 'min:1', 'max:100'],
-            'linhas.*.produto_id' => ['nullable', 'integer', Rule::exists('produtos', 'id')->where('empresa_id', $empresa->id)],
-            'linhas.*.descricao' => ['required', 'string', 'max:255'],
-            'linhas.*.quantidade' => ['required', 'numeric', 'decimal:0,3', 'gt:0', 'max:10000'],
-            'linhas.*.preco_unitario' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
-            'linhas.*.taxa_iva' => ['required', 'numeric'],
-            'linhas.*.motivo_isencao' => ['nullable', 'string', Rule::in($this->codigosMotivosIsencao())],
-            'linhas.*.operation_type' => ['nullable', 'string', Rule::in(ValidacaoLinhas::TIPOS_OPERACAO_AGT)],
-        ]);
+        $dados = $request->validated();
 
         try {
             $orcamento = $service->criar(
@@ -198,13 +160,17 @@ class OrcamentoController extends Controller
         return redirect()->route('faturacao.orcamentos.index')->with('sucesso', "Orçamento {$orcamento->numero} criado.");
     }
 
-    /** @return list<string> */
-    protected function codigosMotivosIsencao(): array
+    /** @return array<string, mixed> */
+    protected function dadosFormulario(): array
     {
-        return array_keys(array_filter(
-            (array) config('faturacao.motivos_isencao', []),
-            fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true),
-        ));
+        return [
+            'clientes' => Cliente::query()->orderBy('nome')->get(),
+            'taxasIva' => config('faturacao.taxas_iva_permitidas'),
+            'taxaPadrao' => config('faturacao.taxa_iva_geral'),
+            'motivosIsencao' => collect((array) config('faturacao.motivos_isencao', []))
+                ->filter(fn (array $motivo) => in_array($motivo['tipo'] ?? null, ['ISE', 'NS'], true)),
+            'tiposOperacaoAgt' => ValidacaoLinhas::TIPOS_OPERACAO_AGT,
+        ];
     }
 
     public function duplicar(Request $request, int $orcamento, OrcamentoService $service): RedirectResponse
