@@ -55,6 +55,7 @@ class PapeisArmazemTest extends TestCase
             $adminB->permissions()->pluck('name')->all(),
         );
     }
+
     public function test_provisionamento_nao_remove_permissoes_de_outros_modulos(): void
     {
         $empresa = Empresa::create([
