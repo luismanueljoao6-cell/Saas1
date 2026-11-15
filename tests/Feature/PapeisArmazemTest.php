@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Armazem\Support\PapeisArmazem;
 use Modules\Core\Models\Empresa;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -54,4 +55,35 @@ class PapeisArmazemTest extends TestCase
             $adminB->permissions()->pluck('name')->all(),
         );
     }
+    public function test_provisionamento_nao_remove_permissoes_de_outros_modulos(): void
+    {
+        $empresa = Empresa::create([
+            'nome_comercial' => 'Empresa Permissoes Preservadas',
+            'nif' => '630200103',
+        ]);
+
+        $registrar = app(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId((int) $empresa->id);
+
+        $permissaoFaturacao = Permission::firstOrCreate([
+            'name' => 'faturacao.documentos.ver',
+            'guard_name' => 'web',
+        ]);
+        $administrador = Role::firstOrCreate([
+            'name' => 'Administrador',
+            'guard_name' => 'web',
+            'empresa_id' => $empresa->id,
+        ]);
+        $administrador->givePermissionTo($permissaoFaturacao);
+
+        PapeisArmazem::provisionar((int) $empresa->id);
+
+        $registrar->setPermissionsTeamId((int) $empresa->id);
+        $administrador->refresh();
+
+        $this->assertTrue($administrador->hasPermissionTo($permissaoFaturacao));
+        $this->assertTrue($administrador->hasPermissionTo('armazem.inventarios.aprovar'));
+        $this->assertTrue($administrador->hasPermissionTo('armazem.inventarios.rejeitar'));
+    }
+
 }
