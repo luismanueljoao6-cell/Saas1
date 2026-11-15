@@ -101,6 +101,7 @@ class CompraService
                 $produto = Produto::query()
                     ->where('empresa_id', $empresa->id)
                     ->where('controla_stock', true)
+                    ->where('ativo', true)
                     ->findOrFail($linha->produto_id);
 
                 $this->stock->entrada(
