@@ -4,6 +4,7 @@
     "description": "Subscrições e Pagamentos (SaaS Billing): planos, ciclo de vida da subscrição de cada empresa e integração com gateways de pagamento (ProxyPay/Multicaixa). Depende do módulo Core.",
     "keywords": [],
     "priority": 1,
+    "requires": ["Core"],
     "providers": [
         "Modules\\Subscricoes\\Providers\\SubscricoesServiceProvider"
     ],
