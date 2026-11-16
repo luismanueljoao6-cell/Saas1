@@ -364,7 +364,7 @@ class ProjetoMusical extends Model
             return collect();
         }
 
-        $gateway = app(\\Modules\\Faturacao\\Contracts\\FaturacaoGateway::class);
+        $gateway = app(\Modules\Faturacao\Contracts\FaturacaoGateway::class);
         $creditos = NotaCreditoDebito::withoutGlobalScopes()
             ->where('empresa_id', $this->empresa_id)
             ->whereIn('fatura_id', $faturas->pluck('id'))
@@ -375,7 +375,7 @@ class ProjetoMusical extends Model
 
         return $faturas->map(function (Fatura $fatura) use ($gateway, $creditos) {
             if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
-                throw new \\DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
+                throw new \DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
             }
 
             $resumo = $gateway->resumoDaFatura($fatura);
