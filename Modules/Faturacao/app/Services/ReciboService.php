@@ -209,17 +209,21 @@ class ReciboService
     {
         [$recebido, $creditado, $debitado, $abatido] = $this->recebidoECreditado((int) $fatura->empresa_id, (int) $fatura->id);
 
-        $debitadoSemIva = NotaCreditoDebito::withoutGlobalScopes()
+        $notas = NotaCreditoDebito::withoutGlobalScopes()
             ->where('empresa_id', $fatura->empresa_id)
             ->where('fatura_id', $fatura->id)
-            ->where('tipo', 'debito')
             ->where('estado', 'emitida')
-            ->get(['valor_sem_iva'])
+            ->get(['tipo', 'valor_sem_iva']);
+
+        $creditadoSemIva = $notas->where('tipo', 'credito')
+            ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_sem_iva));
+        $debitadoSemIva = $notas->where('tipo', 'debito')
             ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_sem_iva));
 
         return [
             'recebido' => $recebido,
             'creditado' => $creditado,
+            'creditado_sem_iva' => (int) $creditadoSemIva,
             'debitado' => $debitado,
             'debitado_sem_iva' => (int) $debitadoSemIva,
             'abatido' => $abatido,
