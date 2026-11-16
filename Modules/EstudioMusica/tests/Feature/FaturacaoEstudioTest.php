@@ -338,8 +338,21 @@ class FaturacaoEstudioTest extends TestCase
         $projeto = $this->projeto();
 
         $outraEmpresa = Empresa::create(['nome_comercial' => 'Outro Estúdio', 'nif' => '400000032']);
-        $outroCliente = Cliente::create(['empresa_id' => $outraEmpresa->id, 'nome' => 'Outro Artista']);
-        $faturaAlheia = $this->faturaEmitida($outraEmpresa->id, $outroCliente->id, 1140);
+
+        // A criação de modelos tenant-aware respeita o TenantManager ativo.
+        // Sem trocar explicitamente o contexto, forceFill() não contorna o
+        // evento creating de BelongsToTenant e o fixture ficaria na empresa A.
+        $faturaAlheia = app(TenantManager::class)->semTenant(function () use ($outraEmpresa) {
+            $outroCliente = Cliente::create([
+                'empresa_id' => $outraEmpresa->id,
+                'nome' => 'Outro Artista',
+            ]);
+
+            return $this->faturaEmitida($outraEmpresa->id, $outroCliente->id, 1140);
+        });
+
+        $this->assertSame((int) $this->empresa->id, (int) $projeto->empresa_id);
+        $this->assertSame((int) $outraEmpresa->id, (int) $faturaAlheia->empresa_id);
 
         $this->expectException(QueryException::class);
 
