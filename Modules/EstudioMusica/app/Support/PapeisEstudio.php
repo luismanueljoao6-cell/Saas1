@@ -66,9 +66,11 @@ final class PapeisEstudio
                 fn (string $nome) => Permission::firstOrCreate(['name' => $nome, 'guard_name' => 'web'])
             );
 
-            self::papel(RegistoEmpresaService::PAPEL_ADMINISTRADOR, $empresaId)->syncPermissions($permissoes);
-            self::papel(self::RECECAO, $empresaId)->syncPermissions(self::PERMISSOES_RECECAO);
-            self::papel(self::ENGENHEIRO, $empresaId)->syncPermissions(self::PERMISSOES_ENGENHEIRO);
+            // Provisionamento aditivo: não remover permissões configuradas
+            // pelo Administrador ou acrescentadas por outros módulos.
+            self::papel(RegistoEmpresaService::PAPEL_ADMINISTRADOR, $empresaId)->givePermissionTo($permissoes);
+            self::papel(self::RECECAO, $empresaId)->givePermissionTo(self::PERMISSOES_RECECAO);
+            self::papel(self::ENGENHEIRO, $empresaId)->givePermissionTo(self::PERMISSOES_ENGENHEIRO);
         } finally {
             // Nunca deixa a equipa/cache de outra empresa "vazar" para o chamador.
             $registrar->setPermissionsTeamId($equipaAnterior);
