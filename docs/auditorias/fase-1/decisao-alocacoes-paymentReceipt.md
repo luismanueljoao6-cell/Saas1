@@ -330,3 +330,12 @@ Na continuação da auditoria, foram removidas duas réplicas directas de cálcu
 Foi acrescentado um assert ao teste de recebimento parcial após NC para garantir que o saldo individual apresentado pelo Estúdio coincide com o saldo oficial do módulo Faturação.
 
 **Limite desta alteração:** não declara resolvida a reconciliação agregada do projecto. Os métodos `recebidoCentimos()`, `devidoCentimos()`, `resumoDasFaturas()` e os indicadores derivados ainda combinam movimentos ligados ao projecto com consultas locais. A migração completa exige definir explicitamente como somar FA, recibos de FA, abatimentos, FT, NC/ND e recibos legados sem contar o mesmo movimento duas vezes. Não se deve substituir essa lógica por uma soma simplista de saldos por fatura, porque o valor contratual de um pacote pode ser superior ao montante já faturado. Este ponto permanece aberto e bloqueia a conclusão da reconciliação financeira do Estúdio.
+
+
+## 18. Reconciliação do Estúdio — cobertura de notas de débito
+
+A cobertura do teste de nota de débito foi reforçada para confirmar também a separação entre total com IVA e total sem IVA. O resumo central publica os valores de NC e ND sem IVA, e o Estúdio utiliza esses campos em vez de consultar directamente as tabelas fiscais.
+
+A soma dos recebimentos do projecto mantém a compatibilidade histórica apenas para recibos não cobertos pelas faturas relacionadas. Para recibos fiscais de faturas relacionadas, a origem é exclusivamente o gateway, evitando dupla contagem.
+
+A execução dos testes desta alteração ainda depende da CI no commit final do PR. O teste novo é evidência de cobertura adicionada, não prova de execução bem-sucedida.
