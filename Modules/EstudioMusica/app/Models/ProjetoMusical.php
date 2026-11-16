@@ -365,21 +365,13 @@ class ProjetoMusical extends Model
         }
 
         $gateway = app(\Modules\Faturacao\Contracts\FaturacaoGateway::class);
-        $creditos = NotaCreditoDebito::withoutGlobalScopes()
-            ->where('empresa_id', $this->empresa_id)
-            ->whereIn('fatura_id', $faturas->pluck('id'))
-            ->where('tipo', 'credito')
-            ->where('estado', 'emitida')
-            ->get(['fatura_id', 'valor_sem_iva'])
-            ->groupBy('fatura_id');
 
-        return $faturas->map(function (Fatura $fatura) use ($gateway, $creditos) {
+        return $faturas->map(function (Fatura $fatura) use ($gateway) {
             if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
                 throw new \DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
             }
 
             $resumo = $gateway->resumoDaFatura($fatura);
-            $notasCredito = $creditos->get($fatura->id, collect());
 
             return (object) [
                 'id' => (int) $fatura->id,
@@ -391,7 +383,7 @@ class ProjetoMusical extends Model
                 'debitado_sem_iva' => (int) $resumo['debitado_sem_iva'],
                 'recebido' => (int) $resumo['recebido'],
                 'abatido' => (int) $resumo['abatido'],
-                'creditado_sem_iva' => $notasCredito->sum(fn ($nota) => Dinheiro::centimos($nota->valor_sem_iva)),
+                'creditado_sem_iva' => (int) $resumo['creditado_sem_iva'],
             ];
         })->values();
     }
