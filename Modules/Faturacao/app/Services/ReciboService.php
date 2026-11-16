@@ -90,6 +90,14 @@ class ReciboService
             throw new \InvalidArgumentException('Um recibo de regularização (RG) tem de referir a fatura que regulariza.');
         }
 
+        // RG ainda não pode ser emitido com AGT activa: o modelo actual não persiste
+        // alocações por linha do documento de origem. Emiti-lo agora faria o builder
+        // inventar lineNo=1 e totais a partir do documento inteiro, inválido para
+        // pagamentos parciais ou documentos com várias linhas/taxas.
+        if ($tipo === 'RG' && config('faturacao.agt.ativo')) {
+            throw new \\DomainException('A emissão de RG com AGT activa está temporariamente bloqueada até existir alocação fiscal persistida por linha de origem e reconstrução do paymentReceipt a partir dessas alocações.');
+        }
+
         // O modelo Recibo emite RC. A especificação AGT exige "lines" para RC,
         // enquanto "paymentReceipt" só é permitido para AR/RG. Como este modelo
         // ainda não guarda linhas fiscais próprias nem selecciona RG, bloquear a
