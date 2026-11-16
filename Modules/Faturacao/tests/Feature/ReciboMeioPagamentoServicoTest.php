@@ -90,7 +90,7 @@ class ReciboMeioPagamentoServicoTest extends TestCase
                 999999,
             );
             $this->fail('RG não pode ser emitido enquanto o builder não o conseguir reconstruir.');
-        } catch (\\DomainException $e) {
+        } catch (\DomainException $e) {
             $this->assertStringContainsString('alocação fiscal persistida por linha', $e->getMessage());
         }
 
