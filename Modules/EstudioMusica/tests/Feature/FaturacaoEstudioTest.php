@@ -3,7 +3,9 @@
 namespace Modules\EstudioMusica\Tests\Feature;
 
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\EstudioMusica\Models\CupomDesconto;
@@ -329,6 +331,25 @@ class FaturacaoEstudioTest extends TestCase
         $this->assertSame('5000.00', $fatura->valor_sem_iva);
         $this->assertSame(5700.0, $projeto->valorTotalFaturado());
         $this->assertNull($this->faturacao->cobrarSessao($sessao->fresh()), 'Segunda cobrança da mesma sessão não emite outra fatura.');
+    }
+
+    public function test_base_de_dados_impede_associar_fatura_de_outra_empresa_ao_projeto(): void
+    {
+        $projeto = $this->projeto();
+
+        $outraEmpresa = Empresa::create(['nome_comercial' => 'Outro Estúdio', 'nif' => '400000032']);
+        $outroCliente = Cliente::create(['empresa_id' => $outraEmpresa->id, 'nome' => 'Outro Artista']);
+        $faturaAlheia = $this->faturaEmitida($outraEmpresa->id, $outroCliente->id, 1140);
+
+        $this->expectException(QueryException::class);
+
+        DB::table('projeto_musical_fatura')->insert([
+            'projeto_musical_id' => $projeto->id,
+            'fatura_id' => $faturaAlheia->id,
+            'tipo' => 'avulso',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     public function test_sinal_nao_e_emitido_como_ft_quando_agt_esta_ativa(): void
