@@ -154,14 +154,62 @@ O módulo passa a disponibilizar sessões de inventário físico por armazém:
 - A abertura exige seleção explícita dos produtos a contar e guarda um snapshot do saldo de cada produto naquele armazém.
 - Cada linha regista quantidade contada e diferença face ao snapshot, com precisão até três casas decimais.
 - Enquanto uma sessão está em contagem, as operações normais de entrada, saída e ajuste para os produtos incluídos ficam bloqueadas naquele armazém.
-- A conclusão exige contagem de todas as linhas e aplica cada diferença através de `ArmazemStockService::ajustar()`, com chave idempotente determinística por sessão/produto.
-- A conclusão decorre numa única transação. Se um ajuste falhar, a sessão e todos os movimentos são revertidos.
-- O estado intermédio `a_finalizar` permite ao serviço aplicar os próprios ajustes sem desbloquear movimentos externos.
-- O cancelamento liberta os produtos sem alterar os saldos.
-- A interface permite abrir sessões, registar contagens, rever diferenças e concluir/cancelar.
+- A submissão exige contagem de todas as linhas e regista quem abriu, contou e submeteu a sessão.
+- Se não houver diferenças, o inventário pode ser concluído sem gerar movimentos de ajuste.
+- Se houver diferenças, a sessão passa a `aguarda_aprovacao`; os saldos permanecem inalterados e os movimentos normais continuam bloqueados.
+- A aprovação exige um utilizador diferente de quem abriu, submeteu ou registou qualquer contagem da sessão. Só depois da aprovação cada diferença é aplicada por `ArmazemStockService::ajustar()`, com chave idempotente determinística por sessão/produto.
+- A aprovação decorre numa única transação. Se um ajuste falhar, a sessão e todos os movimentos são revertidos; repetir a aprovação concluída não duplica movimentos.
+- A rejeição exige motivo e responsável, fica auditada e liberta os produtos sem alterar os saldos.
+- As permissões de aprovar/rejeitar são separadas das permissões de contar/submeter. O provisionamento do módulo acrescenta permissões sem remover as de outros módulos.
+- A interface permite consultar diferenças, responsáveis, estado, motivo de rejeição e ações de submissão/aprovação/rejeição.
 
 ### Limites desta fase
 
 - A seleção de produtos é explícita; não é criado automaticamente um inventário de todo o catálogo.
 - O inventário só cobre o novo stock multi-armazém. O stock legado da Faturação continua separado.
 - A implementação ainda precisa de CI verde, teste visual em browser/telemóvel e validação de concorrência real no MySQL antes de produção.
+
+
+## Aprovação segregada de ajustes — entrega em revisão
+
+- Inventários com divergências aguardam aprovação independente; não alteram o saldo durante a submissão.
+- O aprovador não pode ser quem abriu, submeteu ou contou qualquer linha do inventário.
+- A rejeição regista responsável, data e motivo; a sessão rejeitada deixa de bloquear movimentos.
+- A aprovação aplica apenas diferenças não nulas, com movimentos imutáveis e idempotentes.
+- O comando `php artisan core:provisionar-servicos` repara permissões de empresas existentes; o provisionador foi alterado para acrescentar as permissões do Armazém sem substituir as permissões de outros módulos.
+- Esta entrega ainda depende da CI do PR e de revisão visual; não está ativada em produção.
+
+
+## Decisão de integração do ledger — aplicada nesta fase
+
+A separação dos dois ledgers deixou de ser aceite como estado final. A partir desta integração:
+
+- **Fonte de verdade:** `armazem_stock_saldos` e `armazem_stock_movimentos`.
+- **Compatibilidade:** `stock_saldos` passa a ser apenas uma projeção agregada (soma de todos os armazéns); não deve receber escritas de negócio independentes.
+- **Vendas/faturas e compras recebidas:** os fluxos legados que ainda não transportam `armazem_id` são encaminhados pelo `StockService` para o armazém principal ativo da empresa. A saída/entrada continua a usar a chave idempotente do documento/linha.
+- **Inventários e transferências:** continuam a movimentar o armazém explicitamente selecionado. Cada movimento atualiza a projeção agregada na mesma transação.
+- **Ajustes chamados pela API antiga:** representam a contagem física do armazém principal, não a contagem do total consolidado da empresa.
+- **Precisão:** agregações são feitas em milésimos inteiros; não se convertem quantidades para `float`.
+
+### Reconciliação antes do cutover
+
+A migração `2026_11_16_000001_unificar_saldo_legado_com_armazens` faz uma verificação prévia de todos os pares empresa/produto:
+
+1. Se ainda não existir qualquer saldo por armazém, copia o saldo legado para o armazém principal.
+2. Se já existirem saldos por armazém, exige que a soma seja exatamente igual ao saldo legado.
+3. Se encontrar qualquer divergência, aborta antes de escrever e identifica os pares que precisam de reconciliação manual. Não soma os dois valores nem escolhe silenciosamente um deles.
+4. Depois da reconciliação, atualiza a tabela antiga como projeção agregada.
+
+A reversão automática desta migração é intencionalmente desativada porque os saldos podem já ter recebido movimentos reais. Antes de produção, executar a migração numa cópia da base de dados e confirmar que não há divergências. A falha da migração é um bloqueio de deploy, não uma razão para ignorar a diferença.
+
+### Evolução posterior
+
+A escolha do armazém principal é o comportamento de compatibilidade para documentos antigos. Uma fase posterior pode adicionar `armazem_id` explícito a faturas e compras, com seleção e snapshot no documento, sem alterar a regra desta fase nem permitir que o cliente envie um armazém de outra empresa. Até essa fase, o armazém principal é o destino/origem determinístico.
+
+### Verificações de aceitação desta integração
+
+- Compra recebida e fatura emitida movimentam o ledger por armazém através do adaptador central.
+- Operações de inventário e transferência atualizam o mesmo saldo consolidado.
+- A soma dos saldos por armazém corresponde à projeção legada após cada movimento.
+- Repetição idempotente não cria movimento duplicado.
+- Divergência entre os dois modelos bloqueia a migração antes de qualquer alteração de saldo.
