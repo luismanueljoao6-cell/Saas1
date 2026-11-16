@@ -67,7 +67,7 @@ class ReciboMeioPagamentoServicoTest extends TestCase
                 999999,
             );
             $this->fail('RG não pode ser emitido sem alocações fiscais persistidas por linha.');
-        } catch (\\DomainException $e) {
+        } catch (\DomainException $e) {
             $this->assertStringContainsString('alocação fiscal persistida por linha', $e->getMessage());
         }
 
