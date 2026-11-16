@@ -13,6 +13,7 @@ use Modules\EstudioMusica\Models\SessaoEstudio;
 use Modules\EstudioMusica\Services\FaturacaoEstudioService;
 use Modules\EstudioMusica\Tests\Support\CriaDocumentosFiscais;
 use Modules\Faturacao\Models\Cliente;
+use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Modules\Faturacao\Services\ReciboService;
 use Tests\TestCase;
