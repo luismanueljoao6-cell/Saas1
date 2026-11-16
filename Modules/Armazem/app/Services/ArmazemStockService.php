@@ -277,6 +277,18 @@ class ArmazemStockService
 
         $saldo->update(['quantidade' => $this->formatar($posterior)]);
 
+        // stock_saldos é mantido apenas como projeção agregada de compatibilidade.
+        // A fonte de verdade passa a ser armazem_stock_saldos.
+        $quantidadeAgregada = DB::table('armazem_stock_saldos')
+            ->where('empresa_id', $empresa->id)
+            ->where('produto_id', $produto->id)
+            ->sum('quantidade');
+
+        DB::table('stock_saldos')->updateOrInsert(
+            ['empresa_id' => $empresa->id, 'produto_id' => $produto->id],
+            ['quantidade' => (string) $quantidadeAgregada, 'updated_at' => now(), 'created_at' => now()]
+        );
+
         return $movimento;
     }
 
