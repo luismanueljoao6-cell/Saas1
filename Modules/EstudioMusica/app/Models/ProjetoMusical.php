@@ -12,7 +12,6 @@ use Modules\Core\Models\User;
 use Modules\Core\Traits\BelongsToTenant;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
-use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
 
@@ -402,12 +401,17 @@ class ProjetoMusical extends Model
     {
         $resumos = $this->resumoDasFaturas();
         $recebidoFiscal = $resumos->sum('recebido');
+        $idsFaturas = $this->faturas()->pluck('faturas.id');
 
-        // Compatibilidade histórica: apenas recibos do projeto sem fatura associada.
-        // Recibos fiscais ligados a faturas já estão incluídos no resumo do gateway.
+        // Compatibilidade histórica: recibos do projeto sem fatura associada
+        // ou ligados a uma fatura antiga que não está na relação fiscal actual.
+        // Recibos das faturas relacionadas já estão incluídos no gateway.
         $recibosLegados = $this->recibos()
             ->where('recibos.estado', 'emitido')
-            ->whereNull('recibos.fatura_id')
+            ->where(function ($query) use ($idsFaturas) {
+                $query->whereNull('recibos.fatura_id')
+                    ->orWhereNotIn('recibos.fatura_id', $idsFaturas);
+            })
             ->get(['recibos.id', 'recibos.valor']);
 
         return $recebidoFiscal + $recibosLegados
