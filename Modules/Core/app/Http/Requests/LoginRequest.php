@@ -44,6 +44,7 @@ class LoginRequest extends FormRequest
 
         if (! Auth::user()->ativo) {
             Auth::logout();
+            RateLimiter::hit($this->chaveLimitador());
 
             throw ValidationException::withMessages([
                 'email' => 'Esta conta está desativada. Contacta o administrador da tua empresa.',

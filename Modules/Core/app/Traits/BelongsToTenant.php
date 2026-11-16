@@ -42,6 +42,8 @@ trait BelongsToTenant
         static::addGlobalScope(new TenantScope);
 
         static::updating(function ($model): void {
+            static::verificarEscritaSemContexto($model, 'atualizar');
+
             $tenantManager = app(TenantManager::class);
 
             if ($model->isDirty('empresa_id') && $model->getOriginal('empresa_id') !== null) {
@@ -61,6 +63,8 @@ trait BelongsToTenant
         });
 
         static::deleting(function ($model): void {
+            static::verificarEscritaSemContexto($model, 'eliminar');
+
             $tenantManager = app(TenantManager::class);
 
             if (
@@ -73,6 +77,8 @@ trait BelongsToTenant
         });
 
         static::creating(function ($model): void {
+            static::verificarEscritaSemContexto($model, 'criar');
+
             $tenantManager = app(TenantManager::class);
 
             if (! $tenantManager->has()) {
@@ -91,6 +97,42 @@ trait BelongsToTenant
 
             $model->empresa_id = $tenantManager->id();
         });
+    }
+
+    /**
+     * Escrita (criar, atualizar, eliminar) sem tenant identificado e fora de um
+     * bypass explícito. O comportamento depende de core.tenant.escritas_sem_contexto:
+     * 'permitir' ignora, 'avisar' regista um aviso e 'bloquear' lança exceção.
+     * Qualquer outro valor é tratado como 'avisar'.
+     */
+    protected static function verificarEscritaSemContexto($model, string $operacao): void
+    {
+        $tenantManager = app(TenantManager::class);
+
+        if ($tenantManager->has() || $tenantManager->emBypass()) {
+            return;
+        }
+
+        $modo = (string) config('core.tenant.escritas_sem_contexto', 'avisar');
+
+        if ($modo === 'permitir') {
+            return;
+        }
+
+        if ($modo === 'bloquear') {
+            throw new \LogicException(sprintf(
+                'Escrita (%s) em %s sem tenant identificado nem bypass explícito (TenantManager::semTenant()).',
+                $operacao,
+                $model::class,
+            ));
+        }
+
+        Log::warning('Escrita sem tenant identificado nem bypass explícito.', [
+            'model' => $model::class,
+            'operacao' => $operacao,
+            'empresa_id' => $model->getAttribute('empresa_id'),
+            'consola' => app()->runningInConsole(),
+        ]);
     }
 
     public function empresa(): BelongsTo
