@@ -279,21 +279,31 @@ class ArmazemStockService
 
         // stock_saldos é mantido apenas como projeção agregada de compatibilidade.
         // A fonte de verdade passa a ser armazem_stock_saldos.
-        $quantidadeAgregada = DB::table('armazem_stock_saldos')
+        $saldosAgregados = DB::table('armazem_stock_saldos')
             ->where('empresa_id', $empresa->id)
             ->where('produto_id', $produto->id)
-            ->sum('quantidade');
+            ->get(['quantidade']);
 
+        $quantidadeAgregada = 0;
+        foreach ($saldosAgregados as $saldoAgregado) {
+            $quantidadeAgregada += $this->emMilhares((string) $saldoAgregado->quantidade);
+        }
+
+        if ($quantidadeAgregada > 99_999_999_999_999) {
+            throw new DomainException('O saldo agregado ultrapassa o limite decimal suportado.');
+        }
+
+        $saldoAgregadoFormatado = $this->formatar($quantidadeAgregada);
         $saldoLegado = DB::table('stock_saldos')
             ->where('empresa_id', $empresa->id)
             ->where('produto_id', $produto->id)
-            ->update(['quantidade' => (string) $quantidadeAgregada, 'updated_at' => now()]);
+            ->update(['quantidade' => $saldoAgregadoFormatado, 'updated_at' => now()]);
 
         if ($saldoLegado === 0) {
             DB::table('stock_saldos')->insertOrIgnore([
                 'empresa_id' => $empresa->id,
                 'produto_id' => $produto->id,
-                'quantidade' => (string) $quantidadeAgregada,
+                'quantidade' => $saldoAgregadoFormatado,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
