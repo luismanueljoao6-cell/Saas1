@@ -67,6 +67,30 @@ class FaturacaoEstudioTest extends TestCase
         $notas->emitir($notas->criarParaAnularFatura($fatura, 'Emitida por engano'));
     }
 
+    protected function notaDebitoEmitida($fatura, string $valor): NotaCreditoDebito
+    {
+        $numero = $this->proximoNumeroDocumento('ND');
+        $serie = $this->serieDeTeste('ND', (int) $fatura->empresa_id);
+
+        $nota = new NotaCreditoDebito;
+        $nota->forceFill([
+            'empresa_id' => $fatura->empresa_id,
+            'serie_id' => $serie->id,
+            'cliente_id' => $fatura->cliente_id,
+            'fatura_id' => $fatura->id,
+            'tipo' => 'debito',
+            'motivo' => 'Ajuste de teste',
+            'numero_sequencial' => $numero,
+            'numero_documento' => "ND T2026/{$numero}",
+            'estado' => 'emitida',
+            'valor_total' => $valor,
+            'valor_sem_iva' => $valor,
+            'valor_iva' => '0.00',
+        ])->save();
+
+        return $nota;
+    }
+
     protected function sessaoConcluida(int $minutos, ?ProjetoMusical $projeto = null, float $precoHora = 5000): SessaoEstudio
     {
         $sala = SalaEstudio::create(['empresa_id' => $this->empresa->id, 'nome' => 'Sala A', 'preco_hora' => $precoHora]);
@@ -165,6 +189,21 @@ class FaturacaoEstudioTest extends TestCase
 
         $this->assertSame(0.0, $projeto->saldoDevedor());
         $this->assertTrue($projeto->financeiramenteQuitado());
+    }
+
+    public function test_nota_de_debito_aumenta_o_devido_e_o_saldo_do_projeto(): void
+    {
+        $projeto = $this->projeto('hora');
+        $fatura = $this->faturaEmitida($this->empresa->id, $this->cliente->id, 30000);
+        $projeto->faturas()->attach($fatura->id, ['tipo' => 'avulso']);
+        $this->notaDebitoEmitida($fatura, '5000.00');
+        $this->reciboEmitido($fatura, '30000.00');
+
+        $this->assertSame(35000.0, $projeto->valorTotalFaturado());
+        $this->assertSame(35000.0, $projeto->valorDevido());
+        $this->assertSame(30000.0, $projeto->valorTotalRecebido());
+        $this->assertSame(5000.0, $projeto->saldoDevedor());
+        $this->assertFalse($projeto->financeiramenteQuitado());
     }
 
     public function test_recibo_emitido_no_faturacao_sem_passar_pelo_estudio_tambem_quita(): void
