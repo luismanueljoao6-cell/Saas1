@@ -40,6 +40,7 @@ return new class extends Migration
                     'produto_id' => (int) $legado->produto_id,
                     'quantidade' => (string) $legado->quantidade,
                 ];
+
                 continue;
             }
 
@@ -68,7 +69,7 @@ return new class extends Migration
 
         if ($conflitos !== []) {
             throw new RuntimeException(
-                "Migração de stock interrompida: existem saldos divergentes. "
+                'Migração de stock interrompida: existem saldos divergentes. '
                 ."Nenhum saldo foi alterado. Reconcilia os seguintes pares empresa/produto e volta a executar:\n"
                 .implode("\n", array_slice($conflitos, 0, 50))
             );
