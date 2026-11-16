@@ -358,3 +358,34 @@ A revisão directa do head da PR identificou um erro adicional que precisa de se
 5. Manter o bloqueio com AGT activa enquanto o documento de recebimento aplicável e as respectivas alocações AGT não estiverem implementados e homologados.
 
 **Estado:** achado confirmado por leitura do código e dos testes no head 4f7d39cebb519a43c1b2b1cbcbb4fd3db3984734. Nenhuma alteração funcional foi feita nesta etapa; a correcção isolada poderia criar uma FA sem recebimento suportado e deixar o fluxo do projecto incoerente.
+## 20. Estúdio — o resumo agregado não pode somar FA e FT integral como vendas distintas
+
+A análise do modelo `ProjetoMusical` identificou uma consequência adicional para a migração futura do pacote para FA + FT integral:
+
+- `resumoDasFaturas()` percorre todas as facturas associadas ao projecto e agrega o valor total, notas de crédito/débito, recebimentos e abatimentos de cada documento.
+- `faturadoCentimos()` soma os totais líquidos de crédito e acrescidos de débito de todas essas facturas.
+- `devidoCentimos()` compara o valor contratual do pacote com o total agregado facturado, usando o maior dos dois.
+- O modelo actual funciona com a arquitectura antiga de duas FT (sinal + saldo final), porque os dois documentos representam parcelas distintas do preço.
+- No fluxo correcto a validar, a FA documenta o adiantamento e a FT final documenta o valor integral da venda. Se ambos forem tratados como duas vendas independentes no agregado do projecto, o valor facturado será contado duas vezes.
+
+### Regra de reconciliação necessária
+
+A FA e o seu recebimento devem ser tratados como documentos/movimentos de adiantamento; a FT integral representa o valor contratual facturado. O recebimento da FA conta uma única vez como dinheiro recebido. O abatimento FA→FT reduz o saldo da FT, mas não é um segundo recebimento. O resumo do projecto deve distinguir, sem dupla contagem:
+
+1. valor contratual/facturado da venda final;
+2. documentos de adiantamento e respectivos recebimentos;
+3. montante do adiantamento já abatido à FT;
+4. pagamentos directos recebidos contra a FT;
+5. notas de crédito/débito e respectivos efeitos.
+
+Não basta incluir a FA na relação actual e somar todas as facturas. A agregação deve reconhecer o papel de cada tipo documental e a ligação formal entre FA e FT, usando os movimentos centrais da Faturação. A semântica do campo `tipo` na pivot `projeto_musical_fatura` não substitui essa relação fiscal.
+
+### Testes de regressão obrigatórios
+
+- FA de 40% recebida, FT integral emitida, abatimento integral e saldo final pago: total facturado do projecto deve continuar igual ao preço do pacote com IVA, e recebido deve igualar os pagamentos reais sem contar o abatimento como dinheiro.
+- FA parcialmente recebida e parcialmente abatida: saldo da FT e saldo contratual devem coincidir com o gateway, sem somar a FA como segunda venda.
+- FA anulada por NC e substituída: não duplicar o adiantamento nem o valor facturado.
+- Pagamentos parciais, múltiplas FA (se legalmente permitidas) e reexecução idempotente: preservar o total do projecto e o razão fiscal.
+- Comparar os indicadores de projecto e os resumos do gateway documento a documento, mantendo explícita a distinção entre saldo documental e saldo contratual.
+
+**Estado:** achado arquitectural confirmado pela agregação actual de `ProjetoMusical`; a implementação depende do contrato definitivo FA→recebimento→FT→abatimento. Não foi alterada a fórmula em produção nesta etapa para evitar uma correcção prematura que quebraria o fluxo legado de duas facturas.
