@@ -1,17 +1,16 @@
 <?php
 
-namespace Modules\\Faturacao\\Services;
+namespace Modules\Faturacao\Services;
 
 use DomainException;
-use Illuminate\\Support\\Facades\\DB;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
-use Modules\\Armazem\\Models\\ArmazemStockSaldo;
-use Modules\\Armazem\\Services\\ArmazemService;
-use Modules\\Armazem\\Services\\ArmazemStockService;
-use Modules\\Core\\Models\\Empresa;
-use Modules\\Core\\Services\\TenantManager;
-use Modules\\Faturacao\\Models\\Produto;
-use Modules\\Faturacao\\Models\\StockMovimento;
+use Modules\Armazem\Services\ArmazemService;
+use Modules\Armazem\Services\ArmazemStockService;
+use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
+use Modules\Faturacao\Models\Produto;
+use Modules\Faturacao\Models\StockMovimento;
 
 class StockService
 {
@@ -48,13 +47,7 @@ class StockService
                 return $existente;
             }
 
-            $saldoArmazem = ArmazemStockSaldo::withoutGlobalScopes()
-                ->where('empresa_id', $empresa->id)
-                ->where('armazem_id', $armazem->id)
-                ->where('produto_id', $produto->id)
-                ->lockForUpdate()
-                ->value('quantidade') ?? '0.000';
-                $antes = $this->saldoAgregado($empresa, $produto);
+            $antes = $this->saldoAgregado($empresa, $produto);
             $this->stockPorArmazem->ajustar(
                 $empresa, $armazem, $produto, $this->formatar($contagem),
                 trim($motivo), $utilizadorId, $chaveIdempotencia
