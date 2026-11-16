@@ -274,3 +274,26 @@ A Faturação, por sua vez, calcula o saldo como total + notas de débito − re
 6. Testar paridade entre os totais mostrados nos módulos e os resumos centrais, incluindo NC, ND, recibos parciais, abatimentos, reexecução e concorrência.
 
 Estes pontos devem ser corrigidos na Fase 1 antes de considerar a reconciliação financeira dos módulos consumidores concluída.
+
+
+
+## 13. Cruzamento com a matriz de homologação existente — distinguir fluxo interno de conformidade AGT
+
+A revisão de `docs/homologacao-agt.md` revelou evidência importante que deve ser preservada na auditoria: o projecto já documenta testes automáticos para o ciclo interno FA → recibo → abatimento → FT → recibo → NC → SAF-T, incluindo idempotência, concorrência, isolamento por empresa e reconciliação de saldos.
+
+Isto significa que a conclusão correcta não é que o módulo Faturação não possui qualquer fluxo interno de adiantamentos. O serviço de abatimento e a respectiva cobertura de testes já existem. O bloqueio identificado nesta decisão é mais específico:
+
+- a sequência interna de movimentos não demonstra, por si só, que os documentos de recebimento usados são os tipos correctos na facturação electrónica;
+- a configuração actual não inclui AR;
+- o serviço de recibos só emite RC/RG, com bloqueios explícitos;
+- o builder ainda não reconstrói `paymentReceipt` a partir de alocações fiscais persistidas por linha;
+- o ponto H3 da própria matriz de homologação continua aberto: representação de FA/abatimentos na FT, comunicação AGT e SAF-T;
+- o ponto H7 também continua aberto: ensaio integral no ambiente de homologação AGT.
+
+Os testes automáticos citados na matriz provam coerência interna conforme os cenários implementados; não provam aceitação do payload pela AGT nem a regra fiscal aplicável ao recebimento de uma FA.
+
+### Acção de auditoria
+
+Ao implementar a correcção, reutilizar os serviços e testes já existentes em vez de criar uma segunda contabilidade de adiantamentos. Acrescentar a camada documental AGT e os testes de payload/assinatura/alocações que faltam. Actualizar `docs/homologacao-agt.md` apenas quando existir evidência reproduzível: versão da especificação, payload enviado, resposta da homologação e commit correspondente.
+
+Até H3 e H7 estarem fechados com evidência externa, manter `FATURACAO_ABATIMENTOS_ADIANTAMENTO_CONFIRMADOS=false` em produção e manter o bloqueio de exportação SAF-T de períodos com abatimentos, conforme a salvaguarda já documentada.
