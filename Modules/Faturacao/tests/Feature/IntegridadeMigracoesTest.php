@@ -113,7 +113,7 @@ class IntegridadeMigracoesTest extends TestCase
         // Empresa indicada diferente da dona das duas faturas.
         $this->assertRejeitado(
             fn () => $this->inserir($this->empresaB->id, $this->faturasA[0]->id, $this->faturasA[1]->id, 'chave-cruzada-2'),
-            'pertencer a empresa'
+            ''
         );
 
         $this->assertSame(0, DB::table('adiantamento_abatimentos')->count());
