@@ -108,7 +108,7 @@ return new class extends Migration
     ): void {
         foreach (Schema::getForeignKeys($tabela) as $fk) {
             if ($fk['columns'] === $colunas && $fk['foreign_table'] === $tabelaReferenciada) {
-                Schema::table($tabela, function (Blueprint $table) use ($fk) {
+                Schema::table($tabela, function (Blueprint $table) use ($colunas) {
                     $table->dropForeign($colunas);
                 });
             }
