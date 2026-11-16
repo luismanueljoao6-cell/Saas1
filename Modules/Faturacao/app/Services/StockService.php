@@ -54,9 +54,7 @@ class StockService
                 ->where('produto_id', $produto->id)
                 ->lockForUpdate()
                 ->value('quantidade') ?? '0.000';
-            $anteriorArmazem = $this->emMilhares((string) $saldoArmazem);
-
-            $antes = $this->saldoAgregado($empresa, $produto);
+                $antes = $this->saldoAgregado($empresa, $produto);
             $this->stockPorArmazem->ajustar(
                 $empresa, $armazem, $produto, $this->formatar($contagem),
                 trim($motivo), $utilizadorId, $chaveIdempotencia
@@ -157,7 +155,7 @@ class StockService
             ->where('empresa_id', $empresa->id)
             ->where('produto_id', $produto->id)
             ->sum('quantidade');
-        return $this->emMilhares(number_format((float) $total, 3, '.', ''));
+        return $this->emMilhares((string) $total);
     }
 
     private function validarTexto(string $motivo, ?string $chave): void
