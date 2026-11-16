@@ -116,10 +116,26 @@ class GatewayFronteiraTest extends TestCase
         $this->assertSame(114000, $gateway->saldoEmCentimos($fatura));
 
         $gateway->emitirRecibo($empresa->id, $cliente->id, '400.00', 'dinheiro', $fatura->id);
-        $this->assertSame(['recebido' => 40000, 'creditado' => 0, 'abatido' => 0, 'saldo' => 74000], $gateway->resumoDaFatura($fatura->fresh()));
+        $this->assertSame([
+            'recebido' => 40000,
+            'creditado' => 0,
+            'creditado_sem_iva' => 0,
+            'debitado' => 0,
+            'debitado_sem_iva' => 0,
+            'abatido' => 0,
+            'saldo' => 74000,
+        ], $gateway->resumoDaFatura($fatura->fresh()));
 
         $gateway->emitirRecibo($empresa->id, $cliente->id, '740.00', 'transferencia', $fatura->id);
-        $this->assertSame(['recebido' => 114000, 'creditado' => 0, 'abatido' => 0, 'saldo' => 0], $gateway->resumoDaFatura($fatura->fresh()));
+        $this->assertSame([
+            'recebido' => 114000,
+            'creditado' => 0,
+            'creditado_sem_iva' => 0,
+            'debitado' => 0,
+            'debitado_sem_iva' => 0,
+            'abatido' => 0,
+            'saldo' => 0,
+        ], $gateway->resumoDaFatura($fatura->fresh()));
 
         $this->assertRecusado(fn () => $gateway->emitirRecibo($empresa->id, $cliente->id, '0.01', 'dinheiro', $fatura->id));
     }
@@ -134,7 +150,15 @@ class GatewayFronteiraTest extends TestCase
         $linha = [['descricao' => 'Desconto', 'quantidade' => 1, 'preco_unitario' => '500.00', 'taxa_iva' => '14']];
         $notas->emitir($notas->criarRascunho($empresa->id, $cliente->id, 'credito', 'Desconto comercial', $linha, $fatura->id));
 
-        $this->assertSame(['recebido' => 0, 'creditado' => 57000, 'abatido' => 0, 'saldo' => 57000], $gateway->resumoDaFatura($fatura->fresh()));
+        $this->assertSame([
+            'recebido' => 0,
+            'creditado' => 57000,
+            'creditado_sem_iva' => 50000,
+            'debitado' => 0,
+            'debitado_sem_iva' => 0,
+            'abatido' => 0,
+            'saldo' => 57000,
+        ], $gateway->resumoDaFatura($fatura->fresh()));
 
         $gateway->emitirRecibo($empresa->id, $cliente->id, '570.00', 'dinheiro', $fatura->id);
         $this->assertSame(0, $gateway->saldoEmCentimos($fatura->fresh()));
