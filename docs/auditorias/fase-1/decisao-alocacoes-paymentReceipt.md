@@ -308,3 +308,13 @@ Na continuação da Fase 1 foi corrigido o comportamento de `PedidoFaturacaoServ
 - Foram acrescentados testes para o bloqueio do sinal legado e para a utilização do saldo central quando não existe sinal.
 
 Esta é uma salvaguarda transitória e deliberadamente conservadora. Não converte recibos antigos em FA, não cria abatimentos retroactivos e não resolve o fluxo fiscal do sinal. O desbloqueio depende da implementação completa e validada de FA → recebimento permitido → FT integral → abatimento idempotente → recibo do saldo, incluindo homologação AGT aplicável.
+
+## 15. Estúdio — saldo por recibo e contrato monetário
+
+Foi corrigido mais um ponto de integração do Estúdio:
+
+- O valor por omissão de um recibo deixava de ser calculado por consultas locais de notas de crédito e recibos; agora usa `FaturacaoGateway::saldoEmCentimos()`, incluindo os movimentos que o motor central reconhece.
+- O controller passa o valor validado como texto decimal, e o serviço deixou de aceitar `float` na assinatura. Isto evita a incompatibilidade com o contrato público do gateway (`string|int`) e mantém a regra de não usar floats em operações monetárias.
+- Foi acrescentado um teste de integração com fatura, nota de crédito e recebimento parcial anterior, verificando que o recibo seguinte corresponde ao saldo central.
+
+Limite ainda existente: os métodos agregados de apresentação/quitação do modelo `ProjetoMusical` continuam a ter cálculos locais e precisam de uma refatoração de leitura para usar resumos oficiais da Faturação, incluindo abatimentos e notas de débito. Esta alteração não declara essa reconciliação global concluída.
