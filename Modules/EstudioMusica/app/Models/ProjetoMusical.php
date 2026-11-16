@@ -299,7 +299,7 @@ class ProjetoMusical extends Model
             ->values();
     }
 
-    /** Quanto falta receber de UMA fatura (cêntimos): total − notas de crédito − recibos emitidos. */
+    /** Saldo fiscal de UMA fatura (cêntimos), incluindo todos os movimentos reconhecidos pela Faturação. */
     public function saldoDaFaturaCentimos(Fatura $fatura): int
     {
         if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
