@@ -75,7 +75,17 @@ class AtualizarEmpresaRequest extends FormRequest
      */
     protected function temDocumentosFiscaisEmitidos(int $empresaId): bool
     {
-        return Schema::hasTable('faturas')
-            && DB::table('faturas')->where('empresa_id', $empresaId)->where('estado', 'emitida')->exists();
+        // Conta qualquer documento que já saiu de rascunho: faturas (também as anuladas), recibos
+        // (incluindo os de sinal, que não têm fatura) e notas de crédito/débito.
+        foreach (['faturas', 'recibos', 'notas_credito_debito'] as $tabela) {
+            if (
+                Schema::hasTable($tabela)
+                && DB::table($tabela)->where('empresa_id', $empresaId)->where('estado', '<>', 'rascunho')->exists()
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

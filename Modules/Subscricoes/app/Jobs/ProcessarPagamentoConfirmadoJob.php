@@ -4,6 +4,7 @@ namespace Modules\Subscricoes\Jobs;
 
 use DomainException;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -17,7 +18,7 @@ use Throwable;
  * O controller do webhook despacha este Job e responde 200 ao gateway de
  * imediato — o processamento em si corre em segundo plano.
  */
-class ProcessarPagamentoConfirmadoJob implements ShouldQueue
+class ProcessarPagamentoConfirmadoJob implements ShouldBeEncrypted, ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
