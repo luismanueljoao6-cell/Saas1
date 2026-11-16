@@ -203,6 +203,7 @@ class StockService
         if (! preg_match('/^(0|[1-9][0-9]{0,10})(?:\.([0-9]{1,3}))?$/', $valor, $partes)) {
             throw new InvalidArgumentException('Quantidade inválida. Usa até três casas decimais.');
         }
+
         return ((int) $partes[1] * 1000) + (int) str_pad($partes[2] ?? '', 3, '0');
     }
 
