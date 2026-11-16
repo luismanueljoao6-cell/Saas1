@@ -166,19 +166,20 @@ class AbatimentoReconciliacaoSafTTest extends TestCase
         $this->assertTrue($this->contem($this->validar(), 'clientes diferentes'));
     }
 
-    public function test_abatimento_que_liga_faturas_de_outra_empresa_e_detetado(): void
+    public function test_abatimento_entre_empresas_e_bloqueado_pela_integridade_da_base_de_dados(): void
     {
         $empresaB = Empresa::create(['nome_comercial' => 'Loja B', 'nif' => '5001636864']);
         $clienteB = Cliente::create(['empresa_id' => $empresaB->id, 'nome' => 'Cliente B', 'nif' => null]);
 
         $fa = $this->adiantamentoRecebido();
         $ftB = $this->faturaFinal($empresaB, $clienteB);
-        // A base de dados já recusa este dado (ver o teste seguinte). Aqui simula-se uma base
-        // danificada para provar que a pré-validação SAF-T o deteta como segunda linha de defesa.
-        $this->semTriggerDeEmpresa();
-        $this->abatimentoDireto($this->empresa->id, $fa->id, $ftB->id, 10000, 'chave-rec-0004');
 
-        $this->assertTrue($this->contem($this->validar(), 'não existe nesta empresa'));
+        // Mesmo removendo o trigger SQLite de defesa adicional, a FK composta
+        // impede que o abatimento associe documentos de empresas diferentes.
+        $this->semTriggerDeEmpresa();
+
+        $this->expectException(QueryException::class);
+        $this->abatimentoDireto($this->empresa->id, $fa->id, $ftB->id, 10000, 'chave-rec-0004');
     }
 
     public function test_a_base_de_dados_recusa_um_abatimento_entre_empresas(): void
