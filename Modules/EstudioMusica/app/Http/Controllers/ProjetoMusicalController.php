@@ -147,7 +147,7 @@ class ProjetoMusicalController extends Controller
                 $projeto,
                 $fatura,
                 $dados['meio_pagamento'],
-                $dados['valor'] ?? null,
+                isset($dados['valor']) ? (string) $dados['valor'] : null,
             );
         } catch (InvalidArgumentException|DomainException $e) {
             return back()->with('erro', $e->getMessage());
