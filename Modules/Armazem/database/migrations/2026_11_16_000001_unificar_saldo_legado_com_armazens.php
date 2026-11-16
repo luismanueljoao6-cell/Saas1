@@ -1,7 +1,7 @@
 <?php
 
-use Illuminate\\Database\\Migrations\\Migration;
-use Illuminate\\Support\\Facades\\DB;
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -178,7 +178,7 @@ return new class extends Migration
     private function emMilhares(string $valor): int
     {
         $valor = trim($valor);
-        if (preg_match('/^(0|[1-9][0-9]{0,10})(?:\\.([0-9]{1,3}))?$/', $valor, $partes) !== 1) {
+        if (preg_match('/^(0|[1-9][0-9]{0,10})(?:\.([0-9]{1,3}))?$/', $valor, $partes) !== 1) {
             throw new RuntimeException('Foi encontrado um saldo legado com formato decimal inválido: '.$valor);
         }
 
