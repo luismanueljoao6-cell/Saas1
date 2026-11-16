@@ -75,5 +75,40 @@ SQL);
         Schema::table('faturas', function (Blueprint $table) {
             $table->dropUnique('faturas_empresa_id_id_unique');
         });
+
+        // O rollback também reconstrói a tabela SQLite; restaurar os triggers
+        // pertencentes à migração anterior evita perder as suas invariantes.
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            DB::unprepared(<<<'SQL'
+CREATE TRIGGER IF NOT EXISTS adiantamento_abatimentos_mesma_empresa
+BEFORE INSERT ON adiantamento_abatimentos
+BEGIN
+    SELECT RAISE(ABORT, 'O adiantamento e a fatura final tem de ser documentos diferentes.')
+    WHERE NEW.fatura_adiantamento_id = NEW.fatura_final_id;
+    SELECT RAISE(ABORT, 'O adiantamento e a fatura final tem de pertencer a empresa indicada.')
+    WHERE NOT EXISTS (
+        SELECT 1 FROM faturas
+        WHERE id = NEW.fatura_adiantamento_id AND empresa_id = NEW.empresa_id
+    ) OR NOT EXISTS (
+        SELECT 1 FROM faturas
+        WHERE id = NEW.fatura_final_id AND empresa_id = NEW.empresa_id
+    );
+END
+SQL);
+            DB::unprepared(<<<'SQL'
+CREATE TRIGGER IF NOT EXISTS adiantamento_abatimentos_sem_update
+BEFORE UPDATE ON adiantamento_abatimentos
+BEGIN
+    SELECT RAISE(ABORT, 'Os abatimentos de adiantamentos são imutáveis.');
+END
+SQL);
+            DB::unprepared(<<<'SQL'
+CREATE TRIGGER IF NOT EXISTS adiantamento_abatimentos_sem_delete
+BEFORE DELETE ON adiantamento_abatimentos
+BEGIN
+    SELECT RAISE(ABORT, 'Os abatimentos de adiantamentos são imutáveis.');
+END
+SQL);
+        }
     }
 };
