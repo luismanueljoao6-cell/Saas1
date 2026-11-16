@@ -235,3 +235,42 @@ A mesma página estabelece que `AR` e `RG` não levam `lines` e têm obrigatoria
 - A homologação deve incluir FA como documento origem e testar AR e RG separadamente, apenas se a AGT confirmar que cada tipo se aplica ao cenário.
 
 Esta precisão substitui qualquer leitura da secção 10 que pudesse sugerir que AR não existe na especificação AGT. A lacuna real é a ausência de suporte no produto e, sobretudo, a falta de evidência suficiente para decidir se AR é o documento fiscal correcto para liquidar uma FA.
+
+
+
+## 12. Reconciliação adicional — os módulos consumidores ainda mantêm saldos paralelos
+
+A leitura integral dos serviços e do modelo `ProjetoMusical` confirmou que a divergência não se limita aos sinais/adiantamentos.
+
+### Atelier
+
+Em `PedidoFaturacaoService::registarPagamentoFinal()`, o saldo é calculado manualmente como:
+
+`fatura.valor_total - pedido.valor_sinal`
+
+Esse cálculo não consulta `FaturacaoGateway::resumoDaFatura()` nem `saldoEmCentimos()`. Consequentemente, não considera de forma centralizada notas de crédito/débito, recibos parciais anteriores ou abatimentos registados no razão da Faturação. Mesmo depois de existir um fluxo fiscal correcto para o sinal, esta fórmula pode emitir um recibo de valor errado ou ser recusada pelo serviço central.
+
+### Estúdio de Música
+
+O modelo `ProjetoMusical` implementa a sua própria reconciliação consultando directamente `NotaCreditoDebito` e `Recibo`:
+- `saldoDaFaturaCentimos()` subtrai notas de crédito e recibos, mas não inclui notas de débito nem abatimentos FA→FT;
+- `situacaoDasFaturas()` repete a mesma fórmula local para cada fatura;
+- `recebidoCentimos()` soma recibos ligados ao projecto e às faturas, sem considerar o registo central de abatimentos;
+- `devidoCentimos()` calcula o valor global a partir das notas de crédito, sem incorporar os movimentos de abatimento da Faturação.
+
+A Faturação, por sua vez, calcula o saldo como total + notas de débito − recibos − notas de crédito − abatimentos. As duas fórmulas não são equivalentes. O Estúdio pode apresentar um saldo diferente do módulo fiscal e libertar indevidamente uma entrega, ou impedir uma operação já liquidada.
+
+### Contrato de valor também inconsistente
+
+`FaturacaoEstudioService::registrarRecibo()` aceita `float` no parâmetro `$valor`, mas o contrato `FaturacaoGateway::emitirRecibo()` aceita apenas `string|int`. Um chamador que forneça float pode chegar a uma incompatibilidade de tipo em runtime. O contrato monetário do projecto deve ser decimal textual ou cêntimos inteiros, sem float.
+
+### Correcção obrigatória
+
+1. Eliminar fórmulas locais de saldo por documento e delegar na API pública `resumoDaFatura()`/`saldoEmCentimos()`.
+2. Para saldos agregados do projecto, criar uma operação de consulta no gateway que devolva os resumos dos documentos autorizados do mesmo cliente/empresa, ou compor os resumos centrais no serviço de aplicação do Estúdio sem consultar directamente tabelas fiscais.
+3. Incluir notas de débito, notas de crédito, recibos e abatimentos em todos os estados financeiros apresentados e nas regras de libertação de entregáveis.
+4. Fazer o Atelier calcular o pagamento final pelo saldo central actual da FT, não pelo campo histórico `valor_sinal`.
+5. Remover `float` das assinaturas de valores monetários e normalizar entradas com `Dinheiro`.
+6. Testar paridade entre os totais mostrados nos módulos e os resumos centrais, incluindo NC, ND, recibos parciais, abatimentos, reexecução e concorrência.
+
+Estes pontos devem ser corrigidos na Fase 1 antes de considerar a reconciliação financeira dos módulos consumidores concluída.
