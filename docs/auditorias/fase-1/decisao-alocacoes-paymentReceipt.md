@@ -162,3 +162,44 @@ Os testes actuais confirmam a aritmética da divisão em duas facturas e a conta
 - Comparar o saldo apresentado pelo Estúdio com `FaturacaoGateway::resumoDaFatura()` para cada documento; não manter duas fontes de verdade.
 
 Este achado também bloqueia a conclusão da integração Estúdio/Faturação na Fase 1.
+
+
+
+## 10. Contrato público disponível versus lacunas para implementar FA e recebimentos
+
+A revisão do contrato real `Modules/Faturacao/app/Contracts/FaturacaoGateway.php`, da fachada `FaturacaoGatewayService` e dos serviços de domínio confirma que já existem estas operações públicas:
+
+- `criarRascunhoAdiantamento()` para criar uma FA em rascunho;
+- `emitirFatura()` para emitir documentos através do serviço fiscal central;
+- `emitirRecibo()`, que emite exclusivamente RC;
+- `emitirRegularizacao()`, que tenta emitir RG e permanece globalmente bloqueado enquanto não existirem alocações fiscais por linha;
+- `abaterAdiantamento()` para registar o abatimento idempotente FA→FT;
+- `resumoDaFatura()` e `saldoEmCentimos()` para consultar o razão financeiro central.
+
+### Lacuna crítica confirmada
+
+O contrato não expõe uma operação para emitir AR. A operação de recebimento genérica só emite RC; a operação específica de regularização só emite RG. No serviço actual, RC é bloqueado com AGT activa e RG é bloqueado em qualquer ambiente enquanto não houver alocações fiscais persistidas por linha.
+
+A documentação AGT consultada descreve `paymentReceipt` para AR/RG. Portanto, não é correcto afirmar que o fluxo FA está pronto apenas porque existe `criarRascunhoAdiantamento()` e `abaterAdiantamento()`: falta definir e implementar o documento de recebimento permitido, o seu payload AGT, a numeração, a assinatura e a ligação imutável à FA. Não criar um novo tipo documental nem permitir RC/RG por tentativa sem confirmação normativa/homologação.
+
+### Regras do serviço de abatimento que já estão centralizadas
+
+`AbatimentoAdiantamentoService::abater()` já:
+- exige empresa válida e aplica `GuardaEmissao`;
+- bloqueia FA e FT por ordem de ID dentro da transacção;
+- exige FA e FT emitidas e do mesmo cliente/empresa;
+- calcula o disponível da FA a partir de recebimentos, abatimentos anteriores e notas de crédito;
+- impede que o abatimento ultrapasse o saldo da FT;
+- protege a chave idempotente contra reutilização com dados diferentes.
+
+A integração dos módulos consumidores deve chamar esta API, sem replicar as validações. Antes de a usar em produção, os testes têm de provar que o recebimento permitido da FA é contado por `resumoDaFatura(FA)` e que a operação continua correcta perante NC, reexecução e concorrência MySQL.
+
+### Sequência de implementação segura
+
+1. Confirmar com a especificação integral/AGT qual o tipo de documento de recebimento aplicável à FA e se é AR, RG ou outro fluxo autorizado; registar a evidência normativa e a homologação.
+2. Implementar no módulo Faturação o modelo, serviço, contrato e builder desse recebimento, incluindo payload, assinatura, sequência, ligação à FA e testes. Não remover os bloqueios RC/RG como atalho.
+3. Adicionar testes do ciclo FA→recebimento permitido→FT integral→abatimento→recibo do saldo, primeiro no módulo Faturação e depois nos consumidores.
+4. Só então migrar Atelier e Estúdio para o gateway e tornar o resumo da Faturação a fonte de verdade.
+5. Preservar os documentos antigos; não gerar FA retroactivas nem alterar recibos assinados.
+
+Esta lacuna é um bloqueador anterior à migração dos fluxos do Atelier e do Estúdio. A Fase 1 não pode ser marcada como concluída enquanto a sequência fiscal de recebimento de FA não estiver demonstrada.
