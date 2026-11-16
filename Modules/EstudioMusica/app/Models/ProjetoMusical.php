@@ -358,37 +358,46 @@ class ProjetoMusical extends Model
     {
         $faturas = $this->faturas()
             ->where('faturas.estado', 'emitida')
-            ->get(['faturas.id', 'faturas.valor_total', 'faturas.valor_sem_iva']);
+            ->get(['faturas.id', 'faturas.empresa_id', 'faturas.valor_total', 'faturas.valor_sem_iva']);
 
         if ($faturas->isEmpty()) {
             return collect();
         }
 
+        $gateway = app(\\Modules\\Faturacao\\Contracts\\FaturacaoGateway::class);
         $creditos = NotaCreditoDebito::withoutGlobalScopes()
             ->where('empresa_id', $this->empresa_id)
             ->whereIn('fatura_id', $faturas->pluck('id'))
             ->where('tipo', 'credito')
             ->where('estado', 'emitida')
-            ->get(['fatura_id', 'valor_total', 'valor_sem_iva'])
+            ->get(['fatura_id', 'valor_sem_iva'])
             ->groupBy('fatura_id');
 
-        return $faturas->map(function (Fatura $fatura) use ($creditos) {
-            $notas = $creditos->get($fatura->id, collect());
+        return $faturas->map(function (Fatura $fatura) use ($gateway, $creditos) {
+            if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
+                throw new \\DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
+            }
+
+            $resumo = $gateway->resumoDaFatura($fatura);
+            $notasCredito = $creditos->get($fatura->id, collect());
 
             return (object) [
                 'id' => (int) $fatura->id,
                 'tipo' => $fatura->pivot->tipo,
                 'total' => Dinheiro::centimos($fatura->valor_total),
                 'sem_iva' => Dinheiro::centimos($fatura->valor_sem_iva),
-                'creditado' => $notas->sum(fn ($n) => Dinheiro::centimos($n->valor_total)),
-                'creditado_sem_iva' => $notas->sum(fn ($n) => Dinheiro::centimos($n->valor_sem_iva)),
+                'creditado' => (int) $resumo['creditado'],
+                'debitado' => (int) $resumo['debitado'],
+                'recebido' => (int) $resumo['recebido'],
+                'abatido' => (int) $resumo['abatido'],
+                'creditado_sem_iva' => $notasCredito->sum(fn ($nota) => Dinheiro::centimos($nota->valor_sem_iva)),
             ];
         })->values();
     }
 
     public function faturadoCentimos(): int
     {
-        return $this->resumoDasFaturas()->sum(fn (object $f) => max(0, $f->total - $f->creditado));
+        return $this->resumoDasFaturas()->sum(fn (object $f) => max(0, $f->total + $f->debitado - $f->creditado));
     }
 
     public function faturadoSemIvaCentimos(): int
@@ -398,22 +407,17 @@ class ProjetoMusical extends Model
 
     public function recebidoCentimos(): int
     {
-        $viaProjeto = $this->recibos()
+        $resumos = $this->resumoDasFaturas();
+        $recebidoFiscal = $resumos->sum('recebido');
+
+        // Compatibilidade histórica: apenas recibos do projeto sem fatura associada.
+        // Recibos fiscais ligados a faturas já estão incluídos no resumo do gateway.
+        $recibosLegados = $this->recibos()
             ->where('recibos.estado', 'emitido')
+            ->whereNull('recibos.fatura_id')
             ->get(['recibos.id', 'recibos.valor']);
 
-        $idsFaturas = $this->faturas()->pluck('faturas.id');
-
-        $viaFatura = $idsFaturas->isEmpty()
-            ? collect()
-            : Recibo::withoutGlobalScopes()
-                ->where('empresa_id', $this->empresa_id)
-                ->whereIn('fatura_id', $idsFaturas)
-                ->where('estado', 'emitido')
-                ->get(['id', 'valor']);
-
-        // Um recibo ligado pelas duas vias conta uma só vez.
-        return $viaProjeto->concat($viaFatura)
+        return $recebidoFiscal + $recibosLegados
             ->unique('id')
             ->sum(fn ($recibo) => Dinheiro::centimos($recibo->valor));
     }
@@ -421,9 +425,11 @@ class ProjetoMusical extends Model
     public function devidoCentimos(): int
     {
         if ($this->tipo_cobranca === 'pacote') {
-            $creditado = $this->resumoDasFaturas()->sum('creditado');
+            $resumos = $this->resumoDasFaturas();
+            $creditado = $resumos->sum('creditado');
+            $debitado = $resumos->sum('debitado');
 
-            return max(0, $this->pacoteComIvaCentimos() - $creditado, $this->faturadoCentimos());
+            return max(0, $this->pacoteComIvaCentimos() + $debitado - $creditado, $this->faturadoCentimos());
         }
 
         return $this->faturadoCentimos();
