@@ -387,7 +387,7 @@ class ProjetoMusical extends Model
                 'total' => Dinheiro::centimos($fatura->valor_total),
                 'sem_iva' => Dinheiro::centimos($fatura->valor_sem_iva),
                 'creditado' => (int) $resumo['creditado'],
-                'debitado' => (int) $resumo['debitado'],
+                'debitado' => (int) $resumo['debitado'],\n                'debitado_sem_iva' => (int) $resumo['debitado_sem_iva'],
                 'recebido' => (int) $resumo['recebido'],
                 'abatido' => (int) $resumo['abatido'],
                 'creditado_sem_iva' => $notasCredito->sum(fn ($nota) => Dinheiro::centimos($nota->valor_sem_iva)),
@@ -402,7 +402,7 @@ class ProjetoMusical extends Model
 
     public function faturadoSemIvaCentimos(): int
     {
-        return $this->resumoDasFaturas()->sum(fn (object $f) => max(0, $f->sem_iva - $f->creditado_sem_iva));
+        return $this->resumoDasFaturas()->sum(fn (object $f) => max(0, $f->sem_iva + $f->debitado_sem_iva - $f->creditado_sem_iva));
     }
 
     public function recebidoCentimos(): int
