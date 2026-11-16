@@ -2,8 +2,8 @@
 
 namespace Modules\Faturacao\Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
