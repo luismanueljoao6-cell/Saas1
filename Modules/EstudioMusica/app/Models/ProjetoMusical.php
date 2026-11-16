@@ -302,22 +302,14 @@ class ProjetoMusical extends Model
     /** Quanto falta receber de UMA fatura (cêntimos): total − notas de crédito − recibos emitidos. */
     public function saldoDaFaturaCentimos(Fatura $fatura): int
     {
-        $creditado = NotaCreditoDebito::withoutGlobalScopes()
-            ->where('empresa_id', $this->empresa_id)
-            ->where('fatura_id', $fatura->id)
-            ->where('tipo', 'credito')
-            ->where('estado', 'emitida')
-            ->get(['valor_total'])
-            ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_total));
+        if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
+            throw new \\DomainException('A fatura não pertence à empresa deste projeto.');
+        }
 
-        $recebido = Recibo::withoutGlobalScopes()
-            ->where('empresa_id', $this->empresa_id)
-            ->where('fatura_id', $fatura->id)
-            ->where('estado', 'emitido')
-            ->get(['valor'])
-            ->sum(fn ($recibo) => Dinheiro::centimos($recibo->valor));
-
-        return max(0, Dinheiro::centimos($fatura->valor_total) - $creditado - $recebido);
+        // O saldo fiscal é autoridade exclusiva da Faturação: inclui recibos,
+        // NC/ND e abatimentos de adiantamentos, sem replicar as suas consultas.
+        return app(\\Modules\\Faturacao\\Contracts\\FaturacaoGateway::class)
+            ->saldoEmCentimos($fatura);
     }
 
     /**
@@ -337,33 +329,22 @@ class ProjetoMusical extends Model
             return collect();
         }
 
-        $creditos = NotaCreditoDebito::withoutGlobalScopes()
-            ->where('empresa_id', $this->empresa_id)
-            ->whereIn('fatura_id', $faturas->pluck('id'))
-            ->where('tipo', 'credito')
-            ->where('estado', 'emitida')
-            ->get(['fatura_id', 'valor_total'])
-            ->groupBy('fatura_id');
+        $gateway = app(\\Modules\\Faturacao\\Contracts\\FaturacaoGateway::class);
 
-        $recibos = Recibo::withoutGlobalScopes()
-            ->where('empresa_id', $this->empresa_id)
-            ->whereIn('fatura_id', $faturas->pluck('id'))
-            ->where('estado', 'emitido')
-            ->get(['fatura_id', 'valor'])
-            ->groupBy('fatura_id');
+        return $faturas->map(function (Fatura $fatura) use ($gateway) {
+            if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
+                throw new \\DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
+            }
 
-        return $faturas->map(function (Fatura $fatura) use ($creditos, $recibos) {
-            $total = Dinheiro::centimos($fatura->valor_total);
-            $creditado = $creditos->get($fatura->id, collect())->sum(fn ($n) => Dinheiro::centimos($n->valor_total));
-            $recebido = $recibos->get($fatura->id, collect())->sum(fn ($r) => Dinheiro::centimos($r->valor));
+            $resumo = $gateway->resumoDaFatura($fatura);
 
             return (object) [
                 'fatura' => $fatura,
                 'tipo' => $fatura->pivot->tipo,
-                'total' => $this->emKwanzas($total),
-                'creditado' => $this->emKwanzas($creditado),
-                'recebido' => $this->emKwanzas($recebido),
-                'em_falta' => $this->emKwanzas(max(0, $total - $creditado - $recebido)),
+                'total' => (float) $fatura->valor_total,
+                'creditado' => $this->emKwanzas((int) $resumo['creditado']),
+                'recebido' => $this->emKwanzas((int) $resumo['recebido']),
+                'em_falta' => $this->emKwanzas(max(0, (int) $resumo['saldo'])),
             ];
         })->values();
     }
