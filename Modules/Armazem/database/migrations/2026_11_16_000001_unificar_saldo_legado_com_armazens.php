@@ -54,6 +54,18 @@ return new class extends Migration
             }
         }
 
+        $totaisArmazens = [];
+        foreach (DB::table('armazem_stock_saldos')->orderBy('empresa_id')->orderBy('produto_id')->get() as $saldo) {
+            $chave = $saldo->empresa_id.':'.$saldo->produto_id;
+            $totaisArmazens[$chave] = ($totaisArmazens[$chave] ?? 0)
+                + $this->emMilhares((string) $saldo->quantidade);
+        }
+        foreach ($totaisArmazens as $chave => $total) {
+            if ($total > 99_999_999_999_999) {
+                $conflitos[] = 'saldo agregado ultrapassa DECIMAL(14,3): '.$chave;
+            }
+        }
+
         if ($conflitos !== []) {
             throw new RuntimeException(
                 "Migração de stock interrompida: existem saldos divergentes. "
@@ -117,6 +129,15 @@ return new class extends Migration
                         ->where('id', $principal->id)
                         ->update(['principal' => true, 'updated_at' => now()]);
                 }
+
+                // Garante exatamente um principal ativo por empresa.
+                DB::table('armazens')
+                    ->where('empresa_id', $empresaId)
+                    ->where('id', '!=', $principal->id)
+                    ->update(['principal' => false, 'updated_at' => now()]);
+                DB::table('armazens')
+                    ->where('id', $principal->id)
+                    ->update(['principal' => true, 'ativo' => true, 'updated_at' => now()]);
 
                 $principais[$empresaId] = (int) $principal->id;
             }
