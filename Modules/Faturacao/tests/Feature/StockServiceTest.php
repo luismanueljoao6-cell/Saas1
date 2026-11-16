@@ -178,6 +178,4 @@ class StockServiceTest extends TestCase
         $this->expectException(\DomainException::class);
         $service->ajustar($empresa, $produto, '2.500', 'Contagem física', null, 'ajuste-reuso');
     }
-
-
 }
