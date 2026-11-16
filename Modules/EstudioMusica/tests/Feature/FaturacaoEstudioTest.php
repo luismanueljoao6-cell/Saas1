@@ -207,6 +207,23 @@ class FaturacaoEstudioTest extends TestCase
         $this->assertTrue($projeto->financeiramenteQuitado());
     }
 
+    public function test_recibo_por_omissao_usa_saldo_central_apos_credito_e_recebimento_parcial(): void
+    {
+        $projeto = $this->projeto('hora');
+        $fatura = $this->faturaEmitida($this->empresa->id, $this->cliente->id, 30000);
+        $projeto->faturas()->attach($fatura->id, ['tipo' => 'avulso']);
+
+        $this->notaCreditoEmitida($fatura, 5000);
+        app(ReciboService::class)->emitir($this->empresa->id, $this->cliente->id, '10000.00', 'dinheiro', $fatura->id);
+
+        // O saldo oficial da Faturação é 30.000 - 5.000 - 10.000 = 15.000.
+        $recibo = $this->faturacao->registrarRecibo($projeto, $fatura, 'multicaixa');
+
+        $this->assertSame('15000.00', $recibo->valor);
+        $this->assertSame(0.0, $projeto->saldoDevedor());
+        $this->assertTrue($projeto->financeiramenteQuitado());
+    }
+
     public function test_projeto_cancelado_nao_pode_ser_faturado(): void
     {
         $projeto = $this->projeto('pacote', ['estado' => 'cancelado']);
