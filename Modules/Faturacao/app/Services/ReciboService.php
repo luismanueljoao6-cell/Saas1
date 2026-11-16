@@ -95,7 +95,7 @@ class ReciboService
         // inactiva criaria um documento assinado que a própria aplicação não
         // consegue submeter posteriormente; por isso o bloqueio é global.
         if ($tipo === 'RG') {
-            throw new \\DomainException('A emissão de RG está temporariamente bloqueada até existir alocação fiscal persistida por linha de origem e reconstrução do paymentReceipt a partir dessas alocações.');
+            throw new \DomainException('A emissão de RG está temporariamente bloqueada até existir alocação fiscal persistida por linha de origem e reconstrução do paymentReceipt a partir dessas alocações.');
         }
 
         // O modelo Recibo emite RC. A especificação AGT exige "lines" para RC,
