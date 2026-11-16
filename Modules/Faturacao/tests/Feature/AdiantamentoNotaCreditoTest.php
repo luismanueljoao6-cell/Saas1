@@ -3,6 +3,8 @@
 namespace Modules\Faturacao\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
@@ -83,6 +85,30 @@ class AdiantamentoNotaCreditoTest extends TestCase
     protected function linhaNc(string $preco): array
     {
         return [['descricao' => 'Correção', 'quantidade' => 1, 'preco_unitario' => $preco, 'taxa_iva' => 14]];
+    }
+
+    public function test_base_de_dados_impede_abatimento_com_faturas_de_outra_empresa(): void
+    {
+        $fa = $this->adiantamentoRecebido();
+        $ft = $this->faturaFinal();
+        $outraEmpresa = Empresa::create([
+            'nome_comercial' => 'Outra empresa',
+            'nif' => '5001636871',
+        ]);
+
+        // As FKs simples por ID aceitariam documentos existentes. A FK composta
+        // tem de rejeitar a associação porque as duas faturas pertencem a outra empresa.
+        $this->expectException(QueryException::class);
+
+        DB::table('adiantamento_abatimentos')->insert([
+            'empresa_id' => $outraEmpresa->id,
+            'fatura_adiantamento_id' => $fa->id,
+            'fatura_final_id' => $ft->id,
+            'valor_centimos' => 100,
+            'chave' => 'tenant-cruzado-0001',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     public function test_operacoes_sobre_notas_recusam_empresa_fora_do_tenant_ativo(): void
