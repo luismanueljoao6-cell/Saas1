@@ -5,6 +5,9 @@ namespace Modules\Faturacao\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Support\Servico;
+use Modules\Armazem\Models\ArmazemStockSaldo;
+use Modules\Armazem\Services\ArmazemService;
+use Modules\Armazem\Services\ArmazemStockService;
 use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Models\StockMovimento;
 use Modules\Faturacao\Models\StockSaldo;
@@ -138,4 +141,43 @@ class StockServiceTest extends TestCase
         $this->expectException(\DomainException::class);
         $service->entrada($empresa, $produto, '3.000', 'Receção', null, 'chave-unica');
     }
+
+    public function test_servico_legado_movimenta_armazem_principal_e_mantem_saldo_consolidado(): void
+    {
+        [$empresa, $produto] = $this->criarProduto('630000311');
+        $armazens = app(ArmazemService::class);
+        $principal = $armazens->obterPrincipal($empresa);
+        $secundario = $armazens->criar($empresa, 'SEC-311', 'Armazém secundário');
+        app(ArmazemStockService::class)->entrada($empresa, $secundario, $produto, '2.000', 'Stock secundário');
+
+        app(StockService::class)->entrada($empresa, $produto, '3.000', 'Compra recebida');
+
+        $this->assertSame('3.000', (string) ArmazemStockSaldo::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->where('armazem_id', $principal->id)
+            ->where('produto_id', $produto->id)
+            ->value('quantidade'));
+        $this->assertSame('2.000', (string) ArmazemStockSaldo::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->where('armazem_id', $secundario->id)
+            ->where('produto_id', $produto->id)
+            ->value('quantidade'));
+        $this->assertSame('5.000', (string) StockSaldo::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->where('produto_id', $produto->id)
+            ->value('quantidade'));
+    }
+
+    public function test_chave_de_ajuste_nao_pode_ser_reutilizada_com_outra_contagem(): void
+    {
+        [$empresa, $produto] = $this->criarProduto('630000312');
+        $service = app(StockService::class);
+        $service->entrada($empresa, $produto, '5.000', 'Entrada');
+        $service->ajustar($empresa, $produto, '3.500', 'Contagem física', null, 'ajuste-reuso');
+
+        $this->expectException(\\DomainException::class);
+        $service->ajustar($empresa, $produto, '2.500', 'Contagem física', null, 'ajuste-reuso');
+    }
+
+
 }
