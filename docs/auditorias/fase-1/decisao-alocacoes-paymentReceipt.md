@@ -131,3 +131,34 @@ O pedido operacional deve preservar referências separadas à FA, ao documento d
 - Teste de migração compatível com pedidos antigos que só têm `recibo_sinal_id` e `valor_sinal`; preservar as referências históricas e não inventar FA retroactiva.
 
 Este achado é bloqueador da conclusão da integração Atelier/Faturação na Fase 1. A mesma revisão deve ser aplicada ao fluxo equivalente do Estúdio de Música antes de declarar os módulos consumidores reconciliados.
+
+
+## 9. Achado crítico adicional — fluxo financeiro do Estúdio de Música
+
+A revisão de `FaturacaoEstudioService` e `FaturacaoEstudioTest` confirmou um segundo padrão que precisa de ser alinhado com o domínio central:
+
+1. `gerarFaturaSinal()` calcula o sinal do pacote e cria/emite uma FT normal, embora o comentário reconheça que o adiantamento deve ser FA. Com AGT activa, o método bloqueia a operação em vez de usar o suporte FA já existente em `FaturacaoGateway::criarRascunhoAdiantamento()`.
+2. `gerarFaturaSaldoFinal()` emite uma segunda FT apenas pelo valor ainda não faturado, em vez de emitir a FT final integral e registar o abatimento do adiantamento recebido.
+3. `registrarRecibo()` emite RC ligado à factura. Com AGT activa, `ReciboService` bloqueia RC enquanto não existir o payload estrutural correcto.
+4. A lógica de saldo do projeto soma facturas, notas de crédito e recibos; não usa o razão de abatimentos FA→FT do módulo Faturação. Portanto, o conceito de “faturado”, “recebido” e “abatido” continua distribuído entre o módulo consumidor e a Faturação.
+
+Os testes actuais confirmam a aritmética da divisão em duas facturas e a contabilização local do projeto, mas não demonstram o ciclo FA→recebimento→FT integral→abatimento→saldo reconciliado, nem o comportamento completo com AGT activa.
+
+### Correcção exigida
+
+- Distinguir no Estúdio documentos de adiantamento (FA), factura final (FT), pagamentos recebidos e abatimentos.
+- A Faturação deve ser a fonte de verdade do saldo; o Estúdio não deve recalcular saldos fiscais a partir de somas locais de facturas.
+- Usar a API pública para criar/emitar FA e FT e para registar abatimentos idempotentes.
+- O fluxo por hora deve igualmente respeitar o tipo de recibo permitido e não reportar pagamento concluído quando a Faturação o bloqueia.
+- Preservar a possibilidade de notas de crédito e reemissão sem duplicar cobranças nem reabrir documentos imutáveis.
+
+### Testes de regressão obrigatórios
+
+- Pacote: FA emitida, recebimento suportado, FT integral emitida, abatimento, pagamento do saldo e resumo da FT reconciliado.
+- Pacote com sinal anulado por NC: saldo disponível da FA correctamente ajustado e sem abatimento de valor já creditado.
+- Projeto por hora: várias sessões, pagamentos parciais, notas de crédito e saldo consultado pelo gateway.
+- AGT activa: operação bloqueada com mensagem explícita até existir tipo de recibo homologado; após suporte, validar payload e assinatura.
+- Repetição concorrente: não duplicar factura, recibo, abatimento ou utilização de cupão.
+- Comparar o saldo apresentado pelo Estúdio com `FaturacaoGateway::resumoDaFatura()` para cada documento; não manter duas fontes de verdade.
+
+Este achado também bloqueia a conclusão da integração Estúdio/Faturação na Fase 1.
