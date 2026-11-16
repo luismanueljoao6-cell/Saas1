@@ -284,10 +284,20 @@ class ArmazemStockService
             ->where('produto_id', $produto->id)
             ->sum('quantidade');
 
-        DB::table('stock_saldos')->updateOrInsert(
-            ['empresa_id' => $empresa->id, 'produto_id' => $produto->id],
-            ['quantidade' => (string) $quantidadeAgregada, 'updated_at' => now(), 'created_at' => now()]
-        );
+        $saldoLegado = DB::table('stock_saldos')
+            ->where('empresa_id', $empresa->id)
+            ->where('produto_id', $produto->id)
+            ->update(['quantidade' => (string) $quantidadeAgregada, 'updated_at' => now()]);
+
+        if ($saldoLegado === 0) {
+            DB::table('stock_saldos')->insertOrIgnore([
+                'empresa_id' => $empresa->id,
+                'produto_id' => $produto->id,
+                'quantidade' => (string) $quantidadeAgregada,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         return $movimento;
     }
