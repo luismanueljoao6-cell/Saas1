@@ -212,6 +212,7 @@ class ReciboService
         return [
             'recebido' => $recebido,
             'creditado' => $creditado,
+            'debitado' => $debitado,
             'abatido' => $abatido,
             'saldo' => Dinheiro::centimos($fatura->valor_total) + $debitado - $recebido - $creditado - $abatido,
         ];
