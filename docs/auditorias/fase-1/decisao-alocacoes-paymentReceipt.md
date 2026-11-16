@@ -318,3 +318,15 @@ Foi corrigido mais um ponto de integração do Estúdio:
 - Foi acrescentado um teste de integração com fatura, nota de crédito e recebimento parcial anterior, verificando que o recibo seguinte corresponde ao saldo central.
 
 Limite ainda existente: os métodos agregados de apresentação/quitação do modelo `ProjetoMusical` continuam a ter cálculos locais e precisam de uma refatoração de leitura para usar resumos oficiais da Faturação, incluindo abatimentos e notas de débito. Esta alteração não declara essa reconciliação global concluída.
+
+
+## 16. Continuação — saldo fiscal por fatura no Estúdio
+
+Na continuação da auditoria, foram removidas duas réplicas directas de cálculo fiscal no modelo `ProjetoMusical`:
+
+- `saldoDaFaturaCentimos()` passa a delegar em `FaturacaoGateway::saldoEmCentimos()`, com validação prévia de que a fatura pertence à empresa do projeto.
+- `situacaoDasFaturas()` passa a usar `FaturacaoGateway::resumoDaFatura()` para os valores recebidos, creditados e saldo, incluindo os movimentos que o serviço central reconhece (nomeadamente ND e abatimentos).
+
+Foi acrescentado um assert ao teste de recebimento parcial após NC para garantir que o saldo individual apresentado pelo Estúdio coincide com o saldo oficial do módulo Faturação.
+
+**Limite desta alteração:** não declara resolvida a reconciliação agregada do projecto. Os métodos `recebidoCentimos()`, `devidoCentimos()`, `resumoDasFaturas()` e os indicadores derivados ainda combinam movimentos ligados ao projecto com consultas locais. A migração completa exige definir explicitamente como somar FA, recibos de FA, abatimentos, FT, NC/ND e recibos legados sem contar o mesmo movimento duas vezes. Não se deve substituir essa lógica por uma soma simplista de saldos por fatura, porque o valor contratual de um pacote pode ser superior ao montante já faturado. Este ponto permanece aberto e bloqueia a conclusão da reconciliação financeira do Estúdio.
