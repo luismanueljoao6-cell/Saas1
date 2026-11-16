@@ -315,7 +315,7 @@ class ProjetoMusical extends Model
      * Situação de cada fatura emitida do projeto, para o ecrã: total, creditado, recebido e
      * o que falta (em Kz). Uma fatura totalmente creditada fica com `em_falta` 0.
      *
-     * @return Collection<int, object{fatura: Fatura, tipo: ?string, total: float, creditado: float, recebido: float, em_falta: float}>
+     * @return Collection<int, object{fatura: Fatura, tipo: ?string, total: float, creditado: float, debitado: float, recebido: float, em_falta: float}>
      */
     public function situacaoDasFaturas(): Collection
     {
@@ -342,6 +342,7 @@ class ProjetoMusical extends Model
                 'tipo' => $fatura->pivot->tipo,
                 'total' => (float) $fatura->valor_total,
                 'creditado' => $this->emKwanzas((int) $resumo['creditado']),
+                'debitado' => $this->emKwanzas((int) $resumo['debitado']),
                 'recebido' => $this->emKwanzas((int) $resumo['recebido']),
                 'em_falta' => $this->emKwanzas(max(0, (int) $resumo['saldo'])),
             ];
