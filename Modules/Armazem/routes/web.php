@@ -38,6 +38,8 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa'])
             Route::middleware('permission:armazem.inventarios.criar')->post('/', [ArmazemInventarioController::class, 'store'])->middleware('throttle:10,1')->name('store');
             Route::middleware('permission:armazem.inventarios.contar')->post('/{inventario}/linhas/{linha}/contagem', [ArmazemInventarioController::class, 'contar'])->whereNumber('inventario')->whereNumber('linha')->middleware('throttle:60,1')->name('contar');
             Route::middleware('permission:armazem.inventarios.concluir')->post('/{inventario}/concluir', [ArmazemInventarioController::class, 'concluir'])->whereNumber('inventario')->middleware('throttle:10,1')->name('concluir');
+            Route::middleware('permission:armazem.inventarios.aprovar')->post('/{inventario}/aprovar', [ArmazemInventarioController::class, 'aprovar'])->whereNumber('inventario')->middleware('throttle:10,1')->name('aprovar');
+            Route::middleware('permission:armazem.inventarios.rejeitar')->post('/{inventario}/rejeitar', [ArmazemInventarioController::class, 'rejeitar'])->whereNumber('inventario')->middleware('throttle:10,1')->name('rejeitar');
             Route::middleware('permission:armazem.inventarios.cancelar')->post('/{inventario}/cancelar', [ArmazemInventarioController::class, 'cancelar'])->whereNumber('inventario')->middleware('throttle:10,1')->name('cancelar');
         });
 
