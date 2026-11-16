@@ -165,10 +165,6 @@ class ArmazemStockService
             throw new DomainException('Não é possível movimentar stock de um produto inativo.');
         }
 
-        if (! $produtoValidado->ativo) {
-            throw new DomainException('Não é possível movimentar stock de um produto inativo.');
-        }
-
         if (! $produtoValidado->controla_stock) {
             throw new DomainException('O produto não está configurado para controlar stock.');
         }
@@ -177,7 +173,7 @@ class ArmazemStockService
             ->join('armazem_inventarios as inventarios', 'inventarios.id', '=', 'linhas.inventario_id')
             ->where('inventarios.empresa_id', $empresa->id)
             ->where('inventarios.armazem_id', $armazemBloqueado->id)
-            ->where('inventarios.estado', 'em_contagem')
+            ->whereIn('inventarios.estado', ['em_contagem', 'aguarda_aprovacao'])
             ->where('linhas.produto_id', $produtoValidado->id)
             ->exists();
 
@@ -281,12 +277,48 @@ class ArmazemStockService
 
         $saldo->update(['quantidade' => $this->formatar($posterior)]);
 
+        // stock_saldos é mantido apenas como projeção agregada de compatibilidade.
+        // A fonte de verdade passa a ser armazem_stock_saldos.
+        $saldosAgregados = DB::table('armazem_stock_saldos')
+            ->where('empresa_id', $empresa->id)
+            ->where('produto_id', $produto->id)
+            ->get(['quantidade']);
+
+        $quantidadeAgregada = 0;
+        foreach ($saldosAgregados as $saldoAgregado) {
+            $quantidadeAgregada += $this->emMilhares((string) $saldoAgregado->quantidade);
+        }
+
+        if ($quantidadeAgregada > 99_999_999_999_999) {
+            throw new DomainException('O saldo agregado ultrapassa o limite decimal suportado.');
+        }
+
+        $saldoAgregadoFormatado = $this->formatar($quantidadeAgregada);
+        $saldoLegado = DB::table('stock_saldos')
+            ->where('empresa_id', $empresa->id)
+            ->where('produto_id', $produto->id)
+            ->update(['quantidade' => $saldoAgregadoFormatado, 'updated_at' => now()]);
+
+        if ($saldoLegado === 0) {
+            DB::table('stock_saldos')->insertOrIgnore([
+                'empresa_id' => $empresa->id,
+                'produto_id' => $produto->id,
+                'quantidade' => $saldoAgregadoFormatado,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
         return $movimento;
     }
 
     private function validarTenant(Empresa $empresa): void
     {
-        app(TenantManager::class)->garantirEmpresa((int) $empresa->id, 'O contexto atual não corresponde à empresa do movimento.');
+        $tenant = app(TenantManager::class);
+
+        if ($tenant->has() && ! $tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
+            throw new DomainException('O contexto atual não corresponde à empresa do movimento.');
+        }
     }
 
     private function validarTexto(string $motivo, ?string $chaveIdempotencia): void
