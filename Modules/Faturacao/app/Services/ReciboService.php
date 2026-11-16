@@ -204,7 +204,7 @@ class ReciboService
         return $this->resumoDaFatura($fatura)['saldo'];
     }
 
-    /** @return array{recebido: int, creditado: int, abatido: int, saldo: int} em cêntimos */
+    /** @return array{recebido: int, creditado: int, creditado_sem_iva: int, debitado: int, debitado_sem_iva: int, abatido: int, saldo: int} em cêntimos */
     public function resumoDaFatura(Fatura $fatura): array
     {
         [$recebido, $creditado, $debitado, $abatido] = $this->recebidoECreditado((int) $fatura->empresa_id, (int) $fatura->id);
