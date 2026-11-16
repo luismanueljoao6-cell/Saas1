@@ -201,6 +201,7 @@ class FaturacaoEstudioTest extends TestCase
         $this->reciboEmitido($fatura, '30000.00');
 
         $this->assertSame(35000.0, $projeto->valorTotalFaturado());
+        $this->assertSame(31315.79, $projeto->valorTotalFaturadoSemIva());
         $this->assertSame(35000.0, $projeto->valorDevido());
         $this->assertSame(30000.0, $projeto->valorTotalRecebido());
         $this->assertSame(5000.0, $projeto->saldoDevedor());
