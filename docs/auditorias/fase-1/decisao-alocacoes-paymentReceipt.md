@@ -339,3 +339,22 @@ A cobertura do teste de nota de débito foi reforçada para confirmar também a 
 A soma dos recebimentos do projecto mantém a compatibilidade histórica apenas para recibos não cobertos pelas faturas relacionadas. Para recibos fiscais de faturas relacionadas, a origem é exclusivamente o gateway, evitando dupla contagem.
 
 A execução dos testes desta alteração ainda depende da CI no commit final do PR. O teste novo é evidência de cobertura adicionada, não prova de execução bem-sucedida.
+
+## 19. Estúdio — divergência entre o tipo de documento declarado e o efectivamente criado
+
+A revisão directa do head da PR identificou um erro adicional que precisa de ser tratado antes de qualquer migração do fluxo de adiantamento:
+
+- FaturacaoEstudioService::gerarFaturaSinal() declara no comentário que o sinal não deve ser emitido como FT e que deve usar FA.
+- O método, porém, chama criarEEmitirFatura(), que delega em FaturacaoGateway::criarRascunho() — operação que cria uma FT normal. O gateway já expõe criarRascunhoAdiantamento(), mas esta operação não é usada pelo fluxo do Estúdio.
+- O teste test_sinal_e_saldo_somam_exatamente_o_pacote_mais_iva() confirma apenas os montantes das duas facturas; não verifica tipoDocumentoFiscal(). Assim, pode passar mesmo quando o documento de sinal é FT e não FA.
+- gerarFaturaSaldoFinal() continua a criar uma segunda FT apenas pelo valor ainda não faturado, calculado a partir de faturadoSemIvaCentimos(). Não cria uma FT integral nem regista o abatimento FA→FT.
+
+### Correcção e critérios de aceitação
+
+1. Não alterar apenas a chamada de criação para FA de forma isolada: primeiro fechar o fluxo documental de recebimento da FA e a regra de reconciliação, conforme as secções 10 e 11.
+2. Quando o fluxo estiver normativamente confirmado, criar a FA através de criarRascunhoAdiantamento() e acrescentar um teste explícito que confirme tipoDocumentoFiscal() === 'FA'.
+3. Cobrir a ligação do recebimento permitido à FA, a emissão da FT final, o abatimento idempotente e o saldo da FT no gateway.
+4. Rever os testes existentes para que não validem apenas a soma aritmética de duas facturas, mas também o tipo documental e os movimentos financeiros efectivamente persistidos.
+5. Manter o bloqueio com AGT activa enquanto o documento de recebimento aplicável e as respectivas alocações AGT não estiverem implementados e homologados.
+
+**Estado:** achado confirmado por leitura do código e dos testes no head 4f7d39cebb519a43c1b2b1cbcbb4fd3db3984734. Nenhuma alteração funcional foi feita nesta etapa; a correcção isolada poderia criar uma FA sem recebimento suportado e deixar o fluxo do projecto incoerente.
