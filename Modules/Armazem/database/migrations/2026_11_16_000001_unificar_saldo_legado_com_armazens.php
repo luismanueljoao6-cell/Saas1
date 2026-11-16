@@ -133,16 +133,36 @@ return new class extends Migration
 
         // Recalcula a tabela antiga como projeção agregada, sem a usar como
         // fonte de verdade depois desta migração.
-        $agregados = DB::table('armazem_stock_saldos')
-            ->select('empresa_id', 'produto_id', DB::raw('SUM(quantidade) as quantidade'))
-            ->groupBy('empresa_id', 'produto_id')
-            ->get();
+        $agregados = [];
+        foreach (DB::table('armazem_stock_saldos')->orderBy('empresa_id')->orderBy('produto_id')->get() as $saldo) {
+            $chave = $saldo->empresa_id.':'.$saldo->produto_id;
+            $agregados[$chave] ??= [
+                'empresa_id' => (int) $saldo->empresa_id,
+                'produto_id' => (int) $saldo->produto_id,
+                'quantidade' => 0,
+            ];
+            $agregados[$chave]['quantidade'] += $this->emMilhares((string) $saldo->quantidade);
+        }
 
         foreach ($agregados as $agregado) {
-            DB::table('stock_saldos')->updateOrInsert(
-                ['empresa_id' => $agregado->empresa_id, 'produto_id' => $agregado->produto_id],
-                ['quantidade' => (string) $agregado->quantidade, 'updated_at' => now(), 'created_at' => now()]
-            );
+            $valores = [
+                'quantidade' => $this->formatar($agregado['quantidade']),
+                'updated_at' => now(),
+            ];
+            $atualizado = DB::table('stock_saldos')
+                ->where('empresa_id', $agregado['empresa_id'])
+                ->where('produto_id', $agregado['produto_id'])
+                ->update($valores);
+
+            if ($atualizado === 0) {
+                DB::table('stock_saldos')->insertOrIgnore([
+                    'empresa_id' => $agregado['empresa_id'],
+                    'produto_id' => $agregado['produto_id'],
+                    'quantidade' => $valores['quantidade'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
         }
     }
 
