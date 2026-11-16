@@ -7,15 +7,18 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Modules\Armazem\Models\ArmazemStockMovimento;
+use Modules\Armazem\Support\QuantidadeDecimal;
 use Modules\Core\Models\Empresa;
 use Modules\Faturacao\Models\Produto;
-use Modules\Faturacao\Models\StockMovimento;
 use Modules\Faturacao\Services\StockService;
 
 class StockController extends Controller
 {
     public function index(Request $request): View
     {
+        $empresaId = (int) $request->user()->empresa_id;
+
         $dados = $request->validate([
             'q' => ['nullable', 'string', 'max:100'],
             'tipo' => ['nullable', 'in:entrada,saida,ajuste'],
@@ -24,13 +27,17 @@ class StockController extends Controller
         ]);
 
         $produtos = Produto::query()
+            ->where('empresa_id', $empresaId)
             ->with('stockSaldo')
             ->where('controla_stock', true)
             ->orderBy('nome')
             ->get();
 
-        $movimentos = StockMovimento::query()
-            ->with('produto')
+        // O ledger por armazém é a fonte de verdade desde a unificação do stock.
+        // Consultar stock_movimentos aqui omitia inventários e transferências.
+        $movimentos = ArmazemStockMovimento::query()
+            ->where('empresa_id', $empresaId)
+            ->with(['produto', 'armazem'])
             ->when($dados['q'] ?? null, function ($query, string $termo): void {
                 $termo = trim($termo);
                 $query->where(function ($subquery) use ($termo): void {
@@ -46,8 +53,18 @@ class StockController extends Controller
             ->withQueryString();
 
         $stockBaixo = $produtos->filter(
-            fn (Produto $produto): bool => (float) ($produto->stockSaldo?->quantidade ?? 0) <= (float) $produto->stock_minimo
+            fn (Produto $produto): bool => QuantidadeDecimal::comparar(
+                (string) ($produto->stockSaldo?->quantidade ?? '0.000'),
+                (string) ($produto->stock_minimo ?? '0.000'),
+            ) <= 0
         );
+
+        $semStock = $produtos->filter(
+            fn (Produto $produto): bool => QuantidadeDecimal::comparar(
+                (string) ($produto->stockSaldo?->quantidade ?? '0.000'),
+                '0.000',
+            ) <= 0
+        )->count();
 
         return view('faturacao::stock.index', [
             'chaveIdempotencia' => (string) Str::uuid(),
@@ -56,8 +73,11 @@ class StockController extends Controller
             'indicadores' => [
                 'produtos' => $produtos->count(),
                 'stock_baixo' => $stockBaixo->count(),
-                'sem_stock' => $stockBaixo->filter(fn (Produto $produto): bool => (float) ($produto->stockSaldo?->quantidade ?? 0) <= 0)->count(),
-                'movimentos_hoje' => StockMovimento::query()->whereDate('created_at', today())->count(),
+                'sem_stock' => $semStock,
+                'movimentos_hoje' => ArmazemStockMovimento::query()
+                    ->where('empresa_id', $empresaId)
+                    ->whereDate('created_at', today())
+                    ->count(),
             ],
             'filtros' => $dados,
         ]);
