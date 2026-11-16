@@ -151,11 +151,21 @@ class StockService
 
     private function saldoAgregado(Empresa $empresa, Produto $produto): int
     {
-        $total = DB::table('armazem_stock_saldos')
+        $saldos = DB::table('armazem_stock_saldos')
             ->where('empresa_id', $empresa->id)
             ->where('produto_id', $produto->id)
-            ->sum('quantidade');
-        return $this->emMilhares((string) $total);
+            ->get(['quantidade']);
+
+        $total = 0;
+        foreach ($saldos as $saldo) {
+            $total += $this->emMilhares((string) $saldo->quantidade);
+        }
+
+        if ($total > 99_999_999_999_999) {
+            throw new DomainException('O saldo agregado ultrapassa o limite decimal suportado.');
+        }
+
+        return $total;
     }
 
     private function validarTexto(string $motivo, ?string $chave): void
