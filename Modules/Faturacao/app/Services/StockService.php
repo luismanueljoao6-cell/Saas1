@@ -42,7 +42,7 @@ class StockService
         return DB::transaction(function () use ($empresa, $produto, $contagem, $motivo, $utilizadorId, $chaveIdempotencia): StockMovimento {
             $this->validarContexto($empresa, $produto);
             $armazem = $this->armazens->obterPrincipal($empresa);
-            $existente = $this->movimentoLegadoExistente($empresa, $produto, 'ajuste', null, $motivo, $chaveIdempotencia);
+            $existente = $this->movimentoLegadoExistente($empresa, $produto, 'ajuste', null, $motivo, $chaveIdempotencia, $this->formatar($contagem));
             if ($existente) {
                 return $existente;
             }
@@ -105,7 +105,7 @@ class StockService
         }
     }
 
-    private function movimentoLegadoExistente(Empresa $empresa, Produto $produto, string $tipo, ?int $delta, string $motivo, ?string $chave): ?StockMovimento
+    private function movimentoLegadoExistente(Empresa $empresa, Produto $produto, string $tipo, ?int $delta, string $motivo, ?string $chave, ?string $saldoPosteriorEsperado = null): ?StockMovimento
     {
         if ($chave === null) {
             return null;
@@ -121,6 +121,21 @@ class StockService
             && $existente->tipo === $tipo
             && $existente->motivo === trim($motivo)
             && ($delta === null || (string) $existente->quantidade === $this->formatar($delta));
+        if ($corresponde && $saldoPosteriorEsperado !== null) {
+            $movimentoArmazem = DB::table('armazem_stock_movimentos')
+                ->where('empresa_id', $empresa->id)
+                ->where('chave_idempotencia', $chave)
+                ->first();
+
+            if ($movimentoArmazem !== null
+                && ((int) $movimentoArmazem->produto_id !== (int) $produto->id
+                    || $movimentoArmazem->tipo !== 'ajuste'
+                    || $movimentoArmazem->motivo !== trim($motivo)
+                    || (string) $movimentoArmazem->saldo_posterior !== $saldoPosteriorEsperado)) {
+                $corresponde = false;
+            }
+        }
+
         if (! $corresponde) {
             throw new DomainException('A chave de idempotência já foi utilizada noutro movimento.');
         }
