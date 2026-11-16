@@ -76,13 +76,15 @@
                 <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-zinc-950 dark:text-zinc-400"><tr><th class="px-4 py-3">Produto</th><th class="px-4 py-3">Saldo</th><th class="px-4 py-3">Stock mínimo</th><th class="px-4 py-3">Estado</th></tr></thead>
                 <tbody class="divide-y divide-slate-100 dark:divide-zinc-800">
                     @forelse ($produtos as $produto)
-                        @php($saldo = (float) ($produto->stockSaldo?->quantidade ?? 0))
+                        @php($saldo = (string) ($produto->stockSaldo?->quantidade ?? '0.000'))
+                        @php($stockMinimo = (string) ($produto->stock_minimo ?? '0.000'))
+                        @php($stockBaixo = \Modules\Armazem\Support\QuantidadeDecimal::comparar($saldo, $stockMinimo) <= 0)
                         <tr>
                             <td class="px-4 py-3 font-medium text-slate-900 dark:text-zinc-100">{{ $produto->nome }}</td>
-                            <td class="px-4 py-3">{{ number_format($saldo, 3, ',', '.') }} {{ $produto->unidade }}</td>
-                            <td class="px-4 py-3">{{ number_format((float) $produto->stock_minimo, 3, ',', '.') }}</td>
+                            <td class="px-4 py-3">{{ \Modules\Armazem\Support\QuantidadeDecimal::formatar($saldo, ',', '.') }} {{ $produto->unidade }}</td>
+                            <td class="px-4 py-3">{{ \Modules\Armazem\Support\QuantidadeDecimal::formatar($stockMinimo, ',', '.') }}</td>
                             <td class="px-4 py-3">
-                                @if ($saldo <= (float) $produto->stock_minimo)
+                                @if ($stockBaixo)
                                     <span class="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">Stock baixo</span>
                                 @else
                                     <span class="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">Disponível</span>
@@ -121,19 +123,20 @@
                 </div>
             </form>
             <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-800">
-                <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-zinc-950 dark:text-zinc-400"><tr><th class="px-4 py-3">Data</th><th class="px-4 py-3">Produto</th><th class="px-4 py-3">Tipo</th><th class="px-4 py-3">Variação</th><th class="px-4 py-3">Saldo final</th><th class="px-4 py-3">Motivo</th></tr></thead>
+                <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-zinc-950 dark:text-zinc-400"><tr><th class="px-4 py-3">Data</th><th class="px-4 py-3">Armazém</th><th class="px-4 py-3">Produto</th><th class="px-4 py-3">Tipo</th><th class="px-4 py-3">Variação</th><th class="px-4 py-3">Saldo final</th><th class="px-4 py-3">Motivo</th></tr></thead>
                 <tbody class="divide-y divide-slate-100 dark:divide-zinc-800">
                     @forelse ($movimentos as $movimento)
                         <tr>
                             <td class="whitespace-nowrap px-4 py-3">{{ $movimento->created_at?->format('d/m/Y H:i') }}</td>
+                            <td class="px-4 py-3">{{ $movimento->armazem?->nome ?? 'Armazém indisponível' }}</td>
                             <td class="px-4 py-3">{{ $movimento->produto?->nome ?? 'Produto indisponível' }}</td>
                             <td class="px-4 py-3">{{ ucfirst($movimento->tipo) }}</td>
-                            <td class="px-4 py-3">{{ number_format((float) $movimento->quantidade, 3, ',', '.') }}</td>
-                            <td class="px-4 py-3">{{ number_format((float) $movimento->saldo_posterior, 3, ',', '.') }}</td>
+                            <td class="px-4 py-3">{{ \Modules\Armazem\Support\QuantidadeDecimal::formatar((string) $movimento->quantidade, ',', '.') }}</td>
+                            <td class="px-4 py-3">{{ \Modules\Armazem\Support\QuantidadeDecimal::formatar((string) $movimento->saldo_posterior, ',', '.') }}</td>
                             <td class="px-4 py-3">{{ $movimento->motivo }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500 dark:text-zinc-400">Ainda não existem movimentos de stock.</td></tr>
+                        <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500 dark:text-zinc-400">Ainda não existem movimentos de stock.</td></tr>
                     @endforelse
                 </tbody>
             </table>
