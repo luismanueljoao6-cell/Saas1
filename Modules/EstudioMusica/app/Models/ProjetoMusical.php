@@ -2,6 +2,7 @@
 
 namespace Modules\EstudioMusica\Models;
 
+use DomainException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
 use Modules\Core\Models\User;
 use Modules\Core\Traits\BelongsToTenant;
+use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\Recibo;
@@ -289,7 +291,7 @@ class ProjetoMusical extends Model
      * sinal / o saldo já foram faturados — um sinal anulado por nota de crédito pode (e tem de
      * poder) ser emitido outra vez.
      *
-     * @return Collection<int, object{id: int, tipo: ?string, total: int, sem_iva: int, creditado: int, creditado_sem_iva: int}>
+     * @return Collection<int, object{id: int, tipo: ?string, total: int, sem_iva: int, creditado: int, creditado_sem_iva: int, debitado: int, debitado_sem_iva: int, recebido: int, abatido: int}>
      */
     public function faturasAtivas(?string $tipo = null): Collection
     {
@@ -302,12 +304,12 @@ class ProjetoMusical extends Model
     public function saldoDaFaturaCentimos(Fatura $fatura): int
     {
         if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
-            throw new \DomainException('A fatura não pertence à empresa deste projeto.');
+            throw new DomainException('A fatura não pertence à empresa deste projeto.');
         }
 
         // O saldo fiscal é autoridade exclusiva da Faturação: inclui recibos,
         // NC/ND e abatimentos de adiantamentos, sem replicar as suas consultas.
-        return app(\Modules\Faturacao\Contracts\FaturacaoGateway::class)
+        return app(FaturacaoGateway::class)
             ->saldoEmCentimos($fatura);
     }
 
@@ -328,11 +330,11 @@ class ProjetoMusical extends Model
             return collect();
         }
 
-        $gateway = app(\Modules\Faturacao\Contracts\FaturacaoGateway::class);
+        $gateway = app(FaturacaoGateway::class);
 
         return $faturas->map(function (Fatura $fatura) use ($gateway) {
             if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
-                throw new \DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
+                throw new DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
             }
 
             $resumo = $gateway->resumoDaFatura($fatura);
@@ -352,7 +354,7 @@ class ProjetoMusical extends Model
     /**
      * Faturas EMITIDAS do projeto com o que já foi creditado sobre cada uma (cêntimos).
      *
-     * @return Collection<int, object{id: int, tipo: ?string, total: int, sem_iva: int, creditado: int, creditado_sem_iva: int}>
+     * @return Collection<int, object{id: int, tipo: ?string, total: int, sem_iva: int, creditado: int, creditado_sem_iva: int, debitado: int, debitado_sem_iva: int, recebido: int, abatido: int}>
      */
     protected function resumoDasFaturas(): Collection
     {
@@ -364,11 +366,11 @@ class ProjetoMusical extends Model
             return collect();
         }
 
-        $gateway = app(\Modules\Faturacao\Contracts\FaturacaoGateway::class);
+        $gateway = app(FaturacaoGateway::class);
 
         return $faturas->map(function (Fatura $fatura) use ($gateway) {
             if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
-                throw new \DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
+                throw new DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
             }
 
             $resumo = $gateway->resumoDaFatura($fatura);
