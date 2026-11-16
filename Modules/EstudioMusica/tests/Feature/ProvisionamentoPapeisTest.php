@@ -6,6 +6,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Modules\Core\Models\User;
 use Modules\Core\Services\RegistoEmpresaService;
+use Modules\EstudioMusica\Support\PapeisEstudio;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -67,6 +69,46 @@ class ProvisionamentoPapeisTest extends TestCase
 
         $this->assertTrue(Role::where(['name' => 'Recepcao', 'empresa_id' => $admin->empresa_id])->exists());
         $this->assertTrue($this->pode($admin, 'estudiomusica.gerir-salas'));
+    }
+
+    public function test_reprovisionamento_preserva_permissoes_personalizadas_dos_papeis(): void
+    {
+        $admin = $this->registar('510000006', 'f@example.test', ['estudio']);
+        $registrar = app(PermissionRegistrar::class);
+        $equipaAnterior = $registrar->getPermissionsTeamId();
+        $registrar->setPermissionsTeamId($admin->empresa_id);
+
+        try {
+            $permissaoAdmin = Permission::firstOrCreate([
+                'name' => 'faturacao.permissao-personalizada',
+                'guard_name' => 'web',
+            ]);
+            $permissaoRececao = Permission::firstOrCreate([
+                'name' => 'atelier.permissao-personalizada',
+                'guard_name' => 'web',
+            ]);
+
+            $papelAdmin = Role::where([
+                'name' => 'Administrador',
+                'empresa_id' => $admin->empresa_id,
+            ])->firstOrFail();
+            $papelRececao = Role::where([
+                'name' => PapeisEstudio::RECECAO,
+                'empresa_id' => $admin->empresa_id,
+            ])->firstOrFail();
+
+            $papelAdmin->givePermissionTo($permissaoAdmin);
+            $papelRececao->givePermissionTo($permissaoRececao);
+
+            PapeisEstudio::provisionar((int) $admin->empresa_id);
+
+            $this->assertSame((int) $admin->empresa_id, (int) $registrar->getPermissionsTeamId());
+            $this->assertTrue($papelAdmin->fresh()->hasPermissionTo($permissaoAdmin));
+            $this->assertTrue($papelRececao->fresh()->hasPermissionTo($permissaoRececao));
+            $this->assertTrue($papelAdmin->fresh()->hasPermissionTo('estudiomusica.gerir-salas'));
+        } finally {
+            $registrar->setPermissionsTeamId($equipaAnterior);
+        }
     }
 
     public function test_administrador_atribui_rececao_e_so_o_administrador_pode(): void
