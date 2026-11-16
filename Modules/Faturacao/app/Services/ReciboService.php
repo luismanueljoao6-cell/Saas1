@@ -95,7 +95,7 @@ class ReciboService
         // inventar lineNo=1 e totais a partir do documento inteiro, inválido para
         // pagamentos parciais ou documentos com várias linhas/taxas.
         if ($tipo === 'RG' && config('faturacao.agt.ativo')) {
-            throw new \\DomainException('A emissão de RG com AGT activa está temporariamente bloqueada até existir alocação fiscal persistida por linha de origem e reconstrução do paymentReceipt a partir dessas alocações.');
+            throw new \DomainException('A emissão de RG com AGT activa está temporariamente bloqueada até existir alocação fiscal persistida por linha de origem e reconstrução do paymentReceipt a partir dessas alocações.');
         }
 
         // O modelo Recibo emite RC. A especificação AGT exige "lines" para RC,
