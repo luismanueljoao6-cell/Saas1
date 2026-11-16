@@ -3,11 +3,11 @@
 namespace Modules\Faturacao\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Core\Models\Empresa;
-use Modules\Core\Support\Servico;
 use Modules\Armazem\Models\ArmazemStockSaldo;
 use Modules\Armazem\Services\ArmazemService;
 use Modules\Armazem\Services\ArmazemStockService;
+use Modules\Core\Models\Empresa;
+use Modules\Core\Support\Servico;
 use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Models\StockMovimento;
 use Modules\Faturacao\Models\StockSaldo;
