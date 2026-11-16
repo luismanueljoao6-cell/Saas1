@@ -303,12 +303,12 @@ class ProjetoMusical extends Model
     public function saldoDaFaturaCentimos(Fatura $fatura): int
     {
         if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
-            throw new \\DomainException('A fatura não pertence à empresa deste projeto.');
+            throw new \DomainException('A fatura não pertence à empresa deste projeto.');
         }
 
         // O saldo fiscal é autoridade exclusiva da Faturação: inclui recibos,
         // NC/ND e abatimentos de adiantamentos, sem replicar as suas consultas.
-        return app(\\Modules\\Faturacao\\Contracts\\FaturacaoGateway::class)
+        return app(\Modules\Faturacao\Contracts\FaturacaoGateway::class)
             ->saldoEmCentimos($fatura);
     }
 
@@ -329,11 +329,11 @@ class ProjetoMusical extends Model
             return collect();
         }
 
-        $gateway = app(\\Modules\\Faturacao\\Contracts\\FaturacaoGateway::class);
+        $gateway = app(\Modules\Faturacao\Contracts\FaturacaoGateway::class);
 
         return $faturas->map(function (Fatura $fatura) use ($gateway) {
             if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
-                throw new \\DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
+                throw new \DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
             }
 
             $resumo = $gateway->resumoDaFatura($fatura);
