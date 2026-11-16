@@ -203,3 +203,35 @@ A integração dos módulos consumidores deve chamar esta API, sem replicar as v
 5. Preservar os documentos antigos; não gerar FA retroactivas nem alterar recibos assinados.
 
 Esta lacuna é um bloqueador anterior à migração dos fluxos do Atelier e do Estúdio. A Fase 1 não pode ser marcada como concluída enquanto a sequência fiscal de recebimento de FA não estiver demonstrada.
+
+
+
+## 11. Precisão adicional da documentação AGT — AR existe no schema, mas o fluxo de adiantamento não está demonstrado
+
+A consulta directa e actual à página oficial **Registar Factura** confirma que a AGT enumera:
+- `FA` — Factura de Adiantamento;
+- `AR` — Aviso de Cobrança/Recibo;
+- `RG` — Recibo (na página de registo; a página de listagem usa a designação Recibo Geral).
+
+A mesma página estabelece que `AR` e `RG` não levam `lines` e têm obrigatoriamente `paymentReceipt`; os restantes tipos, incluindo `FA`, levam `lines` e não levam `paymentReceipt`. O `paymentReceipt.sourceDocuments` identifica o documento regularizado e as respectivas linhas, com `lineNo` a começar em 1. Os totais de AR/RG são agregados a partir dos documentos origem.
+
+**Limite da evidência:** a documentação de estrutura enumera os tipos e os campos, mas não afirma expressamente que AR é o documento correcto para comprovar o recebimento de uma FA, nem descreve toda a sequência fiscal FA→recebimento→FT final/regularização. Logo, a existência do tipo AR no schema não autoriza o sistema a escolhê-lo automaticamente para sinais/adiantamentos. A regra tem de ser confirmada na documentação normativa completa e em homologação AGT, incluindo o tratamento de IVA e a referência da FA como documento origem.
+
+### Divergências concretas encontradas no repositório
+
+1. `Modules/Faturacao/config/config.php` declara FT, FA, NC, ND, RC e RG, mas não declara AR em `tipos_documento`.
+2. `ReciboService` só emite RC ou RG. Não existe método público para AR no contrato `FaturacaoGateway` nem no serviço de domínio.
+3. O `AgtDocumentoBuilder` bloqueia RG; para outros recibos só aceita AR/RG e chama o construtor de `paymentReceipt`. Assim, o caminho AR não está ligado ao emissor actual.
+4. O método legado `AgtDocumentoBuilder::recibo()` gera um único `sourceDocuments` com `lineNo = 1` e `creditAmount` derivado do `netTotal` agregado assinado. Isso não representa alocações reais por linha para pagamentos parciais ou documentos com várias linhas.
+5. `Recibo::construirStringParaAssinar()` calcula IVA proporcional a partir do total bruto da fatura e do IVA agregado. Esse cálculo não substitui uma distribuição fiscal persistida por linha.
+6. A documentação AGT exige que o número de linha referenciado corresponda à linha do documento origem; portanto, a utilização fixa de `lineNo = 1` não pode ser considerada válida para qualquer documento com várias linhas.
+
+### Decisão corrigida
+
+- AR é um tipo previsto pela AGT e deve ser considerado na análise de implementação, mas não deve ser habilitado como recebimento de FA sem confirmação normativa/homologação.
+- Não basta adicionar AR ao array de configuração. É necessário suportar série própria autorizada, persistência do tipo, assinatura, payload `paymentReceipt`, alocações imutáveis por linha, totais reconciliados e integração com o saldo.
+- A implementação não pode usar `lineNo = 1` nem rateio proporcional agregado como substituto das alocações.
+- Manter os bloqueios actuais de RC/RG até cada tipo documental suportado ter estrutura e testes completos. Não criar recibos assinados que a aplicação não consiga submeter à AGT.
+- A homologação deve incluir FA como documento origem e testar AR e RG separadamente, apenas se a AGT confirmar que cada tipo se aplica ao cenário.
+
+Esta precisão substitui qualquer leitura da secção 10 que pudesse sugerir que AR não existe na especificação AGT. A lacuna real é a ausência de suporte no produto e, sobretudo, a falta de evidência suficiente para decidir se AR é o documento fiscal correcto para liquidar uma FA.
