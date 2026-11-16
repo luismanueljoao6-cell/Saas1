@@ -5,14 +5,20 @@ namespace Modules\Faturacao\Services;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use Modules\Armazem\Services\ArmazemService;
+use Modules\Armazem\Services\ArmazemStockService;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Models\StockMovimento;
-use Modules\Faturacao\Models\StockSaldo;
 
 class StockService
 {
+    public function __construct(
+        private readonly ArmazemService $armazens,
+        private readonly ArmazemStockService $stockPorArmazem,
+    ) {}
+
     public function entrada(Empresa $empresa, Produto $produto, string $quantidade, string $motivo, ?int $utilizadorId = null, ?string $chaveIdempotencia = null): StockMovimento
     {
         return $this->movimentar($empresa, $produto, 'entrada', $quantidade, $motivo, $utilizadorId, $chaveIdempotencia);
@@ -23,165 +29,132 @@ class StockService
         return $this->movimentar($empresa, $produto, 'saida', $quantidade, $motivo, $utilizadorId, $chaveIdempotencia);
     }
 
-    /** A quantidade recebida é a contagem física final, não a variação. */
+    /**
+     * A API legada sem armazem_id opera explicitamente no armazém principal.
+     * A contagem recebida é o saldo físico final desse armazém, não o total
+     * agregado de todos os armazéns da empresa.
+     */
     public function ajustar(Empresa $empresa, Produto $produto, string $quantidadeContada, string $motivo, ?int $utilizadorId = null, ?string $chaveIdempotencia = null): StockMovimento
     {
         $contagem = $this->emMilhares($quantidadeContada);
-        $motivo = trim($motivo);
+        $this->validarTexto($motivo, $chaveIdempotencia);
 
-        return DB::transaction(function () use ($empresa, $produto, $contagem, $motivo, $utilizadorId, $chaveIdempotencia) {
-            if ($chaveIdempotencia !== null && (trim($chaveIdempotencia) === '' || mb_strlen($chaveIdempotencia) > 100)) {
-                throw new InvalidArgumentException('A chave de idempotência deve ter entre 1 e 100 caracteres.');
+        return DB::transaction(function () use ($empresa, $produto, $contagem, $motivo, $utilizadorId, $chaveIdempotencia): StockMovimento {
+            $this->validarContexto($empresa, $produto);
+            $armazem = $this->armazens->obterPrincipal($empresa);
+            $existente = $this->movimentoLegadoExistente($empresa, $produto, 'ajuste', null, $motivo, $chaveIdempotencia, $this->formatar($contagem));
+            if ($existente) {
+                return $existente;
             }
 
-            // O lock tem de preceder a leitura da chave. Duas contagens concorrentes
-            // para o mesmo produto ficam serializadas antes de calcular a diferença.
-            $saldo = $this->saldoBloqueado($empresa, $produto);
+            $antes = $this->saldoAgregado($empresa, $produto);
+            $this->stockPorArmazem->ajustar(
+                $empresa, $armazem, $produto, $this->formatar($contagem),
+                trim($motivo), $utilizadorId, $chaveIdempotencia
+            );
+            $depois = $this->saldoAgregado($empresa, $produto);
 
-            if ($chaveIdempotencia !== null) {
-                $existente = StockMovimento::withoutGlobalScopes()
-                    ->where('empresa_id', $empresa->id)
-                    ->where('chave_idempotencia', $chaveIdempotencia)
-                    ->first();
-
-                if ($existente) {
-                    if ((int) $existente->produto_id !== (int) $produto->id
-                        || $existente->tipo !== 'ajuste'
-                        || $existente->motivo !== $motivo
-                        || (string) $existente->saldo_posterior !== $this->formatar($contagem)) {
-                        throw new DomainException('A chave de idempotência já foi utilizada noutro movimento.');
-                    }
-
-                    return $existente;
-                }
-            }
-            $anterior = $this->emMilhares((string) $saldo->quantidade);
-            $delta = $contagem - $anterior;
-
-            return $this->guardarMovimento($empresa, $produto, 'ajuste', $delta, $anterior, $contagem, $motivo, $utilizadorId, $chaveIdempotencia);
+            return $this->registarMovimentoLegado(
+                $empresa, $produto, 'ajuste', $depois - $antes, $antes, $depois,
+                $motivo, $utilizadorId, $chaveIdempotencia
+            );
         }, attempts: 3);
     }
 
-    protected function movimentar(Empresa $empresa, Produto $produto, string $tipo, string $quantidade, string $motivo, ?int $utilizadorId, ?string $chaveIdempotencia): StockMovimento
+    private function movimentar(Empresa $empresa, Produto $produto, string $tipo, string $quantidade, string $motivo, ?int $utilizadorId, ?string $chaveIdempotencia): StockMovimento
     {
         $unidades = $this->emMilhares($quantidade);
         if ($unidades <= 0) {
             throw new InvalidArgumentException('A quantidade deve ser superior a zero.');
         }
+        $this->validarTexto($motivo, $chaveIdempotencia);
 
-        $motivo = trim($motivo);
-        if ($motivo === '' || mb_strlen($motivo) > 255) {
-            throw new InvalidArgumentException('Indica um motivo com até 255 caracteres.');
-        }
+        return DB::transaction(function () use ($empresa, $produto, $tipo, $unidades, $motivo, $utilizadorId, $chaveIdempotencia): StockMovimento {
+            $this->validarContexto($empresa, $produto);
+            $delta = $tipo === 'entrada' ? $unidades : -$unidades;
+            $existente = $this->movimentoLegadoExistente($empresa, $produto, $tipo, $delta, $motivo, $chaveIdempotencia);
+            if ($existente) {
+                return $existente;
+            }
 
-        if ($chaveIdempotencia !== null && (trim($chaveIdempotencia) === '' || mb_strlen($chaveIdempotencia) > 100)) {
-            throw new InvalidArgumentException('A chave de idempotência deve ter entre 1 e 100 caracteres.');
-        }
+            $armazem = $this->armazens->obterPrincipal($empresa);
+            $antes = $this->saldoAgregado($empresa, $produto);
 
-        return DB::transaction(function () use ($empresa, $produto, $tipo, $unidades, $motivo, $utilizadorId, $chaveIdempotencia) {
-            $saldo = $this->saldoBloqueado($empresa, $produto);
-
-            // Verificar a chave depois do lock do saldo e antes de calcular a nova saída.
-            // Assim, repetir uma operação já concluída não falha por falta de stock atual.
-            if ($chaveIdempotencia !== null) {
-                $existente = StockMovimento::withoutGlobalScopes()
-                    ->where('empresa_id', $empresa->id)
-                    ->where('chave_idempotencia', $chaveIdempotencia)
-                    ->first();
-
-                if ($existente) {
-                    $deltaEsperado = $tipo === 'entrada' ? $unidades : -$unidades;
-                    if ((int) $existente->produto_id !== (int) $produto->id
-                        || $existente->tipo !== $tipo
-                        || (string) $existente->quantidade !== $this->formatar($deltaEsperado)
-                        || $existente->motivo !== $motivo) {
-                        throw new DomainException('A chave de idempotência já foi utilizada noutro movimento.');
-                    }
-
-                    return $existente;
+            try {
+                if ($tipo === 'entrada') {
+                    $this->stockPorArmazem->entrada($empresa, $armazem, $produto, $this->formatar($unidades), trim($motivo), $utilizadorId, $chaveIdempotencia);
+                } else {
+                    $this->stockPorArmazem->saida($empresa, $armazem, $produto, $this->formatar($unidades), trim($motivo), $utilizadorId, $chaveIdempotencia);
                 }
+            } catch (DomainException $exception) {
+                if ($exception->getMessage() === 'Stock insuficiente neste armazém.') {
+                    throw new DomainException('Stock insuficiente para esta saída.', previous: $exception);
+                }
+
+                throw $exception;
             }
 
-            $anterior = $this->emMilhares((string) $saldo->quantidade);
-            $posterior = $tipo === 'entrada' ? $anterior + $unidades : $anterior - $unidades;
+            $depois = $this->saldoAgregado($empresa, $produto);
 
-            if ($posterior < 0) {
-                throw new DomainException('Stock insuficiente para esta saída.');
-            }
-
-            return $this->guardarMovimento($empresa, $produto, $tipo, $tipo === 'entrada' ? $unidades : -$unidades, $anterior, $posterior, $motivo, $utilizadorId, $chaveIdempotencia);
+            return $this->registarMovimentoLegado(
+                $empresa, $produto, $tipo, $depois - $antes, $antes, $depois,
+                $motivo, $utilizadorId, $chaveIdempotencia
+            );
         }, attempts: 3);
     }
 
-    protected function saldoBloqueado(Empresa $empresa, Produto $produto): StockSaldo
+    private function validarContexto(Empresa $empresa, Produto $produto): void
     {
-        app(TenantManager::class)->garantirEmpresa((int) $empresa->id, 'O contexto atual não corresponde à empresa do movimento.');
-
+        $tenant = app(TenantManager::class);
+        if ($tenant->has() && ! $tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
+            throw new DomainException('O contexto atual não corresponde à empresa do movimento.');
+        }
         if ((int) $produto->empresa_id !== (int) $empresa->id || ! $produto->controla_stock) {
             throw new DomainException('O produto não pertence à empresa ou não controla stock.');
         }
-
-        $agora = now();
-        DB::table('stock_saldos')->insertOrIgnore([
-            'empresa_id' => $empresa->id,
-            'produto_id' => $produto->id,
-            'quantidade' => '0.000',
-            'created_at' => $agora,
-            'updated_at' => $agora,
-        ]);
-
-        return StockSaldo::withoutGlobalScopes()
-            ->where('empresa_id', $empresa->id)
-            ->where('produto_id', $produto->id)
-            ->lockForUpdate()
-            ->firstOrFail();
     }
 
-    protected function guardarMovimento(Empresa $empresa, Produto $produto, string $tipo, int $delta, int $anterior, int $posterior, string $motivo, ?int $utilizadorId, ?string $chaveIdempotencia): StockMovimento
+    private function movimentoLegadoExistente(Empresa $empresa, Produto $produto, string $tipo, ?int $delta, string $motivo, ?string $chave, ?string $saldoPosteriorEsperado = null): ?StockMovimento
     {
-        $motivo = trim($motivo);
-        if ($motivo === '' || mb_strlen($motivo) > 255) {
-            throw new InvalidArgumentException('Indica um motivo com até 255 caracteres.');
+        if ($chave === null) {
+            return null;
         }
-
-        if ($chaveIdempotencia !== null) {
-            if (trim($chaveIdempotencia) === '' || mb_strlen($chaveIdempotencia) > 100) {
-                throw new InvalidArgumentException('A chave de idempotência deve ter entre 1 e 100 caracteres.');
-            }
-
-            $existente = StockMovimento::withoutGlobalScopes()
+        $existente = StockMovimento::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->where('chave_idempotencia', $chave)
+            ->first();
+        if (! $existente) {
+            return null;
+        }
+        $corresponde = (int) $existente->produto_id === (int) $produto->id
+            && $existente->tipo === $tipo
+            && $existente->motivo === trim($motivo)
+            && ($delta === null || (string) $existente->quantidade === $this->formatar($delta));
+        if ($corresponde && $saldoPosteriorEsperado !== null) {
+            $movimentoArmazem = DB::table('armazem_stock_movimentos')
                 ->where('empresa_id', $empresa->id)
-                ->where('chave_idempotencia', $chaveIdempotencia)
+                ->where('chave_idempotencia', $chave)
                 ->first();
 
-            if ($existente) {
-                $movimentoCorresponde = (int) $existente->produto_id === (int) $produto->id
-                    && $existente->tipo === $tipo
-                    && $existente->motivo === $motivo;
-
-                if ($tipo === 'ajuste') {
-                    $movimentoCorresponde = $movimentoCorresponde
-                        && (string) $existente->saldo_posterior === $this->formatar($posterior);
-                } else {
-                    $movimentoCorresponde = $movimentoCorresponde
-                        && (string) $existente->quantidade === $this->formatar($delta);
-                }
-
-                if (! $movimentoCorresponde) {
-                    throw new DomainException('A chave de idempotência já foi utilizada noutro movimento.');
-                }
-
-                return $existente;
+            if ($movimentoArmazem !== null
+                && ((int) $movimentoArmazem->produto_id !== (int) $produto->id
+                    || $movimentoArmazem->tipo !== 'ajuste'
+                    || $movimentoArmazem->motivo !== trim($motivo)
+                    || $this->emMilhares((string) $movimentoArmazem->saldo_posterior) !== $this->emMilhares($saldoPosteriorEsperado))) {
+                $corresponde = false;
             }
         }
 
-        $saldo = StockSaldo::withoutGlobalScopes()
-            ->where('empresa_id', $empresa->id)
-            ->where('produto_id', $produto->id)
-            ->lockForUpdate()
-            ->firstOrFail();
+        if (! $corresponde) {
+            throw new DomainException('A chave de idempotência já foi utilizada noutro movimento.');
+        }
 
-        $movimento = StockMovimento::create([
+        return $existente;
+    }
+
+    private function registarMovimentoLegado(Empresa $empresa, Produto $produto, string $tipo, int $delta, int $anterior, int $posterior, string $motivo, ?int $utilizadorId, ?string $chave): StockMovimento
+    {
+        return StockMovimento::create([
             'empresa_id' => $empresa->id,
             'produto_id' => $produto->id,
             'utilizador_id' => $utilizadorId,
@@ -189,13 +162,39 @@ class StockService
             'quantidade' => $this->formatar($delta),
             'saldo_anterior' => $this->formatar($anterior),
             'saldo_posterior' => $this->formatar($posterior),
-            'motivo' => $motivo,
-            'chave_idempotencia' => $chaveIdempotencia,
+            'motivo' => trim($motivo),
+            'chave_idempotencia' => $chave,
         ]);
+    }
 
-        $saldo->update(['quantidade' => $this->formatar($posterior)]);
+    private function saldoAgregado(Empresa $empresa, Produto $produto): int
+    {
+        $saldos = DB::table('armazem_stock_saldos')
+            ->where('empresa_id', $empresa->id)
+            ->where('produto_id', $produto->id)
+            ->get(['quantidade']);
 
-        return $movimento;
+        $total = 0;
+        foreach ($saldos as $saldo) {
+            $total += $this->emMilhares((string) $saldo->quantidade);
+        }
+
+        if ($total > 99_999_999_999_999) {
+            throw new DomainException('O saldo agregado ultrapassa o limite decimal suportado.');
+        }
+
+        return $total;
+    }
+
+    private function validarTexto(string $motivo, ?string $chave): void
+    {
+        $motivo = trim($motivo);
+        if ($motivo === '' || mb_strlen($motivo) > 255) {
+            throw new InvalidArgumentException('Indica um motivo com até 255 caracteres.');
+        }
+        if ($chave !== null && (trim($chave) === '' || mb_strlen($chave) > 100)) {
+            throw new InvalidArgumentException('A chave de idempotência deve ter entre 1 e 100 caracteres.');
+        }
     }
 
     private function emMilhares(string $valor): int

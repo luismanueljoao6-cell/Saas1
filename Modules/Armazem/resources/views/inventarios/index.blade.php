@@ -68,12 +68,26 @@
                     <div>
                         <p class="font-semibold text-slate-900 dark:text-zinc-100">INV-{{ str_pad((string) $inventario->id, 5, '0', STR_PAD_LEFT) }} · {{ $inventario->armazem?->nome }}</p>
                         <p class="mt-1 text-xs text-slate-500 dark:text-zinc-400">Aberto em {{ $inventario->aberto_em?->format('d/m/Y H:i') }} · {{ $inventario->utilizadorAbertura?->name ?? 'Sistema' }}</p>
+                        @if ($inventario->submetido_em)
+                            <p class="mt-1 text-xs text-slate-500 dark:text-zinc-400">Enviado por {{ $inventario->utilizadorSubmissao?->name ?? 'Utilizador removido' }} em {{ $inventario->submetido_em->format('d/m/Y H:i') }}</p>
+                        @endif
+                        @if ($inventario->concluido_em && $inventario->submetido_em && (int) $inventario->concluido_por !== (int) $inventario->submetido_por)
+                            <p class="mt-1 text-xs text-emerald-700 dark:text-emerald-300">Aprovado por {{ $inventario->utilizadorConclusao?->name ?? 'Utilizador removido' }} em {{ $inventario->concluido_em->format('d/m/Y H:i') }}</p>
+                        @elseif ($inventario->concluido_em && $inventario->submetido_em)
+                            <p class="mt-1 text-xs text-emerald-700 dark:text-emerald-300">Concluído sem divergências por {{ $inventario->utilizadorConclusao?->name ?? 'Utilizador removido' }} em {{ $inventario->concluido_em->format('d/m/Y H:i') }}</p>
+                        @elseif ($inventario->concluido_em)
+                            <p class="mt-1 text-xs text-slate-500 dark:text-zinc-400">Concluído em {{ $inventario->concluido_em->format('d/m/Y H:i') }} · {{ $inventario->utilizadorConclusao?->name ?? 'Utilizador removido' }}</p>
+                        @elseif ($inventario->rejeitado_em)
+                            <p class="mt-1 text-xs text-red-700 dark:text-red-300">Rejeitado por {{ $inventario->utilizadorRejeicao?->name ?? 'Utilizador removido' }} em {{ $inventario->rejeitado_em->format('d/m/Y H:i') }}</p>
+                        @endif
                     </div>
                     @php
                         $estadoCor = [
                             'em_contagem' => 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
                             'a_finalizar' => 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300',
+                            'aguarda_aprovacao' => 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300',
                             'concluido' => 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+                            'rejeitado' => 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300',
                             'cancelado' => 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400',
                         ][$inventario->estado] ?? 'bg-slate-100 text-slate-600';
                     @endphp
@@ -83,6 +97,15 @@
                 <div class="p-5">
                     @if ($inventario->observacoes)
                         <p class="mb-3 text-sm text-slate-500 dark:text-zinc-400">{{ $inventario->observacoes }}</p>
+                    @endif
+                    @if ($inventario->estado === 'aguarda_aprovacao')
+                        <p class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                            As divergências estão registadas e aguardam uma decisão independente. O stock permanece bloqueado e ainda não foi alterado.
+                        </p>
+                    @elseif ($inventario->estado === 'rejeitado')
+                        <p class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200">
+                            Motivo da rejeição: {{ $inventario->motivo_rejeicao }}
+                        </p>
                     @endif
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-100 text-sm dark:divide-zinc-800">
@@ -118,6 +141,20 @@
                                             @else
                                                 —
                                             @endif
+                                            @if ($linha->contagens->isNotEmpty())
+                                                <details class="mt-2 max-w-xs">
+                                                    <summary class="cursor-pointer font-medium text-indigo-600 dark:text-indigo-300">Ver histórico ({{ $linha->contagens->count() }})</summary>
+                                                    <ol class="mt-2 space-y-2 border-l border-slate-200 pl-3 dark:border-zinc-700">
+                                                        @foreach ($linha->contagens as $contagem)
+                                                            <li>
+                                                                <span class="block font-medium text-slate-700 dark:text-zinc-300">{{ $contagem->utilizador?->name ?? ($contagem->utilizador_id ? 'Utilizador removido' : 'Sistema') }}</span>
+                                                                <span class="block">{{ $contagem->registado_em?->format('d/m/Y H:i') }}</span>
+                                                                <span class="block">Sistema {{ str_replace('.', ',', (string) $contagem->quantidade_sistema) }} · Contado {{ str_replace('.', ',', (string) $contagem->quantidade_contada) }} · Δ {{ str_replace('.', ',', (string) $contagem->diferenca) }}</span>
+                                                            </li>
+                                                        @endforeach
+                                                    </ol>
+                                                </details>
+                                            @endif
                                         </td>
                                         <td class="px-3 py-3 text-right tabular-nums">
                                             @if ($linha->diferenca !== null)
@@ -134,14 +171,49 @@
 
                     @if ($inventario->estado === 'em_contagem')
                         <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4 dark:border-zinc-800">
+                            <p class="w-full text-xs text-slate-500 dark:text-zinc-400">Se existirem diferenças, o stock só será alterado depois da aprovação por outra pessoa.</p>
                             <form method="POST" action="{{ route('armazem.inventarios.concluir', $inventario->id) }}">
                                 @csrf
-                                <button class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500" type="submit">Concluir e aplicar ajustes</button>
+                                <button class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500" type="submit">Concluir contagem</button>
                             </form>
                             <form method="POST" action="{{ route('armazem.inventarios.cancelar', $inventario->id) }}" onsubmit="return confirm('Cancelar este inventário? Nenhum ajuste será aplicado.')">
                                 @csrf
                                 <button class="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/10" type="submit">Cancelar</button>
                             </form>
+                        </div>
+                    @endif
+
+                    @if ($inventario->estado === 'aguarda_aprovacao')
+                        @php
+                            $autoresInventario = collect([$inventario->aberto_por, $inventario->submetido_por])
+                                ->merge($inventario->linhas->pluck('contado_por'))
+                                ->merge($inventario->linhas->flatMap(fn ($linha) => $linha->contagens->pluck('utilizador_id')))
+                                ->filter()
+                                ->map(fn ($id) => (int) $id);
+                            $podeAprovarInventario = auth()->user()->can('armazem.inventarios.aprovar')
+                                && ! $autoresInventario->contains((int) auth()->id());
+                            $podeRejeitarInventario = auth()->user()->can('armazem.inventarios.rejeitar')
+                                && ! $autoresInventario->contains((int) auth()->id());
+                        @endphp
+                        <div class="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-zinc-800">
+                            @if ($podeAprovarInventario)
+                                <form method="POST" action="{{ route('armazem.inventarios.aprovar', $inventario->id) }}">
+                                    @csrf
+                                    <button class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500" type="submit">Aprovar e aplicar ajustes</button>
+                                </form>
+                            @endif
+                            @if ($podeRejeitarInventario)
+                                <form method="POST" action="{{ route('armazem.inventarios.rejeitar', $inventario->id) }}" class="flex flex-col gap-2 sm:flex-row sm:items-end">
+                                    @csrf
+                                    <label class="flex-1 text-sm font-medium text-slate-700 dark:text-zinc-300">Motivo da rejeição
+                                        <input name="motivo_rejeicao" required minlength="10" maxlength="2000" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950" placeholder="Explica a divergência que precisa de nova contagem">
+                                    </label>
+                                    <button class="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/10" type="submit">Rejeitar inventário</button>
+                                </form>
+                            @endif
+                            @if (! $podeAprovarInventario && ! $podeRejeitarInventario)
+                                <p class="text-sm text-slate-500 dark:text-zinc-400">A decisão exige um utilizador com permissão de aprovação que não tenha aberto, submetido ou contado este inventário.</p>
+                            @endif
                         </div>
                     @endif
                 </div>

@@ -16,6 +16,8 @@ final class PapeisArmazem
         'armazem.inventarios.criar',
         'armazem.inventarios.contar',
         'armazem.inventarios.concluir',
+        'armazem.inventarios.aprovar',
+        'armazem.inventarios.rejeitar',
         'armazem.inventarios.cancelar',
         'armazem.transferencias.ver',
         'armazem.transferencias.criar',
@@ -52,7 +54,7 @@ final class PapeisArmazem
                 'empresa_id' => $empresaId,
             ]);
 
-            $papel->syncPermissions($permissoes);
+            $papel->givePermissionTo($permissoes);
         } finally {
             $registrar->setPermissionsTeamId($equipaAnterior);
             $registrar->forgetCachedPermissions();

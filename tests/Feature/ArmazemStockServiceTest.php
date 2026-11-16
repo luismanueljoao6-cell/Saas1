@@ -13,6 +13,7 @@ use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Support\Servico;
 use Modules\Faturacao\Models\Produto;
+use Modules\Faturacao\Models\StockSaldo;
 use Tests\TestCase;
 
 class ArmazemStockServiceTest extends TestCase
@@ -63,6 +64,10 @@ class ArmazemStockServiceTest extends TestCase
             ->where('empresa_id', $empresa->id)
             ->where('produto_id', $produto->id)
             ->count());
+        $this->assertSame('6.250', (string) StockSaldo::withoutGlobalScopes()
+            ->where('empresa_id', $empresa->id)
+            ->where('produto_id', $produto->id)
+            ->value('quantidade'));
     }
 
     public function test_stock_e_independente_entre_dois_armazens_da_mesma_empresa(): void
