@@ -24,7 +24,7 @@ class FaturaService
     ) {}
 
     /**
-     * @param  array<int, array{produto_id?: int, descricao: string, quantidade: float, preco_unitario: float, preco_unitario_base?: float, taxa_iva: float, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
+     * @param  array<int, array{produto_id?: int, descricao: string, quantidade: int|string, preco_unitario: int|string, preco_unitario_base?: int|string, taxa_iva: int|string, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
      */
     public function criarRascunho(Empresa $empresa, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
     {
@@ -47,6 +47,8 @@ class FaturaService
      */
     protected function criarRascunhoTipo(string $tipo, Empresa $empresa, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
     {
+        GuardaEmissao::garantirTenant((int) $empresa->id);
+
         if (empty($linhas)) {
             throw new \InvalidArgumentException('Uma fatura precisa de pelo menos uma linha.');
         }
@@ -181,7 +183,7 @@ class FaturaService
     }
 
     /**
-     * @param  array<int, array{produto_id?: int, descricao: string, quantidade: float, preco_unitario: float, taxa_iva: float, motivo_isencao?: string|null}>  $linhas
+     * @param  array<int, array{produto_id?: int, descricao: string, quantidade: int|string, preco_unitario: int|string, taxa_iva: int|string, motivo_isencao?: string|null}>  $linhas
      */
     protected function substituirLinhas(Fatura $fatura, array $linhas): void
     {
@@ -211,7 +213,7 @@ class FaturaService
      * serializadas e a segunda vê o estado final. Uma fatura emitida nunca
      * se edita — corrige-se por Nota de Crédito.
      *
-     * @param  array<int, array{produto_id?: int|null, descricao: string, quantidade: float, preco_unitario: float, preco_unitario_base?: float|null, taxa_iva: float, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
+     * @param  array<int, array{produto_id?: int|null, descricao: string, quantidade: int|string, preco_unitario: int|string, preco_unitario_base?: int|string|null, taxa_iva: int|string, motivo_isencao?: string|null, operation_type?: string|null}>  $linhas
      */
     public function atualizarRascunho(Fatura $fatura, Cliente $cliente, array $linhas, ?string $observacoes = null): Fatura
     {

@@ -19,6 +19,9 @@ use Throwable;
  */
 class ReciboService
 {
+    /** Valores aceites pelo contrato persistido em recibos.meio_pagamento. */
+    private const MEIOS_PAGAMENTO = ['dinheiro', 'transferencia', 'multicaixa', 'outro'];
+
     public function __construct(
         protected NumeracaoService $numeracaoService,
         protected AssinaturaFiscalService $assinaturaFiscalService,
@@ -74,8 +77,8 @@ class ReciboService
             throw new \InvalidArgumentException('O valor do recibo tem de ser superior a zero.');
         }
 
-        if (trim($meioPagamento) === '') {
-            throw new \InvalidArgumentException('O meio de pagamento é obrigatório.');
+        if (! in_array($meioPagamento, self::MEIOS_PAGAMENTO, true)) {
+            throw new \InvalidArgumentException('Meio de pagamento inválido. Usa dinheiro, transferencia, multicaixa ou outro.');
         }
 
         // A regra vive no serviço (não só nos FormRequests): qualquer módulo que emita recibos tem a mesma garantia.

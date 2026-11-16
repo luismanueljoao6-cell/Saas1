@@ -2,7 +2,9 @@
 
 namespace Modules\Faturacao\Services;
 
+use InvalidArgumentException;
 use Modules\Faturacao\Exceptions\AgtException;
+use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\Produto;
@@ -25,10 +27,38 @@ class AgtDocumentoBuilder
     public function construir(Fatura|NotaCreditoDebito|Recibo $documento): array
     {
         $assinatura = (string) $documento->hash;
-        $assinado = json_decode((string) Jws::payload($assinatura), true);
+
+        // Nunca confiar apenas no payload descodificado: validar RS256 antes
+        // de qualquer documento entrar num pedido à AGT. A chave genérica de
+        // desenvolvimento/testes não é aceite nesta fronteira.
+        try {
+            $servicoAssinatura = app(AssinaturaFiscalService::class);
+            $versaoDocumento = (int) $documento->chave_versao;
+            $chavePublica = $servicoAssinatura->chavePublicaDaVersao((int) $documento->empresa_id, $versaoDocumento);
+
+            if (! is_string($chavePublica) || $chavePublica === '') {
+                throw AgtException::configuracaoInvalida("não existe chave pública arquivada para a empresa e versão {$versaoDocumento} do documento {$documento->numero_documento}; o envio foi bloqueado. Documentos antigos sem arquivo histórico exigem recuperação da chave original.");
+            }
+
+            $payload = (string) Jws::payload($assinatura);
+
+            if (! $servicoAssinatura->verificarComPem($payload, $assinatura, $chavePublica)) {
+                throw AgtException::configuracaoInvalida("a assinatura criptográfica do documento {$documento->numero_documento} é inválida ou foi adulterada.");
+            }
+
+            $payloadEsperado = $documento->construirStringParaAssinar();
+
+            if (! hash_equals($payloadEsperado, $payload)) {
+                throw AgtException::configuracaoInvalida("os dados fiscais persistidos do documento {$documento->numero_documento} divergem do payload originalmente assinado.");
+            }
+        } catch (AssinaturaFiscalException|InvalidArgumentException $e) {
+            throw AgtException::configuracaoInvalida("não foi possível verificar a assinatura do documento {$documento->numero_documento}: ".$e->getMessage());
+        }
+
+        $assinado = json_decode((string) $payload, true);
 
         if (! is_array($assinado) || ! isset($assinado['documentTotals'])) {
-            throw AgtException::configuracaoInvalida("o documento {$documento->numero_documento} não tem uma assinatura JWS válida.");
+            throw AgtException::configuracaoInvalida("o documento {$documento->numero_documento} não contém um payload fiscal JWS válido.");
         }
 
         if (($documento->moeda ?? 'AOA') !== 'AOA') {

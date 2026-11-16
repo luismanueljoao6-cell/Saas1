@@ -286,11 +286,7 @@ class ArmazemStockService
 
     private function validarTenant(Empresa $empresa): void
     {
-        $tenant = app(TenantManager::class);
-
-        if ($tenant->has() && ! $tenant->emBypass() && $tenant->id() !== (int) $empresa->id) {
-            throw new DomainException('O contexto atual não corresponde à empresa do movimento.');
-        }
+        app(TenantManager::class)->garantirEmpresa((int) $empresa->id, 'O contexto atual não corresponde à empresa do movimento.');
     }
 
     private function validarTexto(string $motivo, ?string $chaveIdempotencia): void

@@ -3,33 +3,49 @@
 namespace Modules\Faturacao\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Exceptions\AgtException;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Services\AgtDocumentoBuilder;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
+use Modules\Faturacao\Support\Jws;
 use Tests\TestCase;
 
 class NotaDebitoSemIvaTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected string $diretorioChaves;
+
+    protected string $pemChave;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $recurso = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
-        openssl_pkey_export($recurso, $pem);
-        $caminho = sys_get_temp_dir().'/faturacao-teste-'.uniqid().'.pem';
-        file_put_contents($caminho, $pem);
-        config(['faturacao.chave_privada_path' => $caminho]);
-        $this->beforeApplicationDestroyed(fn () => @unlink($caminho));
+        $pemChave = '';
+        openssl_pkey_export($recurso, $pemChave);
+        $this->pemChave = $pemChave;
+        $this->diretorioChaves = sys_get_temp_dir().'/faturacao-teste-'.uniqid();
+        mkdir($this->diretorioChaves, 0700, true);
+        config(['faturacao.chaves_dir' => $this->diretorioChaves]);
+        $this->beforeApplicationDestroyed(function (): void {
+            foreach (glob($this->diretorioChaves.'/*') ?: [] as $ficheiro) {
+                @unlink($ficheiro);
+            }
+
+            @rmdir($this->diretorioChaves);
+        });
     }
 
     protected function cenario(string $nif): array
     {
         $empresa = Empresa::create(['nome_comercial' => 'Loja '.$nif, 'nif' => $nif]);
+        file_put_contents($this->diretorioChaves.'/'.$nif.'.pem', $this->pemChave);
         $cliente = Cliente::create(['empresa_id' => $empresa->id, 'nome' => 'Cliente', 'nif' => null]);
 
         return [$empresa, $cliente];
@@ -77,6 +93,65 @@ class NotaDebitoSemIvaTest extends TestCase
         $documento = app(AgtDocumentoBuilder::class)->construir($nota);
 
         $this->assertArrayNotHasKey('taxes', $documento['lines'][0]);
+    }
+
+    public function test_pedido_agt_recusa_jws_com_assinatura_adulterada(): void
+    {
+        [$empresa, $cliente] = $this->cenario('610000007');
+        $servico = app(NotaCreditoDebitoService::class);
+        $nota = $servico->emitir($servico->criarRascunho(
+            $empresa->id,
+            $cliente->id,
+            'debito',
+            'Juros de mora',
+            $this->linha(1000, 0),
+        ));
+
+        $partes = explode('.', (string) $nota->hash);
+        $partes[2] = Jws::base64url('assinatura adulterada');
+        $nota->hash = implode('.', $partes);
+
+        $this->expectException(AgtException::class);
+        app(AgtDocumentoBuilder::class)->construir($nota);
+    }
+
+    public function test_pedido_agt_recusa_dados_fiscais_divergentes_do_payload_assinado(): void
+    {
+        [$empresa, $cliente] = $this->cenario('610000009');
+        $servico = app(NotaCreditoDebitoService::class);
+        $nota = $servico->emitir($servico->criarRascunho(
+            $empresa->id,
+            $cliente->id,
+            'debito',
+            'Juros de mora',
+            $this->linha(1000, 0),
+        ));
+        $nota->numero_documento = 'ND ALTERADA';
+
+        $this->expectException(AgtException::class);
+        $this->expectExceptionMessage('divergem do payload originalmente assinado');
+        app(AgtDocumentoBuilder::class)->construir($nota);
+    }
+
+    public function test_pedido_agt_bloqueia_documento_sem_chave_publica_historica(): void
+    {
+        [$empresa, $cliente] = $this->cenario('610000008');
+        $servico = app(NotaCreditoDebitoService::class);
+        $nota = $servico->emitir($servico->criarRascunho(
+            $empresa->id,
+            $cliente->id,
+            'debito',
+            'Juros de mora',
+            $this->linha(1000, 0),
+        ));
+
+        DB::table('faturacao_chaves_publicas')
+            ->where('empresa_id', $empresa->id)
+            ->where('versao', $nota->chave_versao)
+            ->delete();
+
+        $this->expectException(AgtException::class);
+        app(AgtDocumentoBuilder::class)->construir($nota);
     }
 
     public function test_configuracao_pode_voltar_a_permitir_iva_na_nota_de_debito(): void

@@ -55,6 +55,7 @@ class AbatimentoReconciliacaoSafTTest extends TestCase
         ]);
 
         $this->empresa = Empresa::create(['nome_comercial' => 'Loja A', 'nif' => '5001636863']);
+        file_put_contents($this->tmp.'/'.$this->empresa->nif.'.pem', $pem);
         $this->cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cliente A', 'nif' => null]);
     }
 

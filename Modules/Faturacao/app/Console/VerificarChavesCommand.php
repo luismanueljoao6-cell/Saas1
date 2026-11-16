@@ -3,7 +3,11 @@
 namespace Modules\Faturacao\Console;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use InvalidArgumentException;
 use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Services\AssinaturaFiscalService;
 
 /**
@@ -69,7 +73,7 @@ class VerificarChavesCommand extends Command
                 continue;
             }
 
-            $verificadas++;
+            $verificadas += 1;
 
             if (isset($utilizadores[$impressao])) {
                 $problemas[] = [$rotulo, "usa a mesma chave que {$utilizadores[$impressao]}"];
@@ -77,15 +81,21 @@ class VerificarChavesCommand extends Command
                 $utilizadores[$impressao] = $rotulo;
             }
 
-            $permissoes = DIRECTORY_SEPARATOR === '/' ? (fileperms($caminho) & 0777) : 0;
+            $permissoesFicheiro = DIRECTORY_SEPARATOR === '/' ? fileperms($caminho) : false;
+            $permissoes = $permissoesFicheiro !== false ? $permissoesFicheiro % 01000 : 0;
 
-            if (($permissoes & 0077) !== 0) {
+            if ($permissoesFicheiro === false) {
+                $avisos[] = [$rotulo, 'não foi possível ler as permissões do ficheiro da chave'];
+            }
+
+            if (($permissoes % 0100) !== 0) {
                 $avisos[] = [$rotulo, sprintf('permissões %o demasiado abertas no ficheiro da chave (usa chmod 600)', $permissoes)];
             }
         }
 
         $this->verificarChaveGenerica($utilizadores, $exigir, $problemas, $avisos);
         $this->verificarChaveDoSoftware($utilizadores, $problemas);
+        $this->verificarArquivoHistorico($assinatura, $problemas, $empresaId);
 
         if ($avisos !== []) {
             $this->table(['Âmbito', 'Aviso'], $avisos);
@@ -93,7 +103,7 @@ class VerificarChavesCommand extends Command
 
         if ($problemas !== []) {
             $this->table(['Âmbito', 'Problema'], $problemas);
-            $this->error(count($problemas).' problema(s) nas chaves de assinatura (ver docs/CHAVES.md do módulo Faturação).');
+            $this->error(count($problemas).' problema(s) nas chaves de assinatura (ver docs/CHAVES.md).');
 
             return self::FAILURE;
         }
@@ -116,7 +126,17 @@ class VerificarChavesCommand extends Command
             return;
         }
 
-        [$impressao] = $this->analisar($generica);
+        [$impressao, $erro] = $this->analisar($generica);
+
+        if ($erro !== null) {
+            if ($exigir) {
+                $problemas[] = ['chave genérica', "chave inválida: {$erro}"];
+            } else {
+                $avisos[] = ['chave genérica', "chave inválida: {$erro}"];
+            }
+
+            return;
+        }
 
         if ($impressao !== null && isset($utilizadores[$impressao])) {
             $problemas[] = ['chave genérica', "é igual à chave de {$utilizadores[$impressao]}: cada empresa tem de ter a sua própria chave"];
@@ -151,6 +171,91 @@ class VerificarChavesCommand extends Command
             $problemas[] = ['chave do software', "chave inválida: {$erro}"];
         } elseif (isset($utilizadores[$impressao])) {
             $problemas[] = ['chave do software', "é igual à chave de {$utilizadores[$impressao]}: o software e os emissores têm chaves distintas"];
+        }
+    }
+
+    /**
+     * Verifica se todos os documentos finais têm uma chave pública histórica
+     * íntegra e se a chave instalada não foi trocada sem incrementar a versão.
+     *
+     * @param  array<int, array{0: string, 1: string}>  $problemas
+     */
+    protected function verificarArquivoHistorico(AssinaturaFiscalService $assinatura, array &$problemas, ?int $empresaId = null): void
+    {
+        if (! Schema::hasTable('faturacao_chaves_publicas')) {
+            $problemas[] = ['arquivo histórico', 'a tabela faturacao_chaves_publicas não existe; executa php artisan migrate'];
+
+            return;
+        }
+
+        $tabelas = [
+            'faturas' => ['emitida'],
+            'notas_credito_debito' => ['emitida'],
+            'recibos' => ['emitido', 'anulado'],
+        ];
+
+        foreach ($tabelas as $tabela => $estados) {
+            if (! Schema::hasTable($tabela)) {
+                $problemas[] = [$tabela, 'a tabela não existe; confirma as migrations do módulo Faturação'];
+
+                continue;
+            }
+
+            $consulta = DB::table($tabela)->whereIn('estado', $estados);
+
+            if ($empresaId !== null) {
+                $consulta->where('empresa_id', $empresaId);
+            }
+
+            $semVersao = (clone $consulta)->whereNull('chave_versao')->count();
+
+            if ($semVersao > 0) {
+                $problemas[] = [$tabela, "{$semVersao} documento(s) final(is) sem versão de chave de assinatura"];
+            }
+
+            $documentos = (clone $consulta)
+                ->whereNotNull('chave_versao')
+                ->select('empresa_id', 'chave_versao')
+                ->distinct()
+                ->get();
+
+            foreach ($documentos as $documento) {
+                $documentoEmpresaId = (int) $documento->empresa_id;
+                $versao = (int) $documento->chave_versao;
+
+                if ($assinatura->chavePublicaDaVersao($documentoEmpresaId, $versao) === null) {
+                    $problemas[] = [
+                        "empresa #{$documentoEmpresaId}",
+                        "há documentos finais em {$tabela} na versão {$versao} sem chave pública histórica íntegra",
+                    ];
+                }
+            }
+        }
+
+        $versaoAtual = (int) config('faturacao.chave_versao', 1);
+
+        foreach (Empresa::query()->when($empresaId, fn ($q) => $q->whereKey($empresaId))->orderBy('id')->get(['id', 'nif']) as $empresa) {
+            try {
+                $chaveInstalada = $assinatura->chavePublicaDaEmpresa((int) $empresa->id);
+            } catch (AssinaturaFiscalException|InvalidArgumentException) {
+                continue; // O erro já foi reportado na verificação do ficheiro privado.
+            }
+
+            $chaveArquivada = $assinatura->chavePublicaDaVersao((int) $empresa->id, $versaoAtual);
+
+            if ($chaveInstalada === null || $chaveArquivada === null) {
+                continue;
+            }
+
+            $fingerprintInstalado = hash('sha256', preg_replace('/\\s+/', '', $chaveInstalada) ?: $chaveInstalada);
+            $fingerprintArquivado = hash('sha256', preg_replace('/\\s+/', '', $chaveArquivada) ?: $chaveArquivada);
+
+            if (! hash_equals($fingerprintArquivado, $fingerprintInstalado)) {
+                $problemas[] = [
+                    "empresa #{$empresa->id}",
+                    "a chave privada instalada difere da chave arquivada na versão {$versaoAtual}; incrementa FATURACAO_CHAVE_VERSAO antes de emitir",
+                ];
+            }
         }
     }
 

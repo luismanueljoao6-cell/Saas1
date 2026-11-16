@@ -5,13 +5,18 @@ namespace Modules\Faturacao\Tests\Feature;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
+use Modules\Faturacao\Models\NotaCreditoDebito;
+use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
 use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\SafTExportService;
 use Modules\Faturacao\Services\SafTPreValidacao;
+use Modules\Faturacao\Support\Dinheiro;
 use Tests\TestCase;
 
 /** Fase 3: regras fiscais do SAF-T que não dependem do XSD, tipo de documento e namespace. */
@@ -44,11 +49,13 @@ class SafTPreValidacaoTest extends TestCase
 
         config([
             'faturacao.chave_privada_path' => $this->tmp.'/chave.pem',
+            'faturacao.chaves_dir' => $this->tmp,
             'faturacao.agt.ativo' => false,
             'faturacao.taxas_iva_permitidas' => [14.0],
         ]);
 
         $this->empresa = Empresa::create(['nome_comercial' => 'Loja Fase3', 'nif' => '5001636863']);
+        file_put_contents($this->tmp.'/'.$this->empresa->nif.'.pem', $pem);
         $this->cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cliente', 'nif' => null]);
     }
 
@@ -156,6 +163,80 @@ class SafTPreValidacaoTest extends TestCase
         $erros = $this->servico()->verificarDocumento($this->fatura());
 
         $this->assertStringContainsString('código SAF-T', implode(' ', $erros));
+    }
+
+    public function test_linhas_de_notas_de_credito_e_debito_tambem_sao_recalculadas(): void
+    {
+        $nota = new NotaCreditoDebito([
+            'tipo' => 'credito',
+            'numero_documento' => 'NC A2026/1',
+            'valor_sem_iva' => '100.00',
+            'valor_iva' => '13.00',
+            'valor_total' => '113.00',
+            'hash' => 'h-nc',
+            'chave_versao' => 1,
+        ]);
+        $nota->data_hora_sistema = now();
+        $linha = new NotaCreditoDebitoLinha($this->linhaOk([
+            'valor_iva' => '13.00',
+            'valor_total' => '113.00',
+        ]));
+        $nota->setRelation('linhas', collect([$linha]));
+
+        $erros = $this->servico()->verificarDocumento($nota);
+
+        $this->assertStringContainsString('recálculo', implode(' ', $erros));
+    }
+
+    public function test_calculo_proporcional_usa_divisao_inteira_segura(): void
+    {
+        $resultado = Dinheiro::multiplicarDividirPorExcesso(
+            123456789012345,
+            23456789,
+            123456789,
+        );
+
+        $this->assertSame(23456789002346, $resultado);
+    }
+
+    public function test_calculo_proporcional_recusa_overflow_em_vez_de_corromper_valor(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        Dinheiro::multiplicarDividirPorExcesso(
+            PHP_INT_MAX,
+            PHP_INT_MAX,
+            1,
+        );
+    }
+
+    public function test_criacao_de_fatura_recusa_empresa_diferente_do_tenant_ativo(): void
+    {
+        $outraEmpresa = Empresa::create(['nome_comercial' => 'Outra Loja', 'nif' => '5001636864']);
+        $outroCliente = Cliente::create(['empresa_id' => $outraEmpresa->id, 'nome' => 'Outro Cliente', 'nif' => null]);
+        app(TenantManager::class)->set((int) $this->empresa->id);
+
+        $this->expectException(\DomainException::class);
+
+        app(FaturaService::class)->criarRascunhoAdiantamento(
+            $outraEmpresa,
+            $outroCliente,
+            [['descricao' => 'Adiantamento', 'quantidade' => '1.000', 'preco_unitario' => '100.00', 'taxa_iva' => '14.00']],
+        );
+    }
+
+    public function test_pre_validacao_bloqueia_documento_sem_chave_publica_historica(): void
+    {
+        $fatura = $this->emitir('Documento sem chave histórica');
+
+        DB::table('faturacao_chaves_publicas')
+            ->where('empresa_id', $this->empresa->id)
+            ->where('versao', $fatura->chave_versao)
+            ->delete();
+
+        $erros = $this->servico()->validar($this->empresa, now()->startOfYear(), now()->endOfYear());
+
+        $this->assertStringContainsString('não existe chave pública arquivada', implode(' ', $erros));
     }
 
     // --- Continuidade da série ----------------------------------------

@@ -4,12 +4,17 @@ namespace Modules\Faturacao\Services;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use Modules\Core\Models\Empresa;
+use Modules\Faturacao\Exceptions\AssinaturaFiscalException;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\FaturaLinha;
 use Modules\Faturacao\Models\NotaCreditoDebito;
+use Modules\Faturacao\Models\NotaCreditoDebitoLinha;
 use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
+use Modules\Faturacao\Support\Jws;
+use RuntimeException;
 
 /**
  * Regras que se podem verificar SEM o XSD oficial: coerência interna dos documentos
@@ -24,7 +29,12 @@ class SafTPreValidacao
 {
     public const MAX_ERROS = 100;
 
-    public function __construct(protected SafTExportService $exportador) {}
+    protected SafTExportService $exportador;
+
+    public function __construct(SafTExportService $exportador)
+    {
+        $this->exportador = $exportador;
+    }
 
     /** @return list<string> problemas encontrados; vazio quando nada impede a geração */
     public function validar(Empresa $empresa, Carbon $inicio, Carbon $fim): array
@@ -58,6 +68,12 @@ class SafTPreValidacao
 
                 foreach ($this->verificarDocumento($documento) as $erro) {
                     $erros[] = $erro;
+                }
+
+                $erroAssinatura = $this->verificarAssinatura($documento);
+
+                if ($erroAssinatura !== null) {
+                    $erros[] = $erroAssinatura;
                 }
 
                 if (count($erros) >= self::MAX_ERROS) {
@@ -110,6 +126,12 @@ class SafTPreValidacao
 
             if (trim((string) $recibo->hash) === '') {
                 $erros[] = "{$ref}: recibo sem hash (assinatura); não pode entrar no SAF-T.";
+            } else {
+                $erroAssinatura = $this->verificarAssinatura($recibo);
+
+                if ($erroAssinatura !== null) {
+                    $erros[] = $erroAssinatura;
+                }
             }
 
             if ($recibo->chave_versao === null) {
@@ -124,7 +146,7 @@ class SafTPreValidacao
                 if (Dinheiro::centimos($recibo->valor) <= 0) {
                     $erros[] = "{$ref}: o valor do recibo tem de ser superior a zero.";
                 }
-            } catch (\InvalidArgumentException $e) {
+            } catch (InvalidArgumentException $e) {
                 $erros[] = "{$ref}: {$e->getMessage()}";
             }
 
@@ -322,6 +344,54 @@ class SafTPreValidacao
     }
 
     /**
+     * A presença do JWS não prova a sua integridade. O SAF-T só pode incluir
+     * documentos cuja assinatura seja verificável com a chave arquivada para
+     * a empresa e versão exactas do documento.
+     */
+    protected function verificarAssinatura(Fatura|NotaCreditoDebito|Recibo $documento): ?string
+    {
+        $referencia = $this->referencia($documento);
+        $jws = trim((string) $documento->hash);
+
+        if ($jws === '') {
+            return null;
+        }
+
+        $versao = (int) $documento->chave_versao;
+        $assinaturas = app(AssinaturaFiscalService::class);
+        $chavePublica = $assinaturas->chavePublicaDaVersao((int) $documento->empresa_id, $versao);
+
+        if (! is_string($chavePublica) || $chavePublica === '') {
+            return "{$referencia}: não existe chave pública arquivada para a versão {$versao}; a assinatura não pode ser validada para o SAF-T.";
+        }
+
+        try {
+            $payload = Jws::payload($jws);
+
+            if (! is_string($payload)) {
+                return "{$referencia}: o JWS está mal formado e não pode ser validado para o SAF-T.";
+            }
+
+            if (! $assinaturas->verificarComPem($payload, $jws, $chavePublica)) {
+                return "{$referencia}: a assinatura criptográfica JWS é inválida ou o payload foi adulterado.";
+            }
+
+            // A assinatura tem de corresponder aos dados fiscais actualmente
+            // persistidos; validar apenas a assinatura não detecta alterações
+            // directas na BD posteriores à emissão.
+            $payloadEsperado = $documento->construirStringParaAssinar();
+
+            if (! hash_equals($payloadEsperado, $payload)) {
+                return "{$referencia}: os dados fiscais persistidos divergem do payload originalmente assinado.";
+            }
+        } catch (AssinaturaFiscalException|InvalidArgumentException $e) {
+            return "{$referencia}: falha ao verificar a assinatura JWS: ".$e->getMessage();
+        }
+
+        return null;
+    }
+
+    /**
      * Campos obrigatórios, totais do documento vs soma das linhas, e cada linha.
      *
      * @return list<string>
@@ -370,7 +440,7 @@ class SafTPreValidacao
             if (Dinheiro::centimos($documento->valor_sem_iva) + Dinheiro::centimos($documento->valor_iva) !== Dinheiro::centimos($documento->valor_total)) {
                 $erros[] = "{$referencia}: valor sem IVA + IVA não é igual ao total.";
             }
-        } catch (\InvalidArgumentException $e) {
+        } catch (InvalidArgumentException $e) {
             $erros[] = "{$referencia}: {$e->getMessage()}";
         }
 
@@ -395,12 +465,12 @@ class SafTPreValidacao
             if ($motivo !== null && app()->isProduction() && ! config('faturacao.motivos_isencao_confirmados')) {
                 $erros[] = "{$referencia} (linha {$numero}): usa o código {$motivo}, mas a tabela de motivos de isenção ainda não foi confirmada contra o anexo oficial (FATURACAO_MOTIVOS_ISENCAO_CONFIRMADOS).";
             }
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             $erros[] = "{$referencia} (linha {$numero}): {$e->getMessage()}";
         }
 
         // Os valores gravados têm de bater com o recálculo (quantidade × preço; IVA por excesso).
-        if ($linha instanceof FaturaLinha) {
+        if ($linha instanceof FaturaLinha || $linha instanceof NotaCreditoDebitoLinha) {
             try {
                 $v = Dinheiro::calcularLinha($linha->quantidade, $linha->preco_unitario, $linha->taxa_iva);
 
@@ -409,7 +479,7 @@ class SafTPreValidacao
                     || Dinheiro::centimos($v['total']) !== Dinheiro::centimos($linha->valor_total)) {
                     $erros[] = "{$referencia} (linha {$numero}): os valores gravados não correspondem ao recálculo (quantidade × preço, IVA arredondado por excesso).";
                 }
-            } catch (\InvalidArgumentException $e) {
+            } catch (InvalidArgumentException $e) {
                 $erros[] = "{$referencia} (linha {$numero}): {$e->getMessage()}";
             }
         }

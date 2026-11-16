@@ -5,6 +5,7 @@ namespace Modules\Faturacao\Support;
 use DomainException;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Exceptions\EmissaoNaoPermitidaException;
 use Modules\Faturacao\Models\AgtSubmissao;
 use Modules\Faturacao\Models\Fatura;
@@ -17,6 +18,8 @@ final class GuardaEmissao
 {
     public static function garantir(int $empresaId): void
     {
+        self::garantirTenant($empresaId);
+
         $empresa = Empresa::query()->find($empresaId);
 
         if (! $empresa) {
@@ -57,6 +60,12 @@ final class GuardaEmissao
         if ($emFalta) {
             throw EmissaoNaoPermitidaException::comunicacaoAgtEmFalta($dias);
         }
+    }
+
+    /** Impede que um serviço opere sobre outra empresa quando existe tenant HTTP ativo. */
+    public static function garantirTenant(int $empresaId): void
+    {
+        app(TenantManager::class)->garantirEmpresa($empresaId);
     }
 
     /**
