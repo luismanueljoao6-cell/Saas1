@@ -6,6 +6,7 @@ use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Modules\Armazem\Support\QuantidadeDecimal;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ArmazemStockExportacaoController extends Controller
@@ -53,13 +54,19 @@ class ArmazemStockExportacaoController extends Controller
 
             foreach ($query->cursor() as $linha) {
                 $abaixo = $linha->quantidade_minima !== null
-                    && (float) $linha->quantidade <= (float) $linha->quantidade_minima;
+                    && QuantidadeDecimal::comparar(
+                        (string) $linha->quantidade,
+                        (string) $linha->quantidade_minima,
+                    ) <= 0;
+
                 fputcsv($output, [
                     $this->textoSeguro($linha->codigo),
                     $this->textoSeguro($linha->produto),
                     $this->textoSeguro($linha->armazem),
-                    number_format((float) $linha->quantidade, 3, '.', ''),
-                    $linha->quantidade_minima === null ? '' : number_format((float) $linha->quantidade_minima, 3, '.', ''),
+                    QuantidadeDecimal::formatar((string) $linha->quantidade),
+                    $linha->quantidade_minima === null
+                        ? ''
+                        : QuantidadeDecimal::formatar((string) $linha->quantidade_minima),
                     $abaixo ? 'Abaixo do mínimo' : 'Normal',
                 ], ';');
             }
