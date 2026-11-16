@@ -80,3 +80,17 @@ Não usar floats. Todos os cálculos internos devem operar em cêntimos inteiros
 - Assinatura JWS, `documentTotals` e `paymentReceipt.sourceDocuments` reconstruídos da mesma fotografia fiscal persistida.
 - Testes de unidade, feature, isolamento, regressão, SQLite e concorrência MySQL.
 - Homologação AGT bem-sucedida antes de remover o bloqueio preventivo de RG.
+
+
+## 7. Precisão da identidade da linha e assinatura
+
+A auditoria do construtor confirmou que as linhas da fatura são consultadas pela relação ordenada por `ordem`, e o payload AGT atribui `lineNumber = índice + 1`. A alocação futura deve guardar exactamente esse número fiscal enviado à AGT (base 1), e não copiar cegamente `fatura_linhas.ordem` (base 0). A identidade técnica `fatura_linha_id` e o número fiscal original devem ambos ser preservados.
+
+Foi também confirmado que `Recibo::construirStringParaAssinar()` calcula actualmente o imposto do recibo por proporção entre o valor bruto recebido e os totais agregados de IVA/bruto da fatura. Essa operação não constitui uma alocação por linha nem resolve o rateio entre linhas com taxas diferentes. Não reutilizar esse valor proporcional como prova de alocação AGT. A futura emissão RG deve gerar o payload assinado a partir do mesmo snapshot de alocações explícitas que alimenta `paymentReceipt`; divergências devem impedir a emissão.
+
+A implementação deve ainda separar claramente:
+- **pagamento recebido** (valor bruto liquidado pelo cliente);
+- **valor fiscal alocado à linha** (líquido, imposto e bruto segundo regra validada);
+- **montante ainda disponível** em cada linha/documento origem.
+
+A soma dos valores brutos alocados tem de reconciliar com o valor do recibo; os valores líquidos e impostos têm de reconciliar com os totais fiscais assinados, sem arredondamentos ocultos.
