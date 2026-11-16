@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
@@ -169,6 +170,19 @@ class GatewayFronteiraTest extends TestCase
     // ---------------------------------------------------------------------
     // Isolamento entre empresas na fronteira
     // ---------------------------------------------------------------------
+
+    public function test_gateway_nao_expoe_resumo_de_fatura_de_outro_tenant(): void
+    {
+        [$empresaA, $clienteA] = $this->cenario('610000012');
+        [$empresaB, $clienteB] = $this->cenario('610000013');
+        $faturaB = $this->emitirPeloGateway($empresaB, $clienteB, '1000.00', '1', '14');
+
+        app(TenantManager::class)->set((int) $empresaA->id);
+
+        $this->expectException(DomainException::class);
+
+        app(FaturacaoGateway::class)->resumoDaFatura($faturaB);
+    }
 
     public function test_gateway_recusa_clientes_e_faturas_de_outra_empresa_sem_deixar_rasto(): void
     {
