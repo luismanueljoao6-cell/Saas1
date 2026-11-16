@@ -297,3 +297,14 @@ Os testes automáticos citados na matriz provam coerência interna conforme os c
 Ao implementar a correcção, reutilizar os serviços e testes já existentes em vez de criar uma segunda contabilidade de adiantamentos. Acrescentar a camada documental AGT e os testes de payload/assinatura/alocações que faltam. Actualizar `docs/homologacao-agt.md` apenas quando existir evidência reproduzível: versão da especificação, payload enviado, resposta da homologação e commit correspondente.
 
 Até H3 e H7 estarem fechados com evidência externa, manter `FATURACAO_ABATIMENTOS_ADIANTAMENTO_CONFIRMADOS=false` em produção e manter o bloqueio de exportação SAF-T de períodos com abatimentos, conforme a salvaguarda já documentada.
+
+## 14. Salvaguarda implementada no Atelier — sinal legado
+
+Na continuação da Fase 1 foi corrigido o comportamento de `PedidoFaturacaoService::registarPagamentoFinal()`:
+
+- Antes, o serviço calculava o recibo final por `FT.valor_total - pedido.valor_sinal`. Esse sinal é um RC sem `fatura_id` e não aparece no resumo central da FT.
+- Agora, se o pedido tiver `recibo_sinal_id`, o pagamento final é recusado com uma mensagem explícita. Não se cria um segundo recibo com valor inferior ao saldo fiscal registado.
+- Quando não existe sinal legado, o montante do recibo é obtido por `FaturacaoGateway::saldoEmCentimos($fatura)`, respeitando o resumo oficial da Faturação (recibos, NC, ND e abatimentos).
+- Foram acrescentados testes para o bloqueio do sinal legado e para a utilização do saldo central quando não existe sinal.
+
+Esta é uma salvaguarda transitória e deliberadamente conservadora. Não converte recibos antigos em FA, não cria abatimentos retroactivos e não resolve o fluxo fiscal do sinal. O desbloqueio depende da implementação completa e validada de FA → recebimento permitido → FT integral → abatimento idempotente → recibo do saldo, incluindo homologação AGT aplicável.
