@@ -77,6 +77,29 @@ class ReciboMeioPagamentoServicoTest extends TestCase
         ]);
     }
 
+    public function test_rg_com_agt_inactiva_tambem_fica_bloqueado_para_nao_criar_documento_nao_submetivel(): void
+    {
+        config(['faturacao.agt.ativo' => false]);
+
+        try {
+            app(ReciboService::class)->emitirRegularizacao(
+                $this->empresa->id,
+                $this->cliente->id,
+                '50.00',
+                'multicaixa',
+                999999,
+            );
+            $this->fail('RG não pode ser emitido enquanto o builder não o conseguir reconstruir.');
+        } catch (\\DomainException $e) {
+            $this->assertStringContainsString('alocação fiscal persistida por linha', $e->getMessage());
+        }
+
+        $this->assertDatabaseMissing('recibos', [
+            'empresa_id' => $this->empresa->id,
+            'tipo_documento' => 'RG',
+        ]);
+    }
+
     public function test_orcamento_nao_pode_ser_criado_com_validade_no_passado(): void
     {
         $this->expectException(\DomainException::class);
