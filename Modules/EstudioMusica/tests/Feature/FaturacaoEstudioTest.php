@@ -221,6 +221,8 @@ class FaturacaoEstudioTest extends TestCase
 
         $this->assertSame('15000.00', $recibo->valor);
         $this->assertSame(0, $projeto->saldoDaFaturaCentimos($fatura), 'O saldo por fatura deve vir do resumo central da Faturação.');
+        $situacao = $projeto->situacaoDasFaturas()->first();
+        $this->assertSame(0.0, $situacao->em_falta, 'O ecrã do Estúdio deve apresentar o mesmo saldo central.');
         $this->assertSame(0.0, $projeto->saldoDevedor());
         $this->assertTrue($projeto->financeiramenteQuitado());
     }
