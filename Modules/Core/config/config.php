@@ -61,4 +61,27 @@ return [
     */
     'guard' => env('CORE_AUTH_GUARD', 'web'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Multi-tenancy — escritas sem contexto de empresa
+    |--------------------------------------------------------------------------
+    |
+    | O que fazer quando um model com BelongsToTenant é criado, atualizado ou
+    | eliminado sem tenant identificado E fora de um bypass explícito
+    | (TenantManager::semTenant()):
+    |
+    |   permitir — comportamento antigo (silencioso). Por omissão nos testes.
+    |   avisar   — regista um aviso com o model e a operação. Por omissão fora
+    |              de testes: serve para descobrir fluxos que escrevem sem contexto.
+    |   bloquear — lança LogicException (fail-closed). Usar em produção depois
+    |              de uma fase em 'avisar' sem avisos legítimos nos logs.
+    |
+    */
+    'tenant' => [
+        'escritas_sem_contexto' => env(
+            'CORE_TENANT_ESCRITAS_SEM_CONTEXTO',
+            env('APP_ENV') === 'testing' ? 'permitir' : 'avisar'
+        ),
+    ],
+
 ];
