@@ -79,6 +79,6 @@ interface FaturacaoGateway
     /** Saldo da fatura em cêntimos inteiros. */
     public function saldoEmCentimos(Fatura $fatura): int;
 
-    /** @return array{recebido: int, creditado: int, abatido: int, saldo: int} valores em cêntimos */
+    /** @return array{recebido: int, creditado: int, debitado: int, abatido: int, saldo: int} valores em cêntimos */
     public function resumoDaFatura(Fatura $fatura): array;
 }
