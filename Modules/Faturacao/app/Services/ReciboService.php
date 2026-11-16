@@ -207,6 +207,14 @@ class ReciboService
     /** @return array{recebido: int, creditado: int, creditado_sem_iva: int, debitado: int, debitado_sem_iva: int, abatido: int, saldo: int} em cêntimos */
     public function resumoDaFatura(Fatura $fatura): array
     {
+        GuardaEmissao::garantirTenant((int) $fatura->empresa_id);
+
+        // Não confiar nos totais de uma instância recebida pelo chamador:
+        // reler o documento canónico dentro da empresa proprietária.
+        $fatura = Fatura::withoutGlobalScopes()
+            ->where('empresa_id', $fatura->empresa_id)
+            ->findOrFail($fatura->id);
+
         [$recebido, $creditado, $debitado, $abatido] = $this->recebidoECreditado((int) $fatura->empresa_id, (int) $fatura->id);
 
         $notas = NotaCreditoDebito::withoutGlobalScopes()
