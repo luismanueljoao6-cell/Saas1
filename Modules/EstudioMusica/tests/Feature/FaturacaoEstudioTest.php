@@ -220,6 +220,7 @@ class FaturacaoEstudioTest extends TestCase
         $recibo = $this->faturacao->registrarRecibo($projeto, $fatura, 'multicaixa');
 
         $this->assertSame('15000.00', $recibo->valor);
+        $this->assertSame(0, $projeto->saldoDaFaturaCentimos($fatura), 'O saldo por fatura deve vir do resumo central da Faturação.');
         $this->assertSame(0.0, $projeto->saldoDevedor());
         $this->assertTrue($projeto->financeiramenteQuitado());
     }
