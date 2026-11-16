@@ -80,13 +80,22 @@ class StockService
             $armazem = $this->armazens->obterPrincipal($empresa);
             $antes = $this->saldoAgregado($empresa, $produto);
 
-            if ($tipo === 'entrada') {
-                $this->stockPorArmazem->entrada($empresa, $armazem, $produto, $this->formatar($unidades), trim($motivo), $utilizadorId, $chaveIdempotencia);
-            } else {
-                $this->stockPorArmazem->saida($empresa, $armazem, $produto, $this->formatar($unidades), trim($motivo), $utilizadorId, $chaveIdempotencia);
+            try {
+                if ($tipo === 'entrada') {
+                    $this->stockPorArmazem->entrada($empresa, $armazem, $produto, $this->formatar($unidades), trim($motivo), $utilizadorId, $chaveIdempotencia);
+                } else {
+                    $this->stockPorArmazem->saida($empresa, $armazem, $produto, $this->formatar($unidades), trim($motivo), $utilizadorId, $chaveIdempotencia);
+                }
+            } catch (DomainException $exception) {
+                if ($exception->getMessage() === 'Stock insuficiente neste armazém.') {
+                    throw new DomainException('Stock insuficiente para esta saída.', previous: $exception);
+                }
+
+                throw $exception;
             }
 
             $depois = $this->saldoAgregado($empresa, $produto);
+
             return $this->registarMovimentoLegado(
                 $empresa, $produto, $tipo, $depois - $antes, $antes, $depois,
                 $motivo, $utilizadorId, $chaveIdempotencia
@@ -131,7 +140,7 @@ class StockService
                 && ((int) $movimentoArmazem->produto_id !== (int) $produto->id
                     || $movimentoArmazem->tipo !== 'ajuste'
                     || $movimentoArmazem->motivo !== trim($motivo)
-                    || (string) $movimentoArmazem->saldo_posterior !== $saldoPosteriorEsperado)) {
+                    || $this->emMilhares((string) $movimentoArmazem->saldo_posterior) !== $this->emMilhares($saldoPosteriorEsperado))) {
                 $corresponde = false;
             }
         }
@@ -139,6 +148,7 @@ class StockService
         if (! $corresponde) {
             throw new DomainException('A chave de idempotência já foi utilizada noutro movimento.');
         }
+
         return $existente;
     }
 
@@ -200,6 +210,7 @@ class StockService
     {
         $sinal = $valor < 0 ? '-' : '';
         $absoluto = abs($valor);
+
         return $sinal.intdiv($absoluto, 1000).'.'.str_pad((string) ($absoluto % 1000), 3, '0', STR_PAD_LEFT);
     }
 }
