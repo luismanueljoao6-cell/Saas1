@@ -20,6 +20,11 @@ class ArmazemInventario extends Model
         'armazem_id',
         'aberto_por',
         'concluido_por',
+        'submetido_por',
+        'submetido_em',
+        'rejeitado_por',
+        'rejeitado_em',
+        'motivo_rejeicao',
         'estado',
         'observacoes',
         'aberto_em',
@@ -31,6 +36,8 @@ class ArmazemInventario extends Model
         return [
             'aberto_em' => 'datetime',
             'concluido_em' => 'datetime',
+            'submetido_em' => 'datetime',
+            'rejeitado_em' => 'datetime',
         ];
     }
 
@@ -57,5 +64,15 @@ class ArmazemInventario extends Model
     public function utilizadorConclusao(): BelongsTo
     {
         return $this->belongsTo(User::class, 'concluido_por');
+    }
+
+    public function utilizadorSubmissao(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'submetido_por');
+    }
+
+    public function utilizadorRejeicao(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rejeitado_por');
     }
 }
