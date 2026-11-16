@@ -178,3 +178,38 @@ O módulo passa a disponibilizar sessões de inventário físico por armazém:
 - A aprovação aplica apenas diferenças não nulas, com movimentos imutáveis e idempotentes.
 - O comando `php artisan core:provisionar-servicos` repara permissões de empresas existentes; o provisionador foi alterado para acrescentar as permissões do Armazém sem substituir as permissões de outros módulos.
 - Esta entrega ainda depende da CI do PR e de revisão visual; não está ativada em produção.
+
+
+## Decisão de integração do ledger — aplicada nesta fase
+
+A separação dos dois ledgers deixou de ser aceite como estado final. A partir desta integração:
+
+- **Fonte de verdade:** `armazem_stock_saldos` e `armazem_stock_movimentos`.
+- **Compatibilidade:** `stock_saldos` passa a ser apenas uma projeção agregada (soma de todos os armazéns); não deve receber escritas de negócio independentes.
+- **Vendas/faturas e compras recebidas:** os fluxos legados que ainda não transportam `armazem_id` são encaminhados pelo `StockService` para o armazém principal ativo da empresa. A saída/entrada continua a usar a chave idempotente do documento/linha.
+- **Inventários e transferências:** continuam a movimentar o armazém explicitamente selecionado. Cada movimento atualiza a projeção agregada na mesma transação.
+- **Ajustes chamados pela API antiga:** representam a contagem física do armazém principal, não a contagem do total consolidado da empresa.
+- **Precisão:** agregações são feitas em milésimos inteiros; não se convertem quantidades para `float`.
+
+### Reconciliação antes do cutover
+
+A migração `2026_11_16_000001_unificar_saldo_legado_com_armazens` faz uma verificação prévia de todos os pares empresa/produto:
+
+1. Se ainda não existir qualquer saldo por armazém, copia o saldo legado para o armazém principal.
+2. Se já existirem saldos por armazém, exige que a soma seja exatamente igual ao saldo legado.
+3. Se encontrar qualquer divergência, aborta antes de escrever e identifica os pares que precisam de reconciliação manual. Não soma os dois valores nem escolhe silenciosamente um deles.
+4. Depois da reconciliação, atualiza a tabela antiga como projeção agregada.
+
+A reversão automática desta migração é intencionalmente desativada porque os saldos podem já ter recebido movimentos reais. Antes de produção, executar a migração numa cópia da base de dados e confirmar que não há divergências. A falha da migração é um bloqueio de deploy, não uma razão para ignorar a diferença.
+
+### Evolução posterior
+
+A escolha do armazém principal é o comportamento de compatibilidade para documentos antigos. Uma fase posterior pode adicionar `armazem_id` explícito a faturas e compras, com seleção e snapshot no documento, sem alterar a regra desta fase nem permitir que o cliente envie um armazém de outra empresa. Até essa fase, o armazém principal é o destino/origem determinístico.
+
+### Verificações de aceitação desta integração
+
+- Compra recebida e fatura emitida movimentam o ledger por armazém através do adaptador central.
+- Operações de inventário e transferência atualizam o mesmo saldo consolidado.
+- A soma dos saldos por armazém corresponde à projeção legada após cada movimento.
+- Repetição idempotente não cria movimento duplicado.
+- Divergência entre os dois modelos bloqueia a migração antes de qualquer alteração de saldo.
