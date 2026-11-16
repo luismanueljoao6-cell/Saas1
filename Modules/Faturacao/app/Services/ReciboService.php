@@ -78,7 +78,7 @@ class ReciboService
         }
 
         if (! in_array($meioPagamento, self::MEIOS_PAGAMENTO, true)) {
-            throw new \InvalidArgumentException('Meio de pagamento inválido. Usa dinheiro, transferencia, multicaixa ou outro.');
+            throw new \InvalidArgumentException("Meio de pagamento inválido: '{$meioPagamento}'. Usa dinheiro, transferencia, multicaixa ou outro.");
         }
 
         // A regra vive no serviço (não só nos FormRequests): qualquer módulo que emita recibos tem a mesma garantia.
