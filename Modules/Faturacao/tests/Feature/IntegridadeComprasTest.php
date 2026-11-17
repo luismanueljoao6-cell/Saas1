@@ -80,6 +80,25 @@ class IntegridadeComprasTest extends TestCase
         $this->fail('A base de dados devia impedir a associação ou eliminação.');
     }
 
+
+    protected function linhaCompra(int $empresaId, int $compraId, Produto $produto): int
+    {
+        return (int) DB::table('compra_linhas')->insertGetId([
+            'empresa_id' => $empresaId,
+            'compra_id' => $compraId,
+            'produto_id' => $produto->id,
+            'descricao' => $produto->nome,
+            'quantidade' => '1.000',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14.00',
+            'subtotal' => '100.00',
+            'valor_iva' => '14.00',
+            'total' => '114.00',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     public function test_compra_nao_pode_referenciar_fornecedor_de_outra_empresa(): void
     {
         $fornecedorB = $this->fornecedor($this->empresaB);
@@ -161,4 +180,43 @@ class IntegridadeComprasTest extends TestCase
 
         $this->assertSame(1, DB::table('compras')->where('empresa_id', $this->empresaA->id)->count());
     }
+
+    public function test_fornecedor_com_compra_historica_nao_pode_ser_eliminado(): void
+    {
+        $fornecedor = $this->fornecedor($this->empresaA);
+        $compraId = $this->compra($this->empresaA, $fornecedor, 'CMP-FORNECEDOR-RETIDO');
+
+        $this->assertViolacao(fn () => DB::table('fornecedores')->where('id', $fornecedor->id)->delete());
+
+        $this->assertSame(1, DB::table('compras')->where('id', $compraId)->count());
+        $this->assertSame(1, DB::table('fornecedores')->where('id', $fornecedor->id)->count());
+    }
+
+    public function test_produto_com_linha_de_compra_historica_nao_pode_ser_eliminado(): void
+    {
+        $fornecedor = $this->fornecedor($this->empresaA);
+        $produto = $this->produto($this->empresaA);
+        $compraId = $this->compra($this->empresaA, $fornecedor, 'CMP-PRODUTO-RETIDO');
+        $linhaId = $this->linhaCompra($this->empresaA->id, $compraId, $produto);
+
+        $this->assertViolacao(fn () => DB::table('produtos')->where('id', $produto->id)->delete());
+
+        $this->assertSame(1, DB::table('compra_linhas')->where('id', $linhaId)->count());
+        $this->assertSame(1, DB::table('produtos')->where('id', $produto->id)->count());
+    }
+
+    public function test_compra_com_linhas_historicas_nao_pode_ser_eliminada(): void
+    {
+        $fornecedor = $this->fornecedor($this->empresaA);
+        $produto = $this->produto($this->empresaA);
+        $compraId = $this->compra($this->empresaA, $fornecedor, 'CMP-LINHAS-RETIDAS');
+        $linhaId = $this->linhaCompra($this->empresaA->id, $compraId, $produto);
+
+        $this->assertViolacao(fn () => DB::table('compras')->where('id', $compraId)->delete());
+
+        $this->assertSame(1, DB::table('compras')->where('id', $compraId)->count());
+        $this->assertSame(1, DB::table('compra_linhas')->where('id', $linhaId)->count());
+    }
+
+
 }
