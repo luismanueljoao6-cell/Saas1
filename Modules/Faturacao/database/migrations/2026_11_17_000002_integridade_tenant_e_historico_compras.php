@@ -14,9 +14,7 @@ return new class extends Migration
         Schema::table('fornecedores', function (Blueprint $table) {
             $table->unique(['empresa_id', 'id'], 'fornecedores_empresa_id_id_unique');
         });
-        Schema::table('produtos', function (Blueprint $table) {
-            $table->unique(['empresa_id', 'id'], 'produtos_empresa_id_id_unique');
-        });
+        $this->garantirIndiceUnico('produtos', ['empresa_id', 'id'], 'produtos_empresa_id_id_unique');
         Schema::table('compras', function (Blueprint $table) {
             $table->unique(['empresa_id', 'id'], 'compras_empresa_id_id_unique');
         });
@@ -63,12 +61,34 @@ return new class extends Migration
         Schema::table('compras', function (Blueprint $table) {
             $table->dropUnique('compras_empresa_id_id_unique');
         });
-        Schema::table('produtos', function (Blueprint $table) {
-            $table->dropUnique('produtos_empresa_id_id_unique');
-        });
+        if ($this->indiceExiste('produtos', 'produtos_empresa_id_id_unique')) {
+            Schema::table('produtos', function (Blueprint $table) {
+                $table->dropUnique('produtos_empresa_id_id_unique');
+            });
+        }
         Schema::table('fornecedores', function (Blueprint $table) {
             $table->dropUnique('fornecedores_empresa_id_id_unique');
         });
+    }
+
+    protected function garantirIndiceUnico(string $tabela, array $colunas, string $nome): void
+    {
+        $existe = collect(Schema::getIndexes($tabela))->contains(
+            fn (array $indice): bool => ($indice['unique'] ?? false) && ($indice['columns'] ?? []) === $colunas
+        );
+
+        if (! $existe) {
+            Schema::table($tabela, function (Blueprint $table) use ($colunas, $nome) {
+                $table->unique($colunas, $nome);
+            });
+        }
+    }
+
+    protected function indiceExiste(string $tabela, string $nome): bool
+    {
+        return collect(Schema::getIndexes($tabela))->contains(
+            fn (array $indice): bool => ($indice['name'] ?? null) === $nome
+        );
     }
 
     protected function validarDadosExistentes(): void
