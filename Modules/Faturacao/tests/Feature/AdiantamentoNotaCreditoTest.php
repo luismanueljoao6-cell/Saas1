@@ -172,6 +172,52 @@ class AdiantamentoNotaCreditoTest extends TestCase
         $notas->emitir($rascunho);
     }
 
+    public function test_creditos_parciais_acumulados_nao_podem_ultrapassar_o_total_da_fatura(): void
+    {
+        $fatura = $this->faturaFinal();
+        $notas = app(NotaCreditoDebitoService::class);
+
+        $primeira = $notas->emitir($notas->criarRascunho(
+            $this->empresa->id,
+            $this->cliente->id,
+            'credito',
+            'Primeira correção parcial',
+            $this->linhaNc('500.00'),
+            $fatura->id,
+        ));
+        $segunda = $notas->emitir($notas->criarRascunho(
+            $this->empresa->id,
+            $this->cliente->id,
+            'credito',
+            'Segunda correção parcial',
+            $this->linhaNc('500.00'),
+            $fatura->id,
+        ));
+
+        $this->assertSame('emitida', $primeira->estado);
+        $this->assertSame('emitida', $segunda->estado);
+        $this->assertSame(2, DB::table('notas_credito_debito')
+            ->where('empresa_id', $this->empresa->id)
+            ->where('fatura_id', $fatura->id)
+            ->where('tipo', 'credito')
+            ->where('estado', 'emitida')
+            ->count());
+
+        $terceira = $notas->criarRascunho(
+            $this->empresa->id,
+            $this->cliente->id,
+            'credito',
+            'Terceira correção parcial',
+            $this->linhaNc('1.00'),
+            $fatura->id,
+        );
+
+        $this->expectException(\\DomainException::class);
+        $this->expectExceptionMessage('total creditado excede');
+
+        $notas->emitir($terceira);
+    }
+
     public function test_adiantamento_anulado_nao_pode_ser_abatido(): void
     {
         $fa = $this->adiantamentoRecebido();
