@@ -378,6 +378,7 @@ class ProjetoMusical extends Model
             return (object) [
                 'id' => (int) $fatura->id,
                 'tipo' => $fatura->pivot->tipo,
+                'tipo_documento' => $fatura->tipoDocumentoFiscal(),
                 'total' => Dinheiro::centimos($fatura->valor_total),
                 'sem_iva' => Dinheiro::centimos($fatura->valor_sem_iva),
                 'creditado' => (int) $resumo['creditado'],
@@ -390,14 +391,29 @@ class ProjetoMusical extends Model
         })->values();
     }
 
+    /**
+     * FA documenta um adiantamento, não uma segunda venda do pacote.
+     * A venda contratual é reconhecida pela FT; somar FA + FT integral
+     * duplicaria o valor faturado. Documentos históricos sem tipo continuam
+     * a ser tratados como FT por Fatura::tipoDocumentoFiscal().
+     */
+    protected function resumosDeFaturasDeVenda(): Collection
+    {
+        return $this->resumoDasFaturas()
+            ->filter(fn (object $f) => $f->tipo_documento === 'FT')
+            ->values();
+    }
+
     public function faturadoCentimos(): int
     {
-        return $this->resumoDasFaturas()->sum(fn (object $f) => max(0, $f->total + $f->debitado - $f->creditado));
+        return $this->resumosDeFaturasDeVenda()
+            ->sum(fn (object $f) => max(0, $f->total + $f->debitado - $f->creditado));
     }
 
     public function faturadoSemIvaCentimos(): int
     {
-        return $this->resumoDasFaturas()->sum(fn (object $f) => max(0, $f->sem_iva + $f->debitado_sem_iva - $f->creditado_sem_iva));
+        return $this->resumosDeFaturasDeVenda()
+            ->sum(fn (object $f) => max(0, $f->sem_iva + $f->debitado_sem_iva - $f->creditado_sem_iva));
     }
 
     public function recebidoCentimos(): int
@@ -425,7 +441,9 @@ class ProjetoMusical extends Model
     public function devidoCentimos(): int
     {
         if ($this->tipo_cobranca === 'pacote') {
-            $resumos = $this->resumoDasFaturas();
+            // Ajustes de preço da venda pertencem às FT. NC sobre FA corrigem
+            // o adiantamento, não reduzem automaticamente o preço contratual.
+            $resumos = $this->resumosDeFaturasDeVenda();
             $creditado = $resumos->sum('creditado');
             $debitado = $resumos->sum('debitado');
 
