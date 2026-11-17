@@ -184,6 +184,51 @@ class GatewayFronteiraTest extends TestCase
         app(FaturacaoGateway::class)->resumoDaFatura($faturaB);
     }
 
+    public function test_emitir_fatura_ja_emitida_de_outro_tenant_nao_devolve_o_documento(): void
+    {
+        [$empresaA] = $this->cenario('610000014');
+        [$empresaB, $clienteB] = $this->cenario('610000015');
+        $faturaB = $this->emitirPeloGateway($empresaB, $clienteB, '100.00', '1', '14');
+
+        app(TenantManager::class)->set((int) $empresaA->id);
+
+        $this->expectException(DomainException::class);
+
+        app(FaturacaoGateway::class)->emitirFatura($faturaB);
+    }
+
+    public function test_nao_e_possivel_editar_rascunho_de_outro_tenant(): void
+    {
+        [$empresaA] = $this->cenario('610000016');
+        [$empresaB, $clienteB] = $this->cenario('610000017');
+        $rascunho = app(FaturacaoGateway::class)->criarRascunho($empresaB, $clienteB, [
+            ['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => '100.00', 'taxa_iva' => '14'],
+        ]);
+
+        app(TenantManager::class)->set((int) $empresaA->id);
+
+        $this->expectException(DomainException::class);
+
+        app(FaturaService::class)->atualizarRascunho($rascunho, $clienteB, [
+            ['descricao' => 'Alteração indevida', 'quantidade' => 1, 'preco_unitario' => '1.00', 'taxa_iva' => '14'],
+        ]);
+    }
+
+    public function test_nao_e_possivel_eliminar_rascunho_de_outro_tenant(): void
+    {
+        [$empresaA] = $this->cenario('610000018');
+        [$empresaB, $clienteB] = $this->cenario('610000019');
+        $rascunho = app(FaturacaoGateway::class)->criarRascunho($empresaB, $clienteB, [
+            ['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => '100.00', 'taxa_iva' => '14'],
+        ]);
+
+        app(TenantManager::class)->set((int) $empresaA->id);
+
+        $this->expectException(DomainException::class);
+
+        app(FaturaService::class)->eliminarRascunho($rascunho);
+    }
+
     public function test_gateway_recusa_clientes_e_faturas_de_outra_empresa_sem_deixar_rasto(): void
     {
         [$a, $clienteA] = $this->cenario('610000010');
