@@ -360,7 +360,7 @@ class ProjetoMusical extends Model
     {
         $faturas = $this->faturas()
             ->where('faturas.estado', 'emitida')
-            ->get(['faturas.id', 'faturas.empresa_id', 'faturas.valor_total', 'faturas.valor_sem_iva']);
+            ->get(['faturas.id', 'faturas.empresa_id', 'faturas.tipo_documento', 'faturas.valor_total', 'faturas.valor_sem_iva']);
 
         if ($faturas->isEmpty()) {
             return collect();
