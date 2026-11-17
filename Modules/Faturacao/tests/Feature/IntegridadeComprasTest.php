@@ -216,5 +216,4 @@ class IntegridadeComprasTest extends TestCase
         $this->assertSame(1, DB::table('compras')->where('id', $compraId)->count());
         $this->assertSame(1, DB::table('compra_linhas')->where('id', $linhaId)->count());
     }
-
 }
