@@ -212,7 +212,7 @@ class AdiantamentoNotaCreditoTest extends TestCase
             $fatura->id,
         );
 
-        $this->expectException(\\DomainException::class);
+        $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('total creditado excede');
 
         $notas->emitir($terceira);
