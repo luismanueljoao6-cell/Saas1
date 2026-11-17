@@ -1,19 +1,19 @@
 <?php
 
-namespace Tests\\Feature;
+namespace Tests\Feature;
 
-use Illuminate\\Database\\QueryException;
-use Illuminate\\Foundation\\Testing\\RefreshDatabase;
-use Illuminate\\Support\\Facades\\DB;
-use Modules\\Armazem\\Models\\Armazem;
-use Modules\\Armazem\\Models\\ArmazemTransferencia;
-use Modules\\Armazem\\Services\\ArmazemService;
-use Modules\\Armazem\\Services\\ArmazemTransferenciaService;
-use Modules\\Core\\Models\\Empresa;
-use Modules\\Core\\Services\\TenantManager;
-use Modules\\Core\\Support\\Servico;
-use Modules\\Faturacao\\Models\\Produto;
-use Tests\\TestCase;
+use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Modules\Armazem\Models\Armazem;
+use Modules\Armazem\Models\ArmazemTransferencia;
+use Modules\Armazem\Services\ArmazemService;
+use Modules\Armazem\Services\ArmazemTransferenciaService;
+use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
+use Modules\Core\Support\Servico;
+use Modules\Faturacao\Models\Produto;
+use Tests\TestCase;
 
 class ArmazemTransferenciaTenantIntegridadeTest extends TestCase
 {
@@ -87,7 +87,7 @@ class ArmazemTransferenciaTenantIntegridadeTest extends TestCase
     public function test_transferencia_nao_pode_referenciar_armazem_de_outra_empresa(): void
     {
         [$empresaA, $origemA] = $this->preparar('630100301');
-        [$empresaB, $origemB] = $this->preparar('630100302');
+        [, $origemB] = $this->preparar('630100302');
 
         $this->assertViolacao(fn () => DB::table('armazem_transferencias')->insert([
             'empresa_id' => $empresaA->id,
@@ -103,7 +103,7 @@ class ArmazemTransferenciaTenantIntegridadeTest extends TestCase
     public function test_linha_de_transferencia_nao_pode_referenciar_produto_de_outra_empresa(): void
     {
         [$empresaA, $origemA, $destinoA, $produtoA] = $this->preparar('630100303');
-        [$empresaB, , , $produtoB] = $this->preparar('630100304');
+        [, , , $produtoB] = $this->preparar('630100304');
         $transferencia = $this->transferencia($empresaA, $origemA, $destinoA, $produtoA);
 
         $this->assertViolacao(fn () => DB::table('armazem_transferencia_linhas')->insert([
@@ -162,7 +162,6 @@ class ArmazemTransferenciaTenantIntegridadeTest extends TestCase
         $transferenciaA = $this->transferencia($empresaA, $origemA, $destinoA, $produtoA);
         $transferenciaB = $this->transferencia($empresaB, $origemB, $destinoB, $produtoB);
         $rececaoB = $this->rececao($empresaB, $transferenciaB);
-        $linhaB = $transferenciaB->linhas->first();
 
         $this->assertViolacao(fn () => DB::table('armazem_transferencia_rececao_linhas')->insert([
             'empresa_id' => $empresaA->id,
