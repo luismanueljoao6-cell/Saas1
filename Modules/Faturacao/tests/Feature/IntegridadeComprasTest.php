@@ -80,7 +80,6 @@ class IntegridadeComprasTest extends TestCase
         $this->fail('A base de dados devia impedir a associação ou eliminação.');
     }
 
-
     protected function linhaCompra(int $empresaId, int $compraId, Produto $produto): int
     {
         return (int) DB::table('compra_linhas')->insertGetId([
