@@ -2,6 +2,7 @@
 
 namespace Modules\EstudioMusica\Models;
 
+use DomainException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -10,9 +11,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
 use Modules\Core\Models\User;
 use Modules\Core\Traits\BelongsToTenant;
+use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
-use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Models\Recibo;
 use Modules\Faturacao\Support\Dinheiro;
 
@@ -290,7 +291,7 @@ class ProjetoMusical extends Model
      * sinal / o saldo já foram faturados — um sinal anulado por nota de crédito pode (e tem de
      * poder) ser emitido outra vez.
      *
-     * @return Collection<int, object{id: int, tipo: ?string, total: int, sem_iva: int, creditado: int, creditado_sem_iva: int}>
+     * @return Collection<int, object{id: int, tipo: ?string, total: int, sem_iva: int, creditado: int, creditado_sem_iva: int, debitado: int, debitado_sem_iva: int, recebido: int, abatido: int}>
      */
     public function faturasAtivas(?string $tipo = null): Collection
     {
@@ -299,32 +300,24 @@ class ProjetoMusical extends Model
             ->values();
     }
 
-    /** Quanto falta receber de UMA fatura (cêntimos): total − notas de crédito − recibos emitidos. */
+    /** Saldo fiscal de UMA fatura (cêntimos), incluindo todos os movimentos reconhecidos pela Faturação. */
     public function saldoDaFaturaCentimos(Fatura $fatura): int
     {
-        $creditado = NotaCreditoDebito::withoutGlobalScopes()
-            ->where('empresa_id', $this->empresa_id)
-            ->where('fatura_id', $fatura->id)
-            ->where('tipo', 'credito')
-            ->where('estado', 'emitida')
-            ->get(['valor_total'])
-            ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_total));
+        if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
+            throw new DomainException('A fatura não pertence à empresa deste projeto.');
+        }
 
-        $recebido = Recibo::withoutGlobalScopes()
-            ->where('empresa_id', $this->empresa_id)
-            ->where('fatura_id', $fatura->id)
-            ->where('estado', 'emitido')
-            ->get(['valor'])
-            ->sum(fn ($recibo) => Dinheiro::centimos($recibo->valor));
-
-        return max(0, Dinheiro::centimos($fatura->valor_total) - $creditado - $recebido);
+        // O saldo fiscal é autoridade exclusiva da Faturação: inclui recibos,
+        // NC/ND e abatimentos de adiantamentos, sem replicar as suas consultas.
+        return app(FaturacaoGateway::class)
+            ->saldoEmCentimos($fatura);
     }
 
     /**
      * Situação de cada fatura emitida do projeto, para o ecrã: total, creditado, recebido e
      * o que falta (em Kz). Uma fatura totalmente creditada fica com `em_falta` 0.
      *
-     * @return Collection<int, object{fatura: Fatura, tipo: ?string, total: float, creditado: float, recebido: float, em_falta: float}>
+     * @return Collection<int, object{fatura: Fatura, tipo: ?string, total: float, creditado: float, debitado: float, recebido: float, em_falta: float}>
      */
     public function situacaoDasFaturas(): Collection
     {
@@ -337,33 +330,23 @@ class ProjetoMusical extends Model
             return collect();
         }
 
-        $creditos = NotaCreditoDebito::withoutGlobalScopes()
-            ->where('empresa_id', $this->empresa_id)
-            ->whereIn('fatura_id', $faturas->pluck('id'))
-            ->where('tipo', 'credito')
-            ->where('estado', 'emitida')
-            ->get(['fatura_id', 'valor_total'])
-            ->groupBy('fatura_id');
+        $gateway = app(FaturacaoGateway::class);
 
-        $recibos = Recibo::withoutGlobalScopes()
-            ->where('empresa_id', $this->empresa_id)
-            ->whereIn('fatura_id', $faturas->pluck('id'))
-            ->where('estado', 'emitido')
-            ->get(['fatura_id', 'valor'])
-            ->groupBy('fatura_id');
+        return $faturas->map(function (Fatura $fatura) use ($gateway) {
+            if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
+                throw new DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
+            }
 
-        return $faturas->map(function (Fatura $fatura) use ($creditos, $recibos) {
-            $total = Dinheiro::centimos($fatura->valor_total);
-            $creditado = $creditos->get($fatura->id, collect())->sum(fn ($n) => Dinheiro::centimos($n->valor_total));
-            $recebido = $recibos->get($fatura->id, collect())->sum(fn ($r) => Dinheiro::centimos($r->valor));
+            $resumo = $gateway->resumoDaFatura($fatura);
 
             return (object) [
                 'fatura' => $fatura,
                 'tipo' => $fatura->pivot->tipo,
-                'total' => $this->emKwanzas($total),
-                'creditado' => $this->emKwanzas($creditado),
-                'recebido' => $this->emKwanzas($recebido),
-                'em_falta' => $this->emKwanzas(max(0, $total - $creditado - $recebido)),
+                'total' => (float) $fatura->valor_total,
+                'creditado' => $this->emKwanzas((int) $resumo['creditado']),
+                'debitado' => $this->emKwanzas((int) $resumo['debitado']),
+                'recebido' => $this->emKwanzas((int) $resumo['recebido']),
+                'em_falta' => $this->emKwanzas(max(0, (int) $resumo['saldo'])),
             ];
         })->values();
     }
@@ -371,68 +354,86 @@ class ProjetoMusical extends Model
     /**
      * Faturas EMITIDAS do projeto com o que já foi creditado sobre cada uma (cêntimos).
      *
-     * @return Collection<int, object{id: int, tipo: ?string, total: int, sem_iva: int, creditado: int, creditado_sem_iva: int}>
+     * @return Collection<int, object{id: int, tipo: ?string, total: int, sem_iva: int, creditado: int, creditado_sem_iva: int, debitado: int, debitado_sem_iva: int, recebido: int, abatido: int}>
      */
     protected function resumoDasFaturas(): Collection
     {
         $faturas = $this->faturas()
             ->where('faturas.estado', 'emitida')
-            ->get(['faturas.id', 'faturas.valor_total', 'faturas.valor_sem_iva']);
+            ->get(['faturas.id', 'faturas.empresa_id', 'faturas.tipo_documento', 'faturas.valor_total', 'faturas.valor_sem_iva']);
 
         if ($faturas->isEmpty()) {
             return collect();
         }
 
-        $creditos = NotaCreditoDebito::withoutGlobalScopes()
-            ->where('empresa_id', $this->empresa_id)
-            ->whereIn('fatura_id', $faturas->pluck('id'))
-            ->where('tipo', 'credito')
-            ->where('estado', 'emitida')
-            ->get(['fatura_id', 'valor_total', 'valor_sem_iva'])
-            ->groupBy('fatura_id');
+        $gateway = app(FaturacaoGateway::class);
 
-        return $faturas->map(function (Fatura $fatura) use ($creditos) {
-            $notas = $creditos->get($fatura->id, collect());
+        return $faturas->map(function (Fatura $fatura) use ($gateway) {
+            if ((int) $fatura->empresa_id !== (int) $this->empresa_id) {
+                throw new DomainException('Foi encontrada uma fatura de outra empresa associada ao projeto.');
+            }
+
+            $resumo = $gateway->resumoDaFatura($fatura);
 
             return (object) [
                 'id' => (int) $fatura->id,
                 'tipo' => $fatura->pivot->tipo,
+                'tipo_documento' => $fatura->tipoDocumentoFiscal(),
                 'total' => Dinheiro::centimos($fatura->valor_total),
                 'sem_iva' => Dinheiro::centimos($fatura->valor_sem_iva),
-                'creditado' => $notas->sum(fn ($n) => Dinheiro::centimos($n->valor_total)),
-                'creditado_sem_iva' => $notas->sum(fn ($n) => Dinheiro::centimos($n->valor_sem_iva)),
+                'creditado' => (int) $resumo['creditado'],
+                'debitado' => (int) $resumo['debitado'],
+                'debitado_sem_iva' => (int) $resumo['debitado_sem_iva'],
+                'recebido' => (int) $resumo['recebido'],
+                'abatido' => (int) $resumo['abatido'],
+                'creditado_sem_iva' => (int) $resumo['creditado_sem_iva'],
             ];
         })->values();
     }
 
+    /**
+     * FA documenta um adiantamento, não uma segunda venda do pacote.
+     * A venda contratual é reconhecida pela FT; somar FA + FT integral
+     * duplicaria o valor faturado. Documentos históricos sem tipo continuam
+     * a ser tratados como FT por Fatura::tipoDocumentoFiscal().
+     */
+    protected function resumosDeFaturasDeVenda(): Collection
+    {
+        return $this->resumoDasFaturas()
+            ->filter(fn (object $f) => $f->tipo_documento === 'FT')
+            ->values();
+    }
+
     public function faturadoCentimos(): int
     {
-        return $this->resumoDasFaturas()->sum(fn (object $f) => max(0, $f->total - $f->creditado));
+        return $this->resumosDeFaturasDeVenda()
+            ->sum(fn (object $f) => max(0, $f->total + $f->debitado - $f->creditado));
     }
 
     public function faturadoSemIvaCentimos(): int
     {
-        return $this->resumoDasFaturas()->sum(fn (object $f) => max(0, $f->sem_iva - $f->creditado_sem_iva));
+        return $this->resumosDeFaturasDeVenda()
+            ->sum(fn (object $f) => max(0, $f->sem_iva + $f->debitado_sem_iva - $f->creditado_sem_iva));
     }
 
     public function recebidoCentimos(): int
     {
-        $viaProjeto = $this->recibos()
-            ->where('recibos.estado', 'emitido')
-            ->get(['recibos.id', 'recibos.valor']);
-
+        $resumos = $this->resumoDasFaturas();
+        $recebidoFiscal = $resumos->sum('recebido');
         $idsFaturas = $this->faturas()->pluck('faturas.id');
 
-        $viaFatura = $idsFaturas->isEmpty()
-            ? collect()
-            : Recibo::withoutGlobalScopes()
-                ->where('empresa_id', $this->empresa_id)
-                ->whereIn('fatura_id', $idsFaturas)
-                ->where('estado', 'emitido')
-                ->get(['id', 'valor']);
+        // Compatibilidade histórica: recibos do projeto sem fatura associada
+        // ou ligados a uma fatura antiga que não está na relação fiscal actual.
+        // Recibos das faturas relacionadas já estão incluídos no gateway.
+        $recibosLegados = $this->recibos()
+            ->where('recibos.estado', 'emitido')
+            ->where(function ($query) use ($idsFaturas) {
+                $query->whereNull('recibos.fatura_id')
+                    ->orWhereNotIn('recibos.fatura_id', $idsFaturas);
+            })
+            ->get(['recibos.id', 'recibos.valor']);
 
-        // Um recibo ligado pelas duas vias conta uma só vez.
-        return $viaProjeto->concat($viaFatura)
+        return $recebidoFiscal + $recibosLegados
             ->unique('id')
             ->sum(fn ($recibo) => Dinheiro::centimos($recibo->valor));
     }
@@ -440,9 +441,13 @@ class ProjetoMusical extends Model
     public function devidoCentimos(): int
     {
         if ($this->tipo_cobranca === 'pacote') {
-            $creditado = $this->resumoDasFaturas()->sum('creditado');
+            // Ajustes de preço da venda pertencem às FT. NC sobre FA corrigem
+            // o adiantamento, não reduzem automaticamente o preço contratual.
+            $resumos = $this->resumosDeFaturasDeVenda();
+            $creditado = $resumos->sum('creditado');
+            $debitado = $resumos->sum('debitado');
 
-            return max(0, $this->pacoteComIvaCentimos() - $creditado, $this->faturadoCentimos());
+            return max(0, $this->pacoteComIvaCentimos() + $debitado - $creditado, $this->faturadoCentimos());
         }
 
         return $this->faturadoCentimos();

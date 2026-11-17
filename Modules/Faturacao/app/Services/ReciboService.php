@@ -90,6 +90,14 @@ class ReciboService
             throw new \InvalidArgumentException('Um recibo de regularização (RG) tem de referir a fatura que regulariza.');
         }
 
+        // O builder bloqueia RG em qualquer ambiente enquanto não existirem
+        // alocações fiscais persistidas por linha. Permitir a emissão com AGT
+        // inactiva criaria um documento assinado que a própria aplicação não
+        // consegue submeter posteriormente; por isso o bloqueio é global.
+        if ($tipo === 'RG') {
+            throw new \DomainException('A emissão de RG está temporariamente bloqueada até existir alocação fiscal persistida por linha de origem e reconstrução do paymentReceipt a partir dessas alocações.');
+        }
+
         // O modelo Recibo emite RC. A especificação AGT exige "lines" para RC,
         // enquanto "paymentReceipt" só é permitido para AR/RG. Como este modelo
         // ainda não guarda linhas fiscais próprias nem selecciona RG, bloquear a
@@ -196,14 +204,36 @@ class ReciboService
         return $this->resumoDaFatura($fatura)['saldo'];
     }
 
-    /** @return array{recebido: int, creditado: int, abatido: int, saldo: int} em cêntimos */
+    /** @return array{recebido: int, creditado: int, creditado_sem_iva: int, debitado: int, debitado_sem_iva: int, abatido: int, saldo: int} em cêntimos */
     public function resumoDaFatura(Fatura $fatura): array
     {
+        GuardaEmissao::garantirTenant((int) $fatura->empresa_id);
+
+        // Não confiar nos totais de uma instância recebida pelo chamador:
+        // reler o documento canónico dentro da empresa proprietária.
+        $fatura = Fatura::withoutGlobalScopes()
+            ->where('empresa_id', $fatura->empresa_id)
+            ->findOrFail($fatura->id);
+
         [$recebido, $creditado, $debitado, $abatido] = $this->recebidoECreditado((int) $fatura->empresa_id, (int) $fatura->id);
+
+        $notas = NotaCreditoDebito::withoutGlobalScopes()
+            ->where('empresa_id', $fatura->empresa_id)
+            ->where('fatura_id', $fatura->id)
+            ->where('estado', 'emitida')
+            ->get(['tipo', 'valor_sem_iva']);
+
+        $creditadoSemIva = $notas->where('tipo', 'credito')
+            ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_sem_iva));
+        $debitadoSemIva = $notas->where('tipo', 'debito')
+            ->sum(fn ($nota) => Dinheiro::centimos($nota->valor_sem_iva));
 
         return [
             'recebido' => $recebido,
             'creditado' => $creditado,
+            'creditado_sem_iva' => (int) $creditadoSemIva,
+            'debitado' => $debitado,
+            'debitado_sem_iva' => (int) $debitadoSemIva,
             'abatido' => $abatido,
             'saldo' => Dinheiro::centimos($fatura->valor_total) + $debitado - $recebido - $creditado - $abatido,
         ];

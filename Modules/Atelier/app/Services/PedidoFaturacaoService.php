@@ -165,7 +165,16 @@ class PedidoFaturacaoService
                 throw new PedidoException('A fatura final ainda não foi emitida — emite-a no módulo Faturação antes de registar o pagamento.');
             }
 
-            $saldo = Dinheiro::centimos($fatura->valor_total) - Dinheiro::centimos($pedido->valor_sinal);
+            // O sinal legado é um RC sem fatura/FA associada. Não pode ser
+            // subtraído manualmente: o saldo oficial da FT só reconhece recibos,
+            // notas e abatimentos registados no módulo Faturação. Até existir
+            // migração suportada FA→FT, bloquear em vez de emitir um recibo
+            // inferior ao saldo fiscal realmente em aberto.
+            if ($pedido->recibo_sinal_id !== null) {
+                throw new PedidoException('Este pedido tem um sinal legado sem associação fiscal a uma FA. O pagamento final fica bloqueado até o fluxo de adiantamento e abatimento estar disponível.');
+            }
+
+            $saldo = $this->faturacao->saldoEmCentimos($fatura);
 
             if ($saldo <= 0) {
                 throw PedidoException::valorInvalido();

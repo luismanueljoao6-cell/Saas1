@@ -3,7 +3,9 @@
 namespace Modules\EstudioMusica\Tests\Feature;
 
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\EstudioMusica\Models\CupomDesconto;
@@ -12,7 +14,9 @@ use Modules\EstudioMusica\Models\SalaEstudio;
 use Modules\EstudioMusica\Models\SessaoEstudio;
 use Modules\EstudioMusica\Services\FaturacaoEstudioService;
 use Modules\EstudioMusica\Tests\Support\CriaDocumentosFiscais;
+use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\Cliente;
+use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Modules\Faturacao\Services\ReciboService;
 use Tests\TestCase;
@@ -65,6 +69,30 @@ class FaturacaoEstudioTest extends TestCase
     {
         $notas = app(NotaCreditoDebitoService::class);
         $notas->emitir($notas->criarParaAnularFatura($fatura, 'Emitida por engano'));
+    }
+
+    protected function notaDebitoEmitida($fatura, string $valor): NotaCreditoDebito
+    {
+        $numero = $this->proximoNumeroDocumento('ND');
+        $serie = $this->serieDeTeste('ND', (int) $fatura->empresa_id);
+
+        $nota = new NotaCreditoDebito;
+        $nota->forceFill([
+            'empresa_id' => $fatura->empresa_id,
+            'serie_id' => $serie->id,
+            'cliente_id' => $fatura->cliente_id,
+            'fatura_id' => $fatura->id,
+            'tipo' => 'debito',
+            'motivo' => 'Ajuste de teste',
+            'numero_sequencial' => $numero,
+            'numero_documento' => "ND T2026/{$numero}",
+            'estado' => 'emitida',
+            'valor_total' => $valor,
+            'valor_sem_iva' => $valor,
+            'valor_iva' => '0.00',
+        ])->save();
+
+        return $nota;
     }
 
     protected function sessaoConcluida(int $minutos, ?ProjetoMusical $projeto = null, float $precoHora = 5000): SessaoEstudio
@@ -167,6 +195,25 @@ class FaturacaoEstudioTest extends TestCase
         $this->assertTrue($projeto->financeiramenteQuitado());
     }
 
+    public function test_nota_de_debito_aumenta_o_devido_e_o_saldo_do_projeto(): void
+    {
+        $projeto = $this->projeto('hora');
+        $fatura = $this->faturaEmitida($this->empresa->id, $this->cliente->id, 30000);
+        $projeto->faturas()->attach($fatura->id, ['tipo' => 'avulso']);
+        $this->notaDebitoEmitida($fatura, '5000.00');
+        $this->reciboEmitido($fatura, '30000.00');
+
+        $this->assertSame(35000.0, $projeto->valorTotalFaturado());
+        $this->assertSame(31315.79, $projeto->valorTotalFaturadoSemIva());
+        $this->assertSame(35000.0, $projeto->valorDevido());
+        $this->assertSame(30000.0, $projeto->valorTotalRecebido());
+        $situacao = $projeto->situacaoDasFaturas()->first();
+        $this->assertSame(5000.0, $situacao->debitado);
+        $this->assertSame(5000.0, $situacao->em_falta);
+        $this->assertSame(5000.0, $projeto->saldoDevedor());
+        $this->assertFalse($projeto->financeiramenteQuitado());
+    }
+
     public function test_recibo_emitido_no_faturacao_sem_passar_pelo_estudio_tambem_quita(): void
     {
         $projeto = $this->projeto();
@@ -204,6 +251,26 @@ class FaturacaoEstudioTest extends TestCase
         $recibo = $this->faturacao->registrarRecibo($projeto, $fatura, 'multicaixa');
 
         $this->assertSame('25000.00', $recibo->valor);
+        $this->assertTrue($projeto->financeiramenteQuitado());
+    }
+
+    public function test_recibo_por_omissao_usa_saldo_central_apos_credito_e_recebimento_parcial(): void
+    {
+        $projeto = $this->projeto('hora');
+        $fatura = $this->faturaEmitida($this->empresa->id, $this->cliente->id, 30000);
+        $projeto->faturas()->attach($fatura->id, ['tipo' => 'avulso']);
+
+        $this->notaCreditoEmitida($fatura, 5000);
+        app(ReciboService::class)->emitir($this->empresa->id, $this->cliente->id, '10000.00', 'dinheiro', $fatura->id);
+
+        // O saldo oficial da Faturação é 30.000 - 5.000 - 10.000 = 15.000.
+        $recibo = $this->faturacao->registrarRecibo($projeto, $fatura, 'multicaixa');
+
+        $this->assertSame('15000.00', $recibo->valor);
+        $this->assertSame(0, $projeto->saldoDaFaturaCentimos($fatura), 'O saldo por fatura deve vir do resumo central da Faturação.');
+        $situacao = $projeto->situacaoDasFaturas()->first();
+        $this->assertSame(0.0, $situacao->em_falta, 'O ecrã do Estúdio deve apresentar o mesmo saldo central.');
+        $this->assertSame(0.0, $projeto->saldoDevedor());
         $this->assertTrue($projeto->financeiramenteQuitado());
     }
 
@@ -265,6 +332,75 @@ class FaturacaoEstudioTest extends TestCase
         $this->assertSame('5000.00', $fatura->valor_sem_iva);
         $this->assertSame(5700.0, $projeto->valorTotalFaturado());
         $this->assertNull($this->faturacao->cobrarSessao($sessao->fresh()), 'Segunda cobrança da mesma sessão não emite outra fatura.');
+    }
+
+    public function test_base_de_dados_impede_associar_fatura_de_outra_empresa_ao_projeto(): void
+    {
+        $projeto = $this->projeto();
+
+        $outraEmpresa = Empresa::create(['nome_comercial' => 'Outro Estúdio', 'nif' => '400000032']);
+
+        // A criação de modelos tenant-aware respeita o TenantManager ativo.
+        // Sem trocar explicitamente o contexto, forceFill() não contorna o
+        // evento creating de BelongsToTenant e o fixture ficaria na empresa A.
+        $faturaAlheia = app(TenantManager::class)->semTenant(function () use ($outraEmpresa) {
+            $outroCliente = Cliente::create([
+                'empresa_id' => $outraEmpresa->id,
+                'nome' => 'Outro Artista',
+            ]);
+
+            return $this->faturaEmitida($outraEmpresa->id, $outroCliente->id, 1140);
+        });
+
+        $this->assertSame((int) $this->empresa->id, (int) $projeto->empresa_id);
+        $this->assertSame((int) $outraEmpresa->id, (int) $faturaAlheia->empresa_id);
+
+        $this->expectException(QueryException::class);
+
+        DB::table('projeto_musical_fatura')->insert([
+            'projeto_musical_id' => $projeto->id,
+            'fatura_id' => $faturaAlheia->id,
+            'tipo' => 'avulso',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    public function test_fa_e_ft_integral_nao_sao_contadas_como_duas_vendas_no_pacote(): void
+    {
+        $projeto = $this->projeto();
+        $gateway = app(FaturacaoGateway::class);
+
+        $fa = $gateway->emitirFatura($gateway->criarRascunhoAdiantamento(
+            $this->empresa,
+            $this->cliente,
+            [['descricao' => 'Adiantamento do pacote', 'quantidade' => 1, 'preco_unitario' => '40000.00', 'taxa_iva' => '14']],
+        ));
+        $projeto->faturas()->attach($fa->id, ['tipo' => 'sinal']);
+        $gateway->emitirRecibo($this->empresa->id, $this->cliente->id, '45600.00', 'multicaixa', $fa->id);
+
+        $this->assertSame('FA', $fa->tipoDocumentoFiscal());
+        $this->assertSame(0, $projeto->faturadoCentimos(), 'A FA é um adiantamento, não uma segunda venda do pacote.');
+        $this->assertSame(4560000, $projeto->recebidoCentimos());
+        $this->assertSame(11400000, $projeto->devidoCentimos());
+        $this->assertSame(6840000, $projeto->devidoCentimos() - $projeto->recebidoCentimos());
+
+        $ft = $gateway->emitirFatura($gateway->criarRascunho(
+            $this->empresa,
+            $this->cliente,
+            [['descricao' => 'Pacote completo', 'quantidade' => 1, 'preco_unitario' => '100000.00', 'taxa_iva' => '14']],
+        ));
+        $projeto->faturas()->attach($ft->id, ['tipo' => 'saldo_final']);
+
+        $gateway->abaterAdiantamento($this->empresa->id, $fa->id, $ft->id, '45600.00', 'estudio-fa-ft-0001');
+        $gateway->emitirRecibo($this->empresa->id, $this->cliente->id, '68400.00', 'transferencia', $ft->id);
+
+        $this->assertSame(11400000, $projeto->faturadoCentimos(), 'A venda integral é contada uma única vez, pela FT.');
+        $this->assertSame(11400000, $projeto->recebidoCentimos(), 'O abatimento não é contado como novo recebimento.');
+        $this->assertSame(11400000, $projeto->devidoCentimos());
+        $this->assertSame(0.0, $projeto->saldoDevedor());
+        $this->assertSame(0, $gateway->saldoEmCentimos($ft));
+        $this->assertTrue($projeto->financeiramenteQuitado());
     }
 
     public function test_sinal_nao_e_emitido_como_ft_quando_agt_esta_ativa(): void

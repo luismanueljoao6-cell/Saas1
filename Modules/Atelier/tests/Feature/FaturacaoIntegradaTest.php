@@ -206,28 +206,39 @@ class FaturacaoIntegradaTest extends TestCase
         $this->servico()->registarPagamentoFinal($pedido->fresh(), 'dinheiro');
     }
 
-    public function test_pagamento_final_emite_recibo_com_o_saldo_e_ligado_a_fatura(): void
+    public function test_pagamento_final_com_sinal_legado_sem_fa_e_bloqueado(): void
     {
         [, $cliente] = $this->criarEmpresaComCliente('500000011');
         $pedido = $this->novoPedido($cliente, 10000, [
             ['descricao' => 'Fecho de correr', 'quantidade' => 2, 'valor_unitario' => 500],
         ]);
 
-        $reciboSinal = $this->servico()->registarSinal($pedido, 5000, 'transferencia');
+        $this->servico()->registarSinal($pedido, 5000, 'transferencia');
         $fatura = $this->servico()->gerarFaturaFinalRascunho($pedido);
         app(FaturaService::class)->emitir($fatura);
 
-        // Total 12540 − sinal 5000 = 7540 em falta.
-        $reciboSaldo = $this->servico()->registarPagamentoFinal($pedido, 'multicaixa');
+        try {
+            $this->servico()->registarPagamentoFinal($pedido, 'multicaixa');
+            $this->fail('Não se pode abater manualmente um RC sem FA associada.');
+        } catch (PedidoException $e) {
+            $this->assertStringContainsString('sinal legado', $e->getMessage());
+        }
 
-        $this->assertTrue($reciboSaldo->estaEmitido());
-        $this->assertEquals(7540, $reciboSaldo->valor);
-        $this->assertSame($fatura->id, $reciboSaldo->fatura_id);
-        $this->assertSame($reciboSaldo->id, $pedido->fresh()->recibo_saldo_final_id);
+        $this->assertNull($pedido->fresh()->recibo_saldo_final_id);
+    }
 
-        // Os dois recibos partilham a mesma cadeia: o do saldo encadeia com o do sinal.
-        $this->assertSame(2, $reciboSaldo->numero_sequencial);
-        $this->assertSame($reciboSinal->hash, $reciboSaldo->hash_anterior);
+    public function test_pagamento_final_sem_sinal_usa_saldo_oficial_do_gateway(): void
+    {
+        [, $cliente] = $this->criarEmpresaComCliente('500000013');
+        $pedido = $this->novoPedido($cliente, 10000);
+        $fatura = $this->servico()->gerarFaturaFinalRascunho($pedido);
+        app(FaturaService::class)->emitir($fatura);
+
+        $recibo = $this->servico()->registarPagamentoFinal($pedido, 'multicaixa');
+
+        $this->assertTrue($recibo->estaEmitido());
+        $this->assertEquals(11400, $recibo->valor);
+        $this->assertSame($fatura->id, $recibo->fatura_id);
     }
 
     public function test_pagamento_final_sem_saldo_em_falta_e_rejeitado(): void

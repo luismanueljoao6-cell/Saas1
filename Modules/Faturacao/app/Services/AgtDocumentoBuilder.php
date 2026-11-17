@@ -84,6 +84,13 @@ class AgtDocumentoBuilder
         ];
 
         if ($documento instanceof Recibo) {
+            // Bloqueio defensivo também para RG antigos/importados: o builder legado
+            // usa lineNo=1 e totais globais, sem alocações persistidas por linha.
+            // Não submeter payload fiscal incompleto até a nova estrutura existir.
+            if ($documento->tipoDocumentoFiscal() === 'RG') {
+                throw AgtException::configuracaoInvalida("o recibo RG {$documento->numero_documento} não pode ser enviado: faltam alocações fiscais persistidas por linha de origem.");
+            }
+
             // A AGT só aceita paymentReceipt em AR/RG. RC exige "lines";
             // não se pode enviar o recibo actual (tipo RC) como paymentReceipt.
             if (! in_array($documento->tipoDocumentoFiscal(), ['AR', 'RG'], true)) {

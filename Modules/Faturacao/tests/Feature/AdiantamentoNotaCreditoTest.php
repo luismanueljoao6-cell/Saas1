@@ -2,7 +2,9 @@
 
 namespace Modules\Faturacao\Tests\Feature;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
@@ -85,6 +87,30 @@ class AdiantamentoNotaCreditoTest extends TestCase
         return [['descricao' => 'Correção', 'quantidade' => 1, 'preco_unitario' => $preco, 'taxa_iva' => 14]];
     }
 
+    public function test_base_de_dados_impede_abatimento_com_faturas_de_outra_empresa(): void
+    {
+        $fa = $this->adiantamentoRecebido();
+        $ft = $this->faturaFinal();
+        $outraEmpresa = Empresa::create([
+            'nome_comercial' => 'Outra empresa',
+            'nif' => '5001636871',
+        ]);
+
+        // As FKs simples por ID aceitariam documentos existentes. A FK composta
+        // tem de rejeitar a associação porque as duas faturas pertencem a outra empresa.
+        $this->expectException(QueryException::class);
+
+        DB::table('adiantamento_abatimentos')->insert([
+            'empresa_id' => $outraEmpresa->id,
+            'fatura_adiantamento_id' => $fa->id,
+            'fatura_final_id' => $ft->id,
+            'valor_centimos' => 100,
+            'chave' => 'tenant-cruzado-0001',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     public function test_operacoes_sobre_notas_recusam_empresa_fora_do_tenant_ativo(): void
     {
         $fatura = $this->faturaFinal();
@@ -144,6 +170,52 @@ class AdiantamentoNotaCreditoTest extends TestCase
         $this->expectExceptionMessage('parte já abatida');
 
         $notas->emitir($rascunho);
+    }
+
+    public function test_creditos_parciais_acumulados_nao_podem_ultrapassar_o_total_da_fatura(): void
+    {
+        $fatura = $this->faturaFinal();
+        $notas = app(NotaCreditoDebitoService::class);
+
+        $primeira = $notas->emitir($notas->criarRascunho(
+            $this->empresa->id,
+            $this->cliente->id,
+            'credito',
+            'Primeira correção parcial',
+            $this->linhaNc('500.00'),
+            $fatura->id,
+        ));
+        $segunda = $notas->emitir($notas->criarRascunho(
+            $this->empresa->id,
+            $this->cliente->id,
+            'credito',
+            'Segunda correção parcial',
+            $this->linhaNc('500.00'),
+            $fatura->id,
+        ));
+
+        $this->assertSame('emitida', $primeira->estado);
+        $this->assertSame('emitida', $segunda->estado);
+        $this->assertSame(2, DB::table('notas_credito_debito')
+            ->where('empresa_id', $this->empresa->id)
+            ->where('fatura_id', $fatura->id)
+            ->where('tipo', 'credito')
+            ->where('estado', 'emitida')
+            ->count());
+
+        $terceira = $notas->criarRascunho(
+            $this->empresa->id,
+            $this->cliente->id,
+            'credito',
+            'Terceira correção parcial',
+            $this->linhaNc('1.00'),
+            $fatura->id,
+        );
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('total creditado excede');
+
+        $notas->emitir($terceira);
     }
 
     public function test_adiantamento_anulado_nao_pode_ser_abatido(): void
