@@ -1,9 +1,9 @@
 <?php
 
-use Illuminate\\Database\\Migrations\\Migration;
-use Illuminate\\Database\\Schema\\Blueprint;
-use Illuminate\\Support\\Facades\\DB;
-use Illuminate\\Support\\Facades\\Schema;
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -14,9 +14,9 @@ return new class extends Migration
         Schema::table('armazens', function (Blueprint $table): void {
             $table->unique(['empresa_id', 'id'], 'armazens_empresa_id_id_unique');
         });
-        Schema::table('produtos', function (Blueprint $table): void {
-            $table->unique(['empresa_id', 'id'], 'produtos_empresa_id_id_unique');
-        });
+
+        $this->garantirIndiceUnico('produtos', ['empresa_id', 'id'], 'armazem_transferencias_produto_empresa_id_id_unique');
+
         Schema::table('armazem_transferencias', function (Blueprint $table): void {
             $table->unique(['empresa_id', 'id'], 'armazem_transferencias_empresa_id_id_unique');
             $table->foreign(['empresa_id', 'armazem_origem_id'], 'armazem_transferencias_empresa_origem_fk')
@@ -64,12 +64,36 @@ return new class extends Migration
             $table->dropForeign('armazem_transferencias_empresa_destino_fk');
             $table->dropUnique('armazem_transferencias_empresa_id_id_unique');
         });
-        Schema::table('produtos', function (Blueprint $table): void {
-            $table->dropUnique('produtos_empresa_id_id_unique');
-        });
+
+        if ($this->indiceExiste('produtos', 'armazem_transferencias_produto_empresa_id_id_unique')) {
+            Schema::table('produtos', function (Blueprint $table): void {
+                $table->dropUnique('armazem_transferencias_produto_empresa_id_id_unique');
+            });
+        }
+
         Schema::table('armazens', function (Blueprint $table): void {
             $table->dropUnique('armazens_empresa_id_id_unique');
         });
+    }
+
+    protected function garantirIndiceUnico(string $tabela, array $colunas, string $nome): void
+    {
+        $existe = collect(Schema::getIndexes($tabela))->contains(
+            fn (array $indice): bool => ($indice['unique'] ?? false) && ($indice['columns'] ?? []) === $colunas
+        );
+
+        if (! $existe) {
+            Schema::table($tabela, function (Blueprint $table) use ($colunas, $nome): void {
+                $table->unique($colunas, $nome);
+            });
+        }
+    }
+
+    protected function indiceExiste(string $tabela, string $nome): bool
+    {
+        return collect(Schema::getIndexes($tabela))->contains(
+            fn (array $indice): bool => ($indice['name'] ?? null) === $nome
+        );
     }
 
     protected function validarDadosExistentes(): void
