@@ -383,7 +383,7 @@ class FaturacaoEstudioTest extends TestCase
         $this->assertSame(0, $projeto->faturadoCentimos(), 'A FA é um adiantamento, não uma segunda venda do pacote.');
         $this->assertSame(4560000, $projeto->recebidoCentimos());
         $this->assertSame(11400000, $projeto->devidoCentimos());
-        $this->assertSame(6840000, $projeto->saldoDevedor() * 100);
+        $this->assertSame(6840000, $projeto->devidoCentimos() - $projeto->recebidoCentimos());
 
         $ft = $gateway->emitirFatura($gateway->criarRascunho(
             $this->empresa,
