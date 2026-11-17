@@ -11,7 +11,7 @@ use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
-use Modules\Faturacao\Services\NotaCreditoDebitoService;
+use Modules\Faturacao\Services\FaturaService;\nuse Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Modules\Faturacao\Support\Dinheiro;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
