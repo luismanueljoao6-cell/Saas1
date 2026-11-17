@@ -15,6 +15,7 @@ use Modules\EstudioMusica\Models\SessaoEstudio;
 use Modules\EstudioMusica\Services\FaturacaoEstudioService;
 use Modules\EstudioMusica\Tests\Support\CriaDocumentosFiscais;
 use Modules\Faturacao\Models\Cliente;
+use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Modules\Faturacao\Services\ReciboService;
@@ -363,6 +364,43 @@ class FaturacaoEstudioTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    public function test_fa_e_ft_integral_nao_sao_contadas_como_duas_vendas_no_pacote(): void
+    {
+        $projeto = $this->projeto();
+        $gateway = app(FaturacaoGateway::class);
+
+        $fa = $gateway->emitirFatura($gateway->criarRascunhoAdiantamento(
+            $this->empresa,
+            $this->cliente,
+            [['descricao' => 'Adiantamento do pacote', 'quantidade' => 1, 'preco_unitario' => '40000.00', 'taxa_iva' => '14']],
+        ));
+        $projeto->faturas()->attach($fa->id, ['tipo' => 'sinal']);
+        $gateway->emitirRecibo($this->empresa->id, $this->cliente->id, '45600.00', 'multicaixa', $fa->id);
+
+        $this->assertSame('FA', $fa->tipoDocumentoFiscal());
+        $this->assertSame(0, $projeto->faturadoCentimos(), 'A FA é um adiantamento, não uma segunda venda do pacote.');
+        $this->assertSame(4560000, $projeto->recebidoCentimos());
+        $this->assertSame(11400000, $projeto->devidoCentimos());
+        $this->assertSame(6840000, $projeto->saldoDevedor() * 100);
+
+        $ft = $gateway->emitirFatura($gateway->criarRascunho(
+            $this->empresa,
+            $this->cliente,
+            [['descricao' => 'Pacote completo', 'quantidade' => 1, 'preco_unitario' => '100000.00', 'taxa_iva' => '14']],
+        ));
+        $projeto->faturas()->attach($ft->id, ['tipo' => 'saldo_final']);
+
+        $gateway->abaterAdiantamento($this->empresa->id, $fa->id, $ft->id, '45600.00', 'estudio-fa-ft-0001');
+        $gateway->emitirRecibo($this->empresa->id, $this->cliente->id, '68400.00', 'transferencia', $ft->id);
+
+        $this->assertSame(11400000, $projeto->faturadoCentimos(), 'A venda integral é contada uma única vez, pela FT.');
+        $this->assertSame(11400000, $projeto->recebidoCentimos(), 'O abatimento não é contado como novo recebimento.');
+        $this->assertSame(11400000, $projeto->devidoCentimos());
+        $this->assertSame(0.0, $projeto->saldoDevedor());
+        $this->assertSame(0, $gateway->saldoEmCentimos($ft));
+        $this->assertTrue($projeto->financeiramenteQuitado());
     }
 
     public function test_sinal_nao_e_emitido_como_ft_quando_agt_esta_ativa(): void
