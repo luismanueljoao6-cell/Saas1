@@ -71,8 +71,12 @@ class ArmazemStockTenantIntegridadeTest extends TestCase
     {
         try {
             $operacao();
-        } catch (QueryException) {
-            $this->assertTrue(true);
+        } catch (QueryException $exception) {
+            $this->assertMatchesRegularExpression(
+                '/foreign key constraint (?:fails|failed)/i',
+                $exception->getMessage(),
+                'O teste só deve passar quando a FK composta rejeitar a referência inválida.'
+            );
 
             return;
         }
