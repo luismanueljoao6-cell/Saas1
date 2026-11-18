@@ -172,4 +172,66 @@ class ArmazemStockTenantIntegridadeTest extends TestCase
             'updated_at' => now(),
         ]));
     }
+
+    public function test_saldo_nao_pode_referenciar_produto_de_outra_empresa(): void
+    {
+        [$empresaA, , $armazemA] = $this->prepararEmpresa('630200012');
+        [, $produtoB] = $this->prepararEmpresa('630200013');
+
+        $this->assertViolacao(fn () => DB::table('armazem_stock_saldos')->insert([
+            'empresa_id' => $empresaA->id,
+            'armazem_id' => $armazemA->id,
+            'produto_id' => $produtoB->id,
+            'quantidade' => '1.000',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]));
+    }
+
+    public function test_movimento_nao_pode_referenciar_armazem_de_outra_empresa(): void
+    {
+        [$empresaA, $produtoA] = $this->prepararEmpresa('630200014');
+        [, , $armazemB] = $this->prepararEmpresa('630200015');
+
+        $this->assertViolacao(fn () => DB::table('armazem_stock_movimentos')->insert([
+            'empresa_id' => $empresaA->id,
+            'armazem_id' => $armazemB->id,
+            'produto_id' => $produtoA->id,
+            'tipo' => 'entrada',
+            'quantidade' => '1.000',
+            'saldo_anterior' => '0.000',
+            'saldo_posterior' => '1.000',
+            'motivo' => 'Teste de isolamento',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]));
+    }
+
+    public function test_stock_minimo_nao_pode_referenciar_armazem_de_outra_empresa(): void
+    {
+        [$empresaA, $produtoA] = $this->prepararEmpresa('630200016');
+        [, , $armazemB] = $this->prepararEmpresa('630200017');
+
+        $this->assertViolacao(fn () => DB::table('armazem_stock_minimos')->insert([
+            'empresa_id' => $empresaA->id,
+            'armazem_id' => $armazemB->id,
+            'produto_id' => $produtoA->id,
+            'quantidade_minima' => '2.000',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]));
+    }
+
+    public function test_linha_de_inventario_nao_pode_referenciar_inventario_de_outra_empresa(): void
+    {
+        [$empresaA, $produtoA] = $this->prepararEmpresa('630200018');
+        [$empresaB, , $armazemB] = $this->prepararEmpresa('630200019');
+        $inventarioB = $this->inserirInventario((int) $empresaB->id, (int) $armazemB->id);
+
+        $this->assertViolacao(fn () => $this->inserirLinha(
+            (int) $empresaA->id,
+            $inventarioB,
+            (int) $produtoA->id,
+        ));
+    }
 }
