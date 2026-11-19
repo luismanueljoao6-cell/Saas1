@@ -14,6 +14,7 @@ class ArmazemTransferenciaRececaoLinha extends Model
 
     protected $fillable = [
         'empresa_id',
+        'transferencia_id',
         'rececao_id',
         'transferencia_linha_id',
         'quantidade_recebida',
