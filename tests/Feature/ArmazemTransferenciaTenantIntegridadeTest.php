@@ -276,5 +276,4 @@ class ArmazemTransferenciaTenantIntegridadeTest extends TestCase
         $this->assertSame((int) $transferencia->id, (int) $registo->transferencia_id);
         $this->assertSame((int) $linha->id, (int) $registo->transferencia_linha_id);
     }
-
 }
