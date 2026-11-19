@@ -47,8 +47,15 @@ return new class extends Migration
         });
 
         Schema::table('armazem_transferencia_rececao_linhas', function (Blueprint $table): void {
-            $table->dropForeign('armazem_transferencia_rececao_linhas_empresa_rececao_fk');
-            $table->dropForeign('armazem_transferencia_rececao_linhas_empresa_linha_fk');
+            if (DB::getDriverName() === 'sqlite') {
+                // O SQLite identifica FKs removidas pelas colunas, não pelo nome da constraint.
+                $table->dropForeign(['empresa_id', 'rececao_id']);
+                $table->dropForeign(['empresa_id', 'transferencia_linha_id']);
+            } else {
+                $table->dropForeign('armazem_transferencia_rececao_linhas_empresa_rececao_fk');
+                $table->dropForeign('armazem_transferencia_rececao_linhas_empresa_linha_fk');
+            }
+
             $table->index(
                 ['empresa_id', 'transferencia_id', 'rececao_id'],
                 'arr_rec_linhas_empresa_trans_rececao_idx'
@@ -73,8 +80,14 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('armazem_transferencia_rececao_linhas', function (Blueprint $table): void {
-            $table->dropForeign('arr_rec_linhas_empresa_trans_rececao_fk');
-            $table->dropForeign('arr_rec_linhas_empresa_trans_linha_fk');
+            if (DB::getDriverName() === 'sqlite') {
+                $table->dropForeign(['empresa_id', 'transferencia_id', 'rececao_id']);
+                $table->dropForeign(['empresa_id', 'transferencia_id', 'transferencia_linha_id']);
+            } else {
+                $table->dropForeign('arr_rec_linhas_empresa_trans_rececao_fk');
+                $table->dropForeign('arr_rec_linhas_empresa_trans_linha_fk');
+            }
+
             $table->dropIndex('arr_rec_linhas_empresa_trans_rececao_idx');
             $table->dropIndex('arr_rec_linhas_empresa_trans_linha_idx');
             $table->foreign(
