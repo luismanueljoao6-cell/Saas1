@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Modules\Armazem\Models\Armazem;
 use Modules\Armazem\Models\ArmazemTransferencia;
 use Modules\Armazem\Services\ArmazemService;
