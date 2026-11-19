@@ -75,8 +75,12 @@ class ArmazemTransferenciaTenantIntegridadeTest extends TestCase
     {
         try {
             $operacao();
-        } catch (QueryException) {
-            $this->assertTrue(true);
+        } catch (QueryException $exception) {
+            $this->assertMatchesRegularExpression(
+                '/foreign key constraint (?:fails|failed)/i',
+                $exception->getMessage(),
+                'O teste só deve passar quando a FK composta rejeitar a referência inválida.'
+            );
 
             return;
         }
@@ -165,6 +169,7 @@ class ArmazemTransferenciaTenantIntegridadeTest extends TestCase
 
         $this->assertViolacao(fn () => DB::table('armazem_transferencia_rececao_linhas')->insert([
             'empresa_id' => $empresaA->id,
+            'transferencia_id' => $transferenciaA->id,
             'rececao_id' => $rececaoB,
             'transferencia_linha_id' => $transferenciaA->linhas->first()->id,
             'quantidade_recebida' => '0.000',
@@ -186,6 +191,7 @@ class ArmazemTransferenciaTenantIntegridadeTest extends TestCase
 
         $this->assertViolacao(fn () => DB::table('armazem_transferencia_rececao_linhas')->insert([
             'empresa_id' => $empresaA->id,
+            'transferencia_id' => $transferenciaA->id,
             'rececao_id' => $rececaoA,
             'transferencia_linha_id' => $linhaB->id,
             'quantidade_recebida' => '0.000',

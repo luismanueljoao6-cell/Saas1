@@ -391,6 +391,7 @@ class ArmazemTransferenciaService
 
                 ArmazemTransferenciaRececaoLinha::create([
                     'empresa_id' => $empresa->id,
+                    'transferencia_id' => $alvo->id,
                     'rececao_id' => $rececao->id,
                     'transferencia_linha_id' => $linha->id,
                     'quantidade_recebida' => $this->formatar($quantidades['recebida']),
