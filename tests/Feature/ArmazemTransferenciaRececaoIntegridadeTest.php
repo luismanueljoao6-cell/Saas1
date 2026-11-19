@@ -88,6 +88,40 @@ class ArmazemTransferenciaRececaoIntegridadeTest extends TestCase
         $this->fail('A base de dados devia impedir associações entre linhas e receções de transferências diferentes.');
     }
 
+    public function test_migracao_substitui_fks_antigas_por_fks_compostas_da_mesma_transferencia(): void
+    {
+        $chaves = collect(Schema::getForeignKeys('armazem_transferencia_rececao_linhas'));
+
+        $this->assertTrue($chaves->contains(
+            fn (array $chave): bool => ($chave['columns'] ?? []) === [
+                'empresa_id',
+                'transferencia_id',
+                'rececao_id',
+            ] && ($chave['foreign_table'] ?? null) === 'armazem_transferencia_rececoes'
+                && ($chave['foreign_columns'] ?? []) === ['empresa_id', 'transferencia_id', 'id']
+        ));
+
+        $this->assertTrue($chaves->contains(
+            fn (array $chave): bool => ($chave['columns'] ?? []) === [
+                'empresa_id',
+                'transferencia_id',
+                'transferencia_linha_id',
+            ] && ($chave['foreign_table'] ?? null) === 'armazem_transferencia_linhas'
+                && ($chave['foreign_columns'] ?? []) === ['empresa_id', 'transferencia_id', 'id']
+        ));
+
+        $this->assertFalse($chaves->contains(
+            fn (array $chave): bool => in_array(
+                $chave['columns'] ?? [],
+                [
+                    ['empresa_id', 'rececao_id'],
+                    ['empresa_id', 'transferencia_linha_id'],
+                ],
+                true
+            )
+        ));
+    }
+
     public function test_linha_de_recepcao_nao_pode_usar_linha_de_outra_transferencia_da_mesma_empresa(): void
     {
         [$empresa, $origem, $destino, $produto] = $this->preparar('630100313');
