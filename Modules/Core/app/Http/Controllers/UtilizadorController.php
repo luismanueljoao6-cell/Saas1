@@ -102,12 +102,17 @@ class UtilizadorController extends Controller
         // empresa, e nunca deve ser removida.
         abort_unless((int) $admin->empresa_id === (int) $utilizador->empresa_id, 403);
 
-        if ((int) $admin->id === (int) $utilizador->id) {
+        $dados = $request->validate([
+            'ativo' => ['required', 'boolean'],
+        ]);
+        $ativoPretendido = (bool) $dados['ativo'];
+
+        if ((int) $admin->id === (int) $utilizador->id && ! $ativoPretendido) {
             return back()->with('erro', 'Não podes desativar a tua própria conta.');
         }
 
         try {
-            [$utilizadorAtual, $mensagem] = DB::transaction(function () use ($admin, $utilizador) {
+            [$utilizadorAtual, $mensagem] = DB::transaction(function () use ($admin, $utilizador, $ativoPretendido) {
                 $empresa = Empresa::query()
                     ->lockForUpdate()
                     ->findOrFail($admin->empresa_id);
@@ -117,13 +122,19 @@ class UtilizadorController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($utilizador->id);
 
+                // O pedido declara o estado final: repetições e retries são
+                // idempotentes e nunca invertem acidentalmente o estado.
+                if ((bool) $utilizadorAtual->ativo === $ativoPretendido) {
+                    return [$utilizadorAtual, null];
+                }
+
                 // Reativar também conta para o limite. A contagem e a
                 // alteração ficam serializadas pela linha da empresa.
-                if (! $utilizadorAtual->ativo && ($mensagem = $this->mensagemSeLimiteAtingido($empresa))) {
+                if ($ativoPretendido && ($mensagem = $this->mensagemSeLimiteAtingido($empresa))) {
                     return [null, $mensagem];
                 }
 
-                $utilizadorAtual->update(['ativo' => ! $utilizadorAtual->ativo]);
+                $utilizadorAtual->update(['ativo' => $ativoPretendido]);
 
                 return [$utilizadorAtual, null];
             });
@@ -141,7 +152,7 @@ class UtilizadorController extends Controller
             return back()->with('erro', $mensagem);
         }
 
-        return back()->with('sucesso', $utilizadorAtual->ativo ? 'Utilizador reativado.' : 'Utilizador desativado.');
+        return back()->with('sucesso', $utilizadorAtual->ativo ? 'Utilizador está ativo.' : 'Utilizador está desativado.');
     }
 
     protected function mensagemSeLimiteAtingido(Empresa $empresa): ?string
