@@ -61,6 +61,7 @@
                     @if ($utilizador->id !== auth()->id())
                         <form method="POST" action="{{ route('core.utilizadores.alternar-ativo', $utilizador) }}">
                             @csrf
+                            <input type="hidden" name="ativo" value="{{ $utilizador->ativo ? 0 : 1 }}">
                             <button type="submit" class="text-xs font-medium {{ $utilizador->ativo ? 'text-red-600 hover:text-red-500' : 'text-emerald-600 hover:text-emerald-500' }}">
                                 {{ $utilizador->ativo ? 'Desativar' : 'Reativar' }}
                             </button>
