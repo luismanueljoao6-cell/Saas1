@@ -137,4 +137,56 @@ class UtilizadoresEPapeisTest extends TestCase
 
         $this->assertTrue((bool) $alvoB->fresh()->ativo);
     }
+
+    public function test_repetir_pedido_de_desativacao_nao_reativa_o_utilizador(): void
+    {
+        $empresa = $this->criarEmpresa('500000008');
+        $admin = $this->criarUtilizador($empresa);
+        $alvo = $this->criarUtilizador($empresa, 'Utilizador');
+        $this->definirLimiteUtilizadores(null);
+        $dados = ['ativo' => '0'];
+
+        $this->actingAs($admin)
+            ->post(route('core.utilizadores.alternar-ativo', $alvo), $dados)
+            ->assertSessionHas('sucesso');
+
+        $this->post(route('core.utilizadores.alternar-ativo', $alvo), $dados)
+            ->assertSessionHas('sucesso');
+
+        $this->assertFalse((bool) $alvo->fresh()->ativo);
+    }
+
+    public function test_repetir_pedido_de_reativacao_permanece_ativo(): void
+    {
+        $empresa = $this->criarEmpresa('500000009');
+        $admin = $this->criarUtilizador($empresa);
+        $alvo = $this->criarUtilizador($empresa, 'Utilizador', ativo: false);
+        $this->definirLimiteUtilizadores(null);
+        $dados = ['ativo' => '1'];
+
+        $this->actingAs($admin)
+            ->post(route('core.utilizadores.alternar-ativo', $alvo), $dados)
+            ->assertSessionHas('sucesso');
+
+        $this->post(route('core.utilizadores.alternar-ativo', $alvo), $dados)
+            ->assertSessionHas('sucesso');
+
+        $this->assertTrue((bool) $alvo->fresh()->ativo);
+    }
+
+    public function test_reativacao_respeita_o_limite_de_utilizadores_ativos(): void
+    {
+        $empresa = $this->criarEmpresa('500000010');
+        $admin = $this->criarUtilizador($empresa);
+        $alvo = $this->criarUtilizador($empresa, 'Utilizador', ativo: false);
+        $this->definirLimiteUtilizadores(1);
+
+        $this->actingAs($admin)
+            ->post(route('core.utilizadores.alternar-ativo', $alvo), ['ativo' => '1'])
+            ->assertSessionHas('erro');
+
+        $this->assertFalse((bool) $alvo->fresh()->ativo);
+    }
+
+
 }
