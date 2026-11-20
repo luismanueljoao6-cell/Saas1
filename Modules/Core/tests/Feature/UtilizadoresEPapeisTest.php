@@ -187,6 +187,4 @@ class UtilizadoresEPapeisTest extends TestCase
 
         $this->assertFalse((bool) $alvo->fresh()->ativo);
     }
-
-
 }
