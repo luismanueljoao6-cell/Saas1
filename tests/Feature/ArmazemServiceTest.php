@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Armazem\Models\Armazem;
+use Modules\Armazem\Models\ArmazemInventario;
 use Modules\Armazem\Services\ArmazemService;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Services\TenantManager;
@@ -124,4 +125,30 @@ class ArmazemServiceTest extends TestCase
 
         app(ArmazemService::class)->criar($empresaB, 'B1', 'Armazém indevido');
     }
+    public function test_nao_permite_inativar_armazem_com_inventario_aguardando_aprovacao(): void
+    {
+        $empresa = $this->criarEmpresa('630100008');
+        $servico = app(ArmazemService::class);
+        $armazem = $servico->criar($empresa, 'A1', 'Armazém em aprovação', principal: true);
+
+        ArmazemInventario::create([
+            'empresa_id' => $empresa->id,
+            'armazem_id' => $armazem->id,
+            'estado' => 'aguarda_aprovacao',
+            'aberto_em' => now(),
+        ]);
+
+        try {
+            $servico->alternarEstado($empresa, $armazem);
+            $this->fail('Um armazém com inventário aguardando aprovação não pode ser inativado.');
+        } catch (DomainException $exception) {
+            $this->assertSame(
+                'Não é possível inativar este armazém enquanto existir um inventário em curso ou aguardando aprovação.',
+                $exception->getMessage()
+            );
+        }
+
+        $this->assertTrue($armazem->fresh()->ativo);
+    }
+
 }
