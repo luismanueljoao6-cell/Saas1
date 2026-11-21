@@ -125,11 +125,13 @@ class ArmazemServiceTest extends TestCase
 
         app(ArmazemService::class)->criar($empresaB, 'B1', 'Armazém indevido');
     }
+
     public function test_nao_permite_inativar_armazem_com_inventario_aguardando_aprovacao(): void
     {
         $empresa = $this->criarEmpresa('630100008');
         $servico = app(ArmazemService::class);
-        $armazem = $servico->criar($empresa, 'A1', 'Armazém em aprovação', principal: true);
+        $servico->criar($empresa, 'P1', 'Armazém principal', principal: true);
+        $armazem = $servico->criar($empresa, 'A1', 'Armazém em aprovação');
 
         ArmazemInventario::create([
             'empresa_id' => $empresa->id,
@@ -150,5 +152,4 @@ class ArmazemServiceTest extends TestCase
 
         $this->assertTrue($armazem->fresh()->ativo);
     }
-
 }
