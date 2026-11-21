@@ -59,6 +59,12 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // READ COMMITTED: o código bloqueia a linha (lockForUpdate) e só depois soma o que já foi
+            // recebido/creditado/abatido. Em REPEATABLE READ (o padrão do MySQL) essa soma usa o
+            // instantâneo aberto ANTES de esperar pelo lock e não vê o que outra transação acabou de
+            // confirmar: recibos, abatimentos e notas de crédito simultâneos sobre o mesmo documento
+            // passavam todos (provado em ConcorrenciaFinanceiraRealTest). Vazio = padrão do servidor.
+            'isolation_level' => env('DB_ISOLATION_LEVEL', 'READ COMMITTED') ?: null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
@@ -79,6 +85,8 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // Ver o comentário da ligação 'mysql' (lock + soma exige leituras do que já foi confirmado).
+            'isolation_level' => env('DB_ISOLATION_LEVEL', 'READ COMMITTED') ?: null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

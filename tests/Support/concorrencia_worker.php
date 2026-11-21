@@ -17,7 +17,12 @@ use Modules\Atelier\Jobs\DispararCampanhaJob;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Fatura;
+use Modules\Faturacao\Models\NotaCreditoDebito;
+use Modules\Faturacao\Services\AbatimentoAdiantamentoService;
 use Modules\Faturacao\Services\FaturaService;
+use Modules\Faturacao\Services\NotaCreditoDebitoService;
+use Modules\Faturacao\Services\ReciboAlocacaoService;
+use Modules\Faturacao\Services\ReciboService;
 use Spatie\Permission\PermissionRegistrar;
 
 require __DIR__.'/../../vendor/autoload.php';
@@ -63,6 +68,52 @@ try {
             $resultado = [
                 'numero' => (int) $emitida->numero_sequencial,
                 'documento' => (string) $emitida->numero_documento,
+            ];
+            break;
+
+        case 'emitir_recibo':
+            $recibo = app(ReciboService::class)->emitir(
+                (int) $args['empresa_id'],
+                (int) $args['cliente_id'],
+                (string) $args['valor'],
+                (string) $args['meio'],
+                (int) $args['fatura_id'],
+            );
+
+            $resultado = ['recibo_id' => (int) $recibo->id];
+            break;
+
+        case 'emitir_nota':
+            $nota = NotaCreditoDebito::withoutGlobalScopes()->findOrFail((int) $args['nota_id']);
+            $emitida = app(NotaCreditoDebitoService::class)->emitir($nota);
+
+            $resultado = ['nota_id' => (int) $emitida->id];
+            break;
+
+        case 'abater':
+            $abatimento = app(AbatimentoAdiantamentoService::class)->abater(
+                (int) $args['empresa_id'],
+                (int) $args['fa_id'],
+                (int) $args['ft_id'],
+                (string) $args['valor'],
+                (string) $args['chave'],
+            );
+
+            $resultado = ['abatimento_id' => (int) $abatimento['id']];
+            break;
+
+        case 'alocar_recibo':
+            $linhas = app(ReciboAlocacaoService::class)->registar(
+                (int) $args['empresa_id'],
+                (int) $args['recibo_id'],
+                $args['alocacoes'],
+                (string) $args['chave'],
+            );
+
+            $resultado = [
+                'linhas' => count($linhas),
+                'ids' => array_map('intval', array_column($linhas, 'id')),
+                'sequencias' => array_map('intval', array_column($linhas, 'sequencia')),
             ];
             break;
 
