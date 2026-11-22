@@ -14,8 +14,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Modules\Atelier\Http\Controllers\Admin\CampanhaController;
 use Modules\Atelier\Jobs\DispararCampanhaJob;
+use Modules\Atelier\Models\Pedido;
+use Modules\Atelier\Services\PedidoFaturacaoService;
+use Modules\Core\Contracts\LimitesDaEmpresa;
+use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
+use Modules\EstudioMusica\Models\ProjetoMusical;
+use Modules\EstudioMusica\Services\FaturacaoEstudioService;
 use Modules\Faturacao\Models\Fatura;
 use Modules\Faturacao\Models\NotaCreditoDebito;
 use Modules\Faturacao\Services\AbatimentoAdiantamentoService;
@@ -23,6 +29,8 @@ use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Modules\Faturacao\Services\ReciboAlocacaoService;
 use Modules\Faturacao\Services\ReciboService;
+use Modules\Subscricoes\Models\Pagamento;
+use Modules\Subscricoes\Services\PagamentoService;
 use Spatie\Permission\PermissionRegistrar;
 
 require __DIR__.'/../../vendor/autoload.php';
@@ -62,6 +70,20 @@ try {
             break;
 
         case 'emitir':
+            // Limite 'max_faturas_mes' do plano (os processos filhos não herdam bindings do teste).
+            if (array_key_exists('limite_faturas', $args)) {
+                $limite = $args['limite_faturas'] === null ? null : (int) $args['limite_faturas'];
+                app()->bind(LimitesDaEmpresa::class, fn () => new class($limite) implements LimitesDaEmpresa
+                {
+                    public function __construct(protected ?int $limite) {}
+
+                    public function limite(Empresa $empresa, string $chave): ?int
+                    {
+                        return $chave === 'max_faturas_mes' ? $this->limite : null;
+                    }
+                });
+            }
+
             $fatura = Fatura::withoutGlobalScopes()->findOrFail((int) $args['fatura_id']);
             $emitida = app(FaturaService::class)->emitir($fatura);
 
@@ -69,6 +91,43 @@ try {
                 'numero' => (int) $emitida->numero_sequencial,
                 'documento' => (string) $emitida->numero_documento,
             ];
+            break;
+
+        case 'estudio_sinal':
+        case 'estudio_saldo_final':
+            app(TenantManager::class)->set((int) $args['empresa_id']);
+
+            $projeto = ProjetoMusical::query()->findOrFail((int) $args['projeto_id']);
+            $faturaEstudio = $acao === 'estudio_sinal'
+                ? app(FaturacaoEstudioService::class)->gerarFaturaSinal($projeto)
+                : app(FaturacaoEstudioService::class)->gerarFaturaSaldoFinal($projeto);
+
+            $resultado = ['fatura_id' => (int) $faturaEstudio->id];
+            break;
+
+        case 'atelier_sinal':
+        case 'atelier_fatura_final':
+        case 'atelier_pagamento_final':
+            app(TenantManager::class)->set((int) $args['empresa_id']);
+
+            $pedido = Pedido::query()->findOrFail((int) $args['pedido_id']);
+            $servicoPedido = app(PedidoFaturacaoService::class);
+
+            if ($acao === 'atelier_sinal') {
+                $resultado = ['recibo_id' => (int) $servicoPedido->registarSinal($pedido, (string) $args['valor'], (string) $args['meio'])->id];
+            } elseif ($acao === 'atelier_fatura_final') {
+                $resultado = ['fatura_id' => (int) $servicoPedido->gerarFaturaFinalRascunho($pedido)->id];
+            } else {
+                $resultado = ['recibo_id' => (int) $servicoPedido->registarPagamentoFinal($pedido, (string) $args['meio'])->id];
+            }
+            break;
+
+        case 'confirmar_pagamento':
+            $confirmado = app(PagamentoService::class)->confirmar(
+                Pagamento::withoutGlobalScopes()->findOrFail((int) $args['pagamento_id']),
+            );
+
+            $resultado = ['estado' => (string) $confirmado->estado];
             break;
 
         case 'emitir_recibo':

@@ -29,6 +29,7 @@ confirmar, e cada processo conclui que o documento ainda tem saldo. Em SQLite n�
 | Recibos de 1140.00 sobre fatura de 1140.00 | 1 aceite | 6 aceites (6840.00 recebidos) | 1 aceite |
 | Abatimentos de 500.00 sobre adiantamento recebido de 1140.00 | 2 aceites | 4 a 5 aceites (2000.00 a 2500.00) | 2 aceites |
 | Notas de crédito de 1140.00 sobre fatura de 1140.00 | 1 aceite | 6 aceites | 1 aceite |
+| 6 emissões simultâneas com limite mensal de 2 faturas | 2 aceites | 6 aceites | 2 aceites |
 
 A CI não apanhava isto porque os testes existentes de concorrência real só cobriam emissão e reenvio de campanhas.
 
@@ -43,8 +44,19 @@ Com `DB_ISOLATION_LEVEL='REPEATABLE READ'` os três testes falham (6 em vez de 1
 bloqueantes (`lockForUpdate`) nas somas de cada serviço. Não foi escolhida porque deixa por proteger qualquer fluxo
 novo com o mesmo padrão.
 
-**Limite.** Só recibos, abatimentos e notas de crédito têm teste de concorrência real. Compras, Ateliê, Estúdio e
-Subscrições beneficiam da correcção global mas não têm teste próprio.
+**Limite mensal de faturas (bloco 2).** O mesmo defeito deixava contornar o limite comercial do plano: com
+`max_faturas_mes` = 2, seis emissões simultâneas emitiram 6 faturas (REPEATABLE READ) e 2 com READ COMMITTED
+(`LimiteMensalConcorrenciaRealTest`).
+
+**Fluxos que já eram seguros (bloco 2).** O sinal e o saldo final de projectos do Estúdio, o sinal, a fatura final e o
+pagamento final de pedidos do Ateliê e a confirmação de pagamentos de subscrições (webhooks duplicados; dois
+pagamentos da mesma empresa) bloqueiam a linha e decidem com ela lida sob FOR UPDATE, ou bloqueiam antes da primeira
+leitura normal. Passam com os dois níveis de isolamento e ficam com teste de regressão com processos reais
+(`FaturacaoEstudioConcorrenciaRealTest`, `PedidoFaturacaoConcorrenciaRealTest`, `PagamentoConcorrenciaRealTest`).
+
+**Limite.** Sem teste de concorrência real: o check-out de sessões do Estúdio e a criação/reativação de utilizadores
+com limite do plano (o lock está no controller, exige pedidos HTTP em paralelo) e `CompraService::registarPagamento`
+(por revisão de código bloqueia a compra antes de ler, mas não há teste).
 
 ## 3. Alocações de recibo por linha (fundação)
 
@@ -86,7 +98,9 @@ mesma chave gravam uma vez; 6 recibos a disputar uma linha só deixam 2 passar).
 |---|---|
 | `phpunit` (SQLite, tudo) | 1057 testes, 2991 asserções, 10 ignorados (5 anteriores + 5 de concorrência real que exigem MySQL), 1 incompleto — OK |
 | `phpunit --exclude-group=auditoria` (MySQL 8.0.46) | 1047 testes, 2970 asserções, 10 ignorados, 1 incompleto — OK |
-| `migrate:fresh` + `phpunit --group=concorrencia-real` (MySQL, `SAAS1_CONCORRENCIA_REAL=1`) | 8 testes, 183 asserções — OK |
+| `migrate:fresh` + `phpunit --group=concorrencia-real` (MySQL, `SAAS1_CONCORRENCIA_REAL=1`) | 16 testes, 317 asserções — OK |
+| O mesmo grupo com `DB_ISOLATION_LEVEL='REPEATABLE READ'` | 4 falham: recibos 6 em vez de 1, abatimentos 4 em vez de 2, NC 6 em vez de 1, limite mensal 6 em vez de 2 |
+| O mesmo grupo em SQLite | 16 ignorados, sem erros |
 | `AuditoriaSubscricoesTest` completo (MySQL) | 10 testes, 30 asserções — OK |
 | `migrate:fresh` → `migrate:rollback --step=1` → `migrate` com a BD vazia | MySQL 8.0.46 e SQLite OK (tabela, 3 triggers e índices repostos) |
 | `migrate:rollback --step=1` com alocações gravadas (MySQL) | recusado com "Rollback recusado"; as 4 alocações ficam |
