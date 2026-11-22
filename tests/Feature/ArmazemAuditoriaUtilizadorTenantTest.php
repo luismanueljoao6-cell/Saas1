@@ -83,15 +83,63 @@ class ArmazemAuditoriaUtilizadorTenantTest extends TestCase
             'controla_stock' => true,
         ]);
 
+        $stock = app(ArmazemStockService::class);
+        $stock->entrada(
+            $empresa,
+            $armazemOrigem,
+            $produto,
+            '5.000',
+            'Entrada para transferência',
+            $administrador->id,
+            'auditoria-tenant-entrada-0001',
+        );
+
+        $transferencias = app(ArmazemTransferenciaService::class);
+        $transferencia = $transferencias->criar(
+            $empresa,
+            $armazemOrigem,
+            $armazemDestino,
+            [['produto_id' => $produto->id, 'quantidade' => '2.000']],
+            'Reposição entre armazéns',
+            $administrador->id,
+        );
+        $transferencias->expedir($empresa, $transferencia, $administrador->id);
+
+        $linhaTransferencia = $transferencia->linhas->first();
+        $this->assertNotNull($linhaTransferencia);
+
+        $transferencias->registarRececaoParcial(
+            $empresa,
+            $transferencia,
+            [[
+                'linha_id' => $linhaTransferencia->id,
+                'quantidade_recebida' => '1.000',
+                'quantidade_em_falta' => '0.000',
+                'quantidade_danificada' => '0.000',
+            ]],
+            false,
+            'auditoria-tenant-rececao-0001',
+            $administrador->id,
+        );
+
+        $rececao = DB::table('armazem_transferencia_rececoes')
+            ->where('transferencia_id', $transferencia->id)
+            ->first();
+        $this->assertNotNull($rececao);
+        DB::table('armazem_transferencia_rececoes')
+            ->where('id', $rececao->id)
+            ->update(['utilizador_id' => $utilizadorExterno->id]);
+
         $inventario = app(ArmazemInventarioService::class)->abrir(
             $empresa,
             $armazemOrigem,
             [$produto->id],
             $administrador->id,
         );
-        $linhaInventario = $inventario->linhas->firstOrFail();
+        $linhaInventario = $inventario->linhas->first();
+        $this->assertNotNull($linhaInventario);
 
-        // Simula um registo histórico inconsistente criado fora dos serviços de domínio.
+        // Simula registos históricos inconsistentes criados fora dos serviços de domínio.
         DB::table('armazem_inventarios')
             ->where('id', $inventario->id)
             ->update(['aberto_por' => $utilizadorExterno->id]);
@@ -130,50 +178,6 @@ class ArmazemAuditoriaUtilizadorTenantTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-
-        $stock = app(ArmazemStockService::class);
-        $stock->entrada(
-            $empresa,
-            $armazemOrigem,
-            $produto,
-            '5.000',
-            'Entrada para transferência',
-            $administrador->id,
-            'auditoria-tenant-entrada-0001',
-        );
-
-        $transferencias = app(ArmazemTransferenciaService::class);
-        $transferencia = $transferencias->criar(
-            $empresa,
-            $armazemOrigem,
-            $armazemDestino,
-            [['produto_id' => $produto->id, 'quantidade' => '2.000']],
-            'Reposição entre armazéns',
-            $administrador->id,
-        );
-        $transferencias->expedir($empresa, $transferencia, $administrador->id);
-
-        $linhaTransferencia = $transferencia->linhas->firstOrFail();
-        $transferencias->registarRececaoParcial(
-            $empresa,
-            $transferencia,
-            [[
-                'linha_id' => $linhaTransferencia->id,
-                'quantidade_recebida' => '1.000',
-                'quantidade_em_falta' => '0.000',
-                'quantidade_danificada' => '0.000',
-            ]],
-            false,
-            'auditoria-tenant-rececao-0001',
-            $administrador->id,
-        );
-
-        $rececao = DB::table('armazem_transferencia_rececoes')
-            ->where('transferencia_id', $transferencia->id)
-            ->firstOrFail();
-        DB::table('armazem_transferencia_rececoes')
-            ->where('id', $rececao->id)
-            ->update(['utilizador_id' => $utilizadorExterno->id]);
 
         $this->actingAs($administrador);
 
