@@ -9,7 +9,6 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Modules\Armazem\Models\Armazem;
-use Modules\Armazem\Models\ArmazemStockMinimo;
 use Modules\Armazem\Models\ArmazemStockMovimento;
 use Modules\Faturacao\Models\Produto;
 
@@ -125,25 +124,31 @@ class ArmazemStockRelatorioController extends Controller
             ->where('controla_stock', true)
             ->findOrFail($dados['produto_id']);
 
-        ArmazemStockMinimo::updateOrCreate(
-            [
+        DB::transaction(function () use ($empresaId, $armazem, $produto, $dados): void {
+            DB::table('armazem_stock_minimos')->upsert(
+                [[
+                    'empresa_id' => $empresaId,
+                    'armazem_id' => $armazem->id,
+                    'produto_id' => $produto->id,
+                    'quantidade_minima' => $dados['quantidade_minima'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]],
+                ['empresa_id', 'armazem_id', 'produto_id'],
+                ['quantidade_minima', 'updated_at']
+            );
+
+            // Garante que artigos recém-configurados aparecem no relatório mesmo
+            // antes da primeira entrada física de stock.
+            DB::table('armazem_stock_saldos')->insertOrIgnore([
                 'empresa_id' => $empresaId,
                 'armazem_id' => $armazem->id,
                 'produto_id' => $produto->id,
-            ],
-            ['quantidade_minima' => $dados['quantidade_minima']]
-        );
-
-        // Garante que artigos recém-configurados aparecem no relatório mesmo
-        // antes da primeira entrada física de stock.
-        DB::table('armazem_stock_saldos')->insertOrIgnore([
-            'empresa_id' => $empresaId,
-            'armazem_id' => $armazem->id,
-            'produto_id' => $produto->id,
-            'quantidade' => '0.000',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+                'quantidade' => '0.000',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
 
         return back()->with('sucesso', 'Stock mínimo atualizado com sucesso.');
     }
