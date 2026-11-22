@@ -125,25 +125,27 @@ class ArmazemStockRelatorioController extends Controller
             ->where('controla_stock', true)
             ->findOrFail($dados['produto_id']);
 
-        ArmazemStockMinimo::updateOrCreate(
-            [
+        DB::transaction(function () use ($empresaId, $armazem, $produto, $dados): void {
+            ArmazemStockMinimo::updateOrCreate(
+                [
+                    'empresa_id' => $empresaId,
+                    'armazem_id' => $armazem->id,
+                    'produto_id' => $produto->id,
+                ],
+                ['quantidade_minima' => $dados['quantidade_minima']]
+            );
+
+            // Garante que artigos recém-configurados aparecem no relatório mesmo
+            // antes da primeira entrada física de stock.
+            DB::table('armazem_stock_saldos')->insertOrIgnore([
                 'empresa_id' => $empresaId,
                 'armazem_id' => $armazem->id,
                 'produto_id' => $produto->id,
-            ],
-            ['quantidade_minima' => $dados['quantidade_minima']]
-        );
-
-        // Garante que artigos recém-configurados aparecem no relatório mesmo
-        // antes da primeira entrada física de stock.
-        DB::table('armazem_stock_saldos')->insertOrIgnore([
-            'empresa_id' => $empresaId,
-            'armazem_id' => $armazem->id,
-            'produto_id' => $produto->id,
-            'quantidade' => '0.000',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+                'quantidade' => '0.000',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
 
         return back()->with('sucesso', 'Stock mínimo atualizado com sucesso.');
     }
