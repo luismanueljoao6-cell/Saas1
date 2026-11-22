@@ -54,6 +54,16 @@ pagamentos da mesma empresa) bloqueiam a linha e decidem com ela lida sob FOR UP
 leitura normal. Passam com os dois níveis de isolamento e ficam com teste de regressão com processos reais
 (`FaturacaoEstudioConcorrenciaRealTest`, `PedidoFaturacaoConcorrenciaRealTest`, `PagamentoConcorrenciaRealTest`).
 
+**Carga mista (bloco 3).** `CargaMistaConcorrenciaRealTest` cruza, em 12 a 20 processos sobre os mesmos documentos,
+recibos, notas de crédito e abatimentos, que bloqueiam por ordens diferentes (recibo: fatura; nota: nota e fatura;
+abatimento: as duas faturas por id). Não há deadlocks nem falhas técnicas: todas as recusas são regras de negócio.
+Os invariantes que valem são: recibos + abatimentos nunca excedem a fatura; as notas de crédito somam no máximo a
+fatura (mais 1 cêntimo por linha de arredondamento); nunca se abate e credita a mesma parte do adiantamento; as
+numerações ficam contínuas. Uma nota de crédito emitida depois de recebimentos pode deixar o saldo negativo: é
+crédito a favor do cliente e não um erro, por isso o saldo só tem de ser >= 0 quando não há notas de crédito.
+A primeira versão do teste afirmava saldo >= 0 em todos os casos e falhou por esse motivo; o invariante estava errado,
+não o código.
+
 **Limite.** Sem teste de concorrência real: o check-out de sessões do Estúdio e a criação/reativação de utilizadores
 com limite do plano (o lock está no controller, exige pedidos HTTP em paralelo) e `CompraService::registarPagamento`
 (por revisão de código bloqueia a compra antes de ler, mas não há teste).
@@ -98,9 +108,9 @@ mesma chave gravam uma vez; 6 recibos a disputar uma linha só deixam 2 passar).
 |---|---|
 | `phpunit` (SQLite, tudo) | 1057 testes, 2991 asserções, 10 ignorados (5 anteriores + 5 de concorrência real que exigem MySQL), 1 incompleto — OK |
 | `phpunit --exclude-group=auditoria` (MySQL 8.0.46) | 1047 testes, 2970 asserções, 10 ignorados, 1 incompleto — OK |
-| `migrate:fresh` + `phpunit --group=concorrencia-real` (MySQL, `SAAS1_CONCORRENCIA_REAL=1`) | 16 testes, 317 asserções — OK |
-| O mesmo grupo com `DB_ISOLATION_LEVEL='REPEATABLE READ'` | 4 falham: recibos 6 em vez de 1, abatimentos 4 em vez de 2, NC 6 em vez de 1, limite mensal 6 em vez de 2 |
-| O mesmo grupo em SQLite | 16 ignorados, sem erros |
+| `migrate:fresh` + `phpunit --group=concorrencia-real` (MySQL, `SAAS1_CONCORRENCIA_REAL=1`) | 19 testes, 417 asserções — OK |
+| O mesmo grupo com `DB_ISOLATION_LEVEL='REPEATABLE READ'` | 7 falham: recibos 6 em vez de 1, abatimentos 4 em vez de 2, NC 6 em vez de 1, limite mensal 6 em vez de 2 e os 3 cenários de carga mista (um deles com saldo de -12600.00 sem notas de crédito) |
+| O mesmo grupo em SQLite | 19 ignorados, sem erros |
 | `AuditoriaSubscricoesTest` completo (MySQL) | 10 testes, 30 asserções — OK |
 | `migrate:fresh` → `migrate:rollback --step=1` → `migrate` com a BD vazia | MySQL 8.0.46 e SQLite OK (tabela, 3 triggers e índices repostos) |
 | `migrate:rollback --step=1` com alocações gravadas (MySQL) | recusado com "Rollback recusado"; as 4 alocações ficam |

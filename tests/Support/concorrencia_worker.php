@@ -39,6 +39,12 @@ $acao = (string) ($argv[1] ?? '');
 $barreira = (float) ($argv[2] ?? 0);
 $args = json_decode((string) ($argv[3] ?? '{}'), true) ?: [];
 
+// Carga mista: um mesmo lote de processos executa acções diferentes (['acao' => ..., 'args' => [...]]).
+if ($acao === 'misto') {
+    $acao = (string) ($args['acao'] ?? '');
+    $args = (array) ($args['args'] ?? []);
+}
+
 $app = require __DIR__.'/../../bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 
