@@ -85,12 +85,12 @@ class OutboxRecuperacaoAgendadaTest extends TestCase
 
     private function novaNotificacao(string $chave): NotificationOutbox
     {
-        return app(NotificationDispatcher::class)->dispatch(
+        return app(\Modules\Core\Services\TenantManager::class)->semTenant(fn () => app(NotificationDispatcher::class)->dispatch(
             channel: 'teste.recuperacao',
             recipient: '+244923000000',
             payload: ['message' => "Mensagem {$chave}"],
             idempotencyKey: $chave,
             empresaId: $this->empresa->id,
-        );
+        ));
     }
 }
