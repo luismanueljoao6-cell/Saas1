@@ -2,13 +2,13 @@
 
 namespace Modules\Core\Tests\Feature;
 
-use Modules\Core\Contracts\EmpresaRepositoryInterface;
 use Modules\Core\Contracts\FeatureAccessInterface;
 use Modules\Core\Contracts\NotificationDispatcherInterface;
 use Modules\Core\Contracts\TenantContextInterface;
 use Modules\Core\Contracts\TenantProvisionerInterface;
 use Modules\Core\Exceptions\TenantNaoEncontradoException;
 use Modules\Core\Notifications\NotificationDispatcher;
+use Modules\Core\Repositories\Contracts\EmpresaRepositoryInterface;
 use Modules\Core\Services\FeatureAccess;
 use Modules\Core\Services\TenantContext;
 use Modules\Core\Services\TenantManager;
