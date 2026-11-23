@@ -107,7 +107,7 @@ class ListarNotificacoesDesconhecidasTest extends TestCase
 
         // Qualquer aviso com o texto do alerta de 1 h não tem expectativa e falha o teste.
         Log::shouldReceive('warning')
-            ->withArgs(fn ($mensagem) => ! str_contains((string) $mensagem, 'há mais de 1 h'))
+            ->withArgs(fn ($mensagem) => !str_contains((string) $mensagem, 'há mais de 1 h'))
             ->zeroOrMoreTimes();
 
         Artisan::call('notifications:recover');
@@ -119,12 +119,12 @@ class ListarNotificacoesDesconhecidasTest extends TestCase
     {
         $notificacao = app(TenantManager::class)->semTenant(
             fn () => app(NotificationDispatcher::class)->dispatch(
-            channel: 'teste.lista-desconhecidas',
-            recipient: self::DESTINATARIO,
-            payload: ['corpo' => "Mensagem {$chave}"],
-            idempotencyKey: $chave,
-            maxAttempts: 5,
-            empresaId: $empresa->id,
+                channel: 'teste.lista-desconhecidas',
+                recipient: self::DESTINATARIO,
+                payload: ['corpo' => "Mensagem {$chave}"],
+                idempotencyKey: $chave,
+                maxAttempts: 5,
+                empresaId: $empresa->id,
             ),
         );
 
