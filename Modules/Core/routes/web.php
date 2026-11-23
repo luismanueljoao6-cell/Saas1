@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Modules\Core\Http\Controllers\Auth\AceitarConviteController;
 use Modules\Core\Http\Controllers\Auth\AuthenticatedSessionController;
+use Modules\Core\Http\Controllers\Auth\DesafioDoisFatoresController;
 use Modules\Core\Http\Controllers\Auth\EmailVerificationController;
 use Modules\Core\Http\Controllers\Auth\NewPasswordController;
 use Modules\Core\Http\Controllers\Auth\PasswordResetLinkController;
@@ -25,6 +26,13 @@ Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('core.login');
     // Camada grossa por IP; o LoginRequest pode ter a sua própria por conta.
     Route::post('/login', [AuthenticatedSessionController::class, 'store'])->middleware('throttle:20,1');
+
+    // 2.º passo do login para contas com 2FA (só se chega aqui com a palavra-passe certa).
+    Route::get('/dois-fatores/desafio', [DesafioDoisFatoresController::class, 'create'])
+        ->name('core.2fa.desafio');
+    Route::post('/dois-fatores/desafio', [DesafioDoisFatoresController::class, 'store'])
+        ->middleware('throttle:10,1')
+        ->name('core.2fa.desafio.store');
 
     // Recuperação de palavra-passe. Nomes password.* são os que o Laravel espera.
     Route::get('/esqueci-palavra-passe', [PasswordResetLinkController::class, 'create'])
