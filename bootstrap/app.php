@@ -5,6 +5,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Session\Middleware\AuthenticateSession;
 use Modules\Core\Console\ProvisionarServicosCommand;
 use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Core\Support\ProxiesConfiaveis;
@@ -64,6 +65,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // As rotas de login/painel pertencem ao módulo Core (nomes core.*).
         $middleware->redirectGuestsTo(fn () => route('core.login'));
         $middleware->redirectUsersTo(fn () => route('core.painel'));
+
+        // Redefinir a palavra-passe termina as outras sessões abertas do mesmo
+        // utilizador, seja qual for o driver de sessão.
+        $middleware->web(append: [AuthenticateSession::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

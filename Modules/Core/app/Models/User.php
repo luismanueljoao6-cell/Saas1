@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Modules\Core\Notifications\RedefinirPalavraPasse;
+use Modules\Core\Notifications\VerificarEmail;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 use Spatie\Permission\Traits\HasRoles;
@@ -89,6 +91,16 @@ class User extends Authenticatable implements MustVerifyEmail
     public function empresa(): BelongsTo
     {
         return $this->belongsTo(Empresa::class);
+    }
+
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new RedefinirPalavraPasse($token));
+    }
+
+    public function sendEmailVerificationNotification(): void
+    {
+        $this->notify(new VerificarEmail);
     }
 
     public function temDoisFatoresAtivos(): bool

@@ -2,6 +2,9 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Core\Http\Controllers\Auth\AuthenticatedSessionController;
+use Modules\Core\Http\Controllers\Auth\EmailVerificationController;
+use Modules\Core\Http\Controllers\Auth\NewPasswordController;
+use Modules\Core\Http\Controllers\Auth\PasswordResetLinkController;
 use Modules\Core\Http\Controllers\Auth\RegisteredTenantController;
 use Modules\Core\Http\Controllers\EmpresaController;
 use Modules\Core\Http\Controllers\PainelController;
@@ -21,11 +24,42 @@ Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('core.login');
     // Camada grossa por IP; o LoginRequest pode ter a sua própria por conta.
     Route::post('/login', [AuthenticatedSessionController::class, 'store'])->middleware('throttle:20,1');
+
+    // Recuperação de palavra-passe. Nomes password.* são os que o Laravel espera.
+    Route::get('/esqueci-palavra-passe', [PasswordResetLinkController::class, 'create'])
+        ->name('password.request');
+    Route::post('/esqueci-palavra-passe', [PasswordResetLinkController::class, 'store'])
+        ->middleware('throttle:5,1')
+        ->name('password.email');
+    Route::get('/redefinir-palavra-passe/{token}', [NewPasswordController::class, 'create'])
+        ->name('password.reset');
+    Route::post('/redefinir-palavra-passe', [NewPasswordController::class, 'store'])
+        ->middleware('throttle:5,1')
+        ->name('password.update');
 });
 
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
     ->middleware('auth')
     ->name('core.logout');
+
+/*
+|--------------------------------------------------------------------------
+| Verificação de e-mail
+|--------------------------------------------------------------------------
+| Só 'auth', sem 'tenant': o middleware 'tenant' redireciona para aqui
+| quem tem o e-mail por verificar (CORE_EXIGIR_EMAIL_VERIFICADO=true).
+| Nomes verification.* são os que o Laravel espera.
+*/
+Route::middleware('auth')->group(function () {
+    Route::get('/verificar-email', [EmailVerificationController::class, 'aviso'])
+        ->name('verification.notice');
+    Route::get('/verificar-email/{id}/{hash}', [EmailVerificationController::class, 'verificar'])
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('verification.verify');
+    Route::post('/verificar-email/reenviar', [EmailVerificationController::class, 'reenviar'])
+        ->middleware('throttle:6,1')
+        ->name('verification.send');
+});
 
 /*
 |--------------------------------------------------------------------------

@@ -7,6 +7,12 @@
         <h1 class="text-xl font-semibold text-slate-900">Iniciar sessão</h1>
         <p class="mt-1 text-sm text-slate-500">Acede à plataforma de gestão da tua empresa.</p>
 
+        @if (session('status'))
+            <div role="status" class="mt-4 rounded-md bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700">
+                {{ session('status') }}
+            </div>
+        @endif
+
         @if ($errors->any())
             <div class="mt-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
                 <ul class="list-disc space-y-1 pl-4">
@@ -45,6 +51,7 @@
                     <input type="checkbox" name="lembrar" class="rounded border-slate-300">
                     Lembrar-me
                 </label>
+                <a href="{{ route('password.request') }}" class="font-medium text-indigo-600 hover:text-indigo-500">Esqueceste a palavra-passe?</a>
             </div>
 
             <button type="submit"

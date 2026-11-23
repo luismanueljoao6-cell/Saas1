@@ -34,6 +34,18 @@ public function notificar(string $destino): void
 }
 ```
 
+## Autenticação (CORE-03)
+
+| Fluxo | Rotas (nome) | Notas |
+|---|---|---|
+| Login / logout / registo | `core.login`, `core.logout`, `core.registo` | Limitador por e-mail+IP e por IP. |
+| Recuperar palavra-passe | `password.request`, `password.email`, `password.reset`, `password.update` | Resposta idêntica exista ou não a conta; contas desativadas não recebem ligação. Revoga tokens Sanctum e remember_token. |
+| Verificar e-mail | `verification.notice`, `verification.verify`, `verification.send` | Ligação assinada e temporária; reenvio limitado. |
+
+- `CORE_EXIGIR_EMAIL_VERIFICADO=true` faz o middleware `tenant` exigir e-mail verificado em **todos** os módulos (omissão: `false`).
+- O grupo `web` inclui `AuthenticateSession`: mudar a palavra-passe termina as outras sessões.
+- Ainda por fazer: convites com ligação (substituem a palavra-passe temporária) e 2FA (TOTP). Ver `docs/auditorias/core-03-autenticacao.md`.
+
 ## Ainda por fazer neste módulo
 
 Contratos previstos e **ainda não existentes**: `AuthorizationInterface`,
