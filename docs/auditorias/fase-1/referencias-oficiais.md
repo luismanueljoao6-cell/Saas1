@@ -23,6 +23,7 @@ Acção pendente (decisão do responsável): confirmar o URL exacto da organiza�
 - Decreto Presidencial n.º 71/25, de 20 de Março: https://www.ucm.minfin.gov.ao/cs/groups/public/documents/document/aw40/otu2/~edisp/minfin4956210.pdf
 - Decreto Executivo n.º 683/25, de 22 de Agosto: https://www.ucm.minfin.gov.ao/cs/groups/public/documents/document/aw40/otuy/~edisp/minfin4952361.pdf
 - Resenha Legislativa AGT, Janeiro–Agosto de 2025: https://www.ucm.minfin.gov.ao/cs/groups/public/documents/document/aw40/otkw/~edisp/minfin4990676.pdf
+- Comunicado AGT «Sobre a preparação para a adesão à facturação electrónica», publicado em 02-10-2026: https://agt.minfin.gov.ao/PortalAGT/ (portal oficial; aplicação web sem texto legível nesta consulta). Evidência auxiliar da mensagem do portal capturada em 21-10-2026: https://www.lookuptax.com/docs/img/evidence/ao/2026-10-21-ao-einvoicing-phase-2-2027-correction.webp. A captura é secundária e não substitui a fonte primária.
 
 Estado: **consultadas directamente em 2026-11-23**. As divergências entre o anexo normativo e a página técnica em produção estão registadas em `atualizacao-normativa-2026-11-23.md`; não se presume que uma fonte substitui a outra sem esclarecimento da AGT.
 
@@ -82,5 +83,6 @@ Conclusões confirmadas nas fontes oficiais consultadas:
 - O DP 71/25 revoga o DP 292/18 e o DP 144/23 e derroga os n.os 1 e 5 do artigo 2.º do DP 312/18.
 - O DP 71/25 prevê reporte bimestral da actividade e vendas globais pelo produtor de software e bloqueio de novas facturas após falha de comunicação superior a 60 dias.
 - O DP 683/25 define a estrutura técnica e determina que as séries de facturas electrónicas são geradas pela AGT.
+- O calendário literal do artigo 37.º do DP 71/25 aponta para cerca de 21-09-2026; porém, o comunicado operacional da AGT de 02-10-2026 indica extensão da obrigação aos restantes contribuintes dos Regimes Geral e Simplificado a partir de 01-01-2027. A articulação jurídica entre o prazo do artigo 37.º e o comunicado não foi formalmente esclarecida nesta auditoria; ambos ficam registados, sem decisão fiscal definitiva.
 - O anexo normativo e a documentação técnica viva divergem no tratamento estrutural de RC; o código mantém o bloqueio preventivo até esclarecimento/homologação.
 - O XSD SAF-T guardado em repositório de terceiros continua sem prova de que seja a versão publicada directamente pela AGT; certificação e aceitação do SaaS1 não estão demonstradas.
