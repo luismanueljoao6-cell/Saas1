@@ -3,6 +3,8 @@
 namespace Modules\Core\Services;
 
 use DomainException;
+use InvalidArgumentException;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Guarda, durante o ciclo de vida de um pedido (ou de um comando artisan/job),
@@ -76,5 +78,36 @@ class TenantManager
     public function emBypass(): bool
     {
         return $this->bypassGlobal;
+    }
+
+    /**
+     * Executa o callback COM a empresa indicada como contexto (operações por
+     * empresa: jobs e comandos que percorrem empresas). Ao contrário de
+     * semTenant(), só vê e escreve dados dessa empresa. Sai de qualquer bypass
+     * durante o callback e repõe SEMPRE, mesmo com exceção, o tenant, o bypass
+     * e o team do Spatie Permission anteriores.
+     */
+    public function comEmpresa(int $empresaId, callable $callback): mixed
+    {
+        if ($empresaId < 1) {
+            throw new InvalidArgumentException('O id da empresa tem de ser um inteiro positivo.');
+        }
+
+        $anterior = $this->tenantId;
+        $bypassAnterior = $this->bypassGlobal;
+        $registrar = class_exists(PermissionRegistrar::class) ? app(PermissionRegistrar::class) : null;
+        $teamAnterior = $registrar?->getPermissionsTeamId();
+
+        $this->tenantId = $empresaId;
+        $this->bypassGlobal = false;
+        $registrar?->setPermissionsTeamId($empresaId);
+
+        try {
+            return $callback();
+        } finally {
+            $this->tenantId = $anterior;
+            $this->bypassGlobal = $bypassAnterior;
+            $registrar?->setPermissionsTeamId($teamAnterior);
+        }
     }
 }
