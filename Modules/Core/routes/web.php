@@ -103,6 +103,8 @@ Route::middleware(['auth', 'tenant', 'subscricao.ativa'])->group(function () {
 
     Route::get('/utilizadores', [UtilizadorController::class, 'index'])->name('core.utilizadores.index');
     Route::post('/utilizadores', [UtilizadorController::class, 'store'])->name('core.utilizadores.store');
+    Route::post('/utilizadores/convites/{convite}/revogar', [UtilizadorController::class, 'revogarConvite'])
+        ->name('core.convites.revogar');
     Route::post('/utilizadores/{utilizador}/alternar-ativo', [UtilizadorController::class, 'alternarAtivo'])
         ->name('core.utilizadores.alternar-ativo');
 });

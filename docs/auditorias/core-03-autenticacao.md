@@ -13,7 +13,7 @@ Sanctum 4, Spatie Permission 8 com Teams, Activitylog 5; sem Fortify).
 | Reenvio de verificação | Não existia | Implementado (`throttle:6,1`) |
 | Sessões ao mudar a palavra-passe | Sessões antigas continuavam válidas | `AuthenticateSession` no grupo `web` |
 | Tokens Sanctum ao mudar a palavra-passe | Mantinham-se | Revogados na redefinição |
-| Convites | Admin define palavra-passe temporária e comunica por fora | **Pendente (Parte B)** |
+| Convites | Admin define palavra-passe temporária e comunica por fora | Convite por e-mail com token (hash na BD), expiração, revogação e aceitação pelo próprio utilizador |
 | 2FA | Só colunas na BD (sem UI nem fluxo); segredo sem cifra no model | **Pendente (Parte C)** |
 
 ## Decisões
@@ -40,6 +40,23 @@ Sanctum 4, Spatie Permission 8 com Teams, Activitylog 5; sem Fortify).
 
 ## Pendente neste CORE-03
 
-- **Parte B** — convites com ligação e token (hash), expiração e aceitação, em
-  substituição da palavra-passe temporária.
 - **Parte C** — 2FA TOTP com códigos de recuperação e desafio no login.
+
+## Parte B — convites
+
+- Token aleatório de 64 caracteres; na BD fica só o SHA-256. Um só convite pendente
+  por e-mail (convidar outra vez revoga o anterior). Validade: `core.convites.validade_dias`
+  (por omissão 7 dias).
+- O e-mail, a empresa e o papel vêm sempre do convite, nunca do formulário de aceitação.
+- A vaga do plano conta convites pendentes ao convidar e é verificada outra vez ao
+  aceitar, sob bloqueio da empresa.
+- A ligação responde 404 igual para token desconhecido, expirado, revogado ou já usado,
+  com `Referrer-Policy: no-referrer` e sem cache.
+- Aceitar cria o utilizador com o e-mail verificado (a ligação provou o controlo da caixa).
+
+### Riscos residuais da Parte B
+
+- Ao convidar, o administrador fica a saber se um e-mail já tem conta na plataforma.
+- O e-mail de convite é enviado de forma síncrona: uma falha de SMTP deixa o convite
+  criado (convidar o mesmo e-mail outra vez substitui-o).
+- Convites só podem ser aceites por visitantes: quem já tem sessão aberta é reencaminhado.
