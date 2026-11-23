@@ -35,7 +35,7 @@ class OutboxRecuperacaoAgendadaTest extends TestCase
 
         $this->empresa = Empresa::create(['nome_comercial' => 'Empresa Recuperação', 'nif' => '100000501']);
 
-        app(NotificationChannelRegistry::class)->register(new class implements NotificationChannel
+        app(NotificationChannelRegistry::class)->register(new class () implements NotificationChannel
         {
             public function identifier(): string
             {
@@ -88,11 +88,11 @@ class OutboxRecuperacaoAgendadaTest extends TestCase
     {
         return app(TenantManager::class)->semTenant(
             fn () => app(NotificationDispatcher::class)->dispatch(
-            channel: 'teste.recuperacao',
-            recipient: '+244923000000',
-            payload: ['message' => "Mensagem {$chave}"],
-            idempotencyKey: $chave,
-            empresaId: $this->empresa->id,
+                channel: 'teste.recuperacao',
+                recipient: '+244923000000',
+                payload: ['message' => "Mensagem {$chave}"],
+                idempotencyKey: $chave,
+                empresaId: $this->empresa->id,
             ),
         );
     }
