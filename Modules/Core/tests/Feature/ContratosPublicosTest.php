@@ -2,6 +2,7 @@
 
 namespace Modules\Core\Tests\Feature;
 
+use Modules\Core\Contracts\EmpresaRepositoryInterface;
 use Modules\Core\Contracts\FeatureAccessInterface;
 use Modules\Core\Contracts\NotificationDispatcherInterface;
 use Modules\Core\Contracts\TenantContextInterface;
@@ -60,5 +61,20 @@ class ContratosPublicosTest extends TestCase
 
         $this->app->make(TenantManager::class)->set(7);
         $this->assertFalse($acesso->servicoAtivo(Servico::Faturacao, 8));
+    }
+
+    public function test_id_explicito_nao_permite_consultar_servico_sem_tenant(): void
+    {
+        $this->app->make(TenantManager::class)->clear();
+
+        $empresas = \Mockery::mock(EmpresaRepositoryInterface::class);
+        $empresas->shouldNotReceive('encontrarPorId');
+
+        $acesso = new FeatureAccess(
+            $this->app->make(TenantContextInterface::class),
+            $empresas,
+        );
+
+        $this->assertFalse($acesso->servicoAtivo(Servico::Faturacao, 7));
     }
 }
