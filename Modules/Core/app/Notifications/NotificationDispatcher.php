@@ -25,14 +25,23 @@ class NotificationDispatcher
         int $maxAttempts = 5,
         ?int $empresaId = null,
     ): NotificationOutbox {
-        $tenantId = $this->tenants->id() ?? $empresaId;
+        $tenantId = $this->tenants->id();
 
-        if (! $tenantId || $tenantId < 1) {
-            throw new RuntimeException('É obrigatório identificar a empresa para registar uma notificação.');
+        if ($tenantId === null) {
+            // Um ID explícito só é permitido num contexto de sistema deliberado.
+            // Sem tenant nem bypass, o contexto é ambíguo e não pode criar Outbox
+            // em nome de uma empresa arbitrária.
+            if (! $this->tenants->emBypass() || $empresaId === null) {
+                throw new RuntimeException('É obrigatório identificar a empresa no contexto atual ou usar um contexto de sistema explícito para registar uma notificação.');
+            }
+
+            $tenantId = $empresaId;
+        } elseif ($empresaId !== null && $empresaId !== $tenantId) {
+            throw new RuntimeException('A empresa indicada não corresponde ao tenant atual.');
         }
 
-        if ($this->tenants->has() && $empresaId !== null && $empresaId !== $this->tenants->id()) {
-            throw new RuntimeException('A empresa indicada não corresponde ao tenant atual.');
+        if ($tenantId < 1) {
+            throw new RuntimeException('É obrigatório identificar uma empresa válida para registar uma notificação.');
         }
 
         if (! preg_match('/^[A-Za-z0-9._:-]{1,191}$/', $idempotencyKey)) {
