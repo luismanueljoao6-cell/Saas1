@@ -56,6 +56,9 @@ class IsolamentoMultiempresaTest extends TestCase
      */
     private const ROTAS_AUTENTICADAS_SEM_TENANT = [
         'core.logout' => 'Terminar a sessão tem de funcionar mesmo sem empresa (super admin, utilizador desativado).',
+        'verification.notice' => 'Aviso de e-mail por verificar: é para onde o middleware tenant redireciona; com tenant seria um ciclo.',
+        'verification.verify' => 'Ligação assinada do e-mail: exige sessão e assinatura; o EmailVerificationRequest valida o id e o hash do utilizador autenticado.',
+        'verification.send' => 'Reenvio do e-mail de verificação: exige sessão e tem limite de pedidos.',
     ];
 
     /**
