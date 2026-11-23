@@ -24,9 +24,15 @@ O DP 71/25 estabelece o regime de emissão, rectificação, anulação, conserva
 - **Art. 19.º e art. 22.º:** exigem autenticidade, integridade, legibilidade, controlo de acessos, detecção de alterações não autorizadas, cópias de segurança e documentação técnica.
 - **Art. 37.º:** a fase inicial de 12 meses após a entrada em vigor do Decreto Executivo técnico aplica-se aos Grandes Contribuintes e fornecedores do Estado; findo o prazo, a obrigação estende-se aos demais contribuintes sujeitos.
 
-### Calendário transitório
+### Calendário transitório e orientação operacional da AGT
 
-O DP 683/25 foi publicado em 22-08-2025 e o seu artigo 6.º determina entrada em vigor 30 dias depois. Pela contagem literal, a fase transitória de 12 meses do artigo 37.º do DP 71/25 terá terminado aproximadamente em 21-09-2026. Na pesquisa efectuada nas fontes oficiais acima não foi localizada uma prorrogação posterior. A data exacta de aplicação a cada contribuinte e qualquer eventual extensão devem ser confirmadas com a AGT antes de decisões comerciais ou fiscais.
+O DP 683/25 foi publicado em 22-08-2025 e o seu artigo 6.º determina entrada em vigor 30 dias depois. Pela contagem literal do prazo de 12 meses previsto no artigo 37.º do DP 71/25, a fase transitória terminaria aproximadamente em 21-09-2026.
+
+**Revalidação importante:** o comunicado «Sobre a preparação para a adesão à facturação electrónica», publicado pela AGT em 02-10-2026 no seu portal oficial, apresenta um calendário operacional diferente: facturação electrónica aplicável desde 01-01-2026 aos Grandes Contribuintes e fornecedores do Estado, estendendo-se a partir de **01-01-2027** aos restantes contribuintes dos Regimes Geral e Simplificado do IVA. O Regime de Exclusão pode aderir voluntariamente mediante solicitação.
+
+Fonte primária: portal oficial da AGT, https://agt.minfin.gov.ao/PortalAGT/ (comunicado de 02-10-2026, «Sobre a preparação para a adesão à facturação electrónica»). O portal é uma aplicação web e não devolveu texto legível nesta consulta; foi possível conferir a mensagem oficial numa captura do portal feita em 21-10-2026: https://www.lookuptax.com/docs/img/evidence/ao/2026-10-21-ao-einvoicing-phase-2-2027-correction.webp. A captura é evidência auxiliar, não substitui a fonte primária.
+
+O comunicado operacional da AGT não foi identificado como alteração formal ao DP 71/25 ou ao DP 683/25. Por isso, ficam registados ambos os elementos: a contagem literal dos diplomas e o calendário operacional actualmente divulgado pela AGT. Para decisões fiscais, contratuais ou de activação por segmento, confirmar por escrito com a AGT a articulação entre o artigo 37.º e o comunicado de 02-10-2026. Não usar a data aproximada de Setembro de 2026 como prazo operacional actual sem essa confirmação.
 
 ## 2. Especificação técnica e séries
 
