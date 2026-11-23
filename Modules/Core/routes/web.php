@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Core\Http\Controllers\Auth\AceitarConviteController;
 use Modules\Core\Http\Controllers\Auth\AuthenticatedSessionController;
 use Modules\Core\Http\Controllers\Auth\EmailVerificationController;
 use Modules\Core\Http\Controllers\Auth\NewPasswordController;
@@ -36,6 +37,14 @@ Route::middleware('guest')->group(function () {
     Route::post('/redefinir-palavra-passe', [NewPasswordController::class, 'store'])
         ->middleware('throttle:5,1')
         ->name('password.update');
+
+    // Convites: o token (64 caracteres aleatórios) é o segredo; na BD só fica o hash.
+    Route::get('/convite/{token}', [AceitarConviteController::class, 'mostrar'])
+        ->middleware('throttle:30,1')
+        ->name('core.convite.mostrar');
+    Route::post('/convite/{token}', [AceitarConviteController::class, 'aceitar'])
+        ->middleware('throttle:10,1')
+        ->name('core.convite.aceitar');
 });
 
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
