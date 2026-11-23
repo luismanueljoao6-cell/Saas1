@@ -1,6 +1,6 @@
 # Referências oficiais e técnicas — Fase 1
 
-**Datas de consulta:** 2026-11-17 e 2026-11-18  
+**Datas de consulta:** 2026-11-17, 2026-11-18 e 2026-11-23  
 **Commit analisado:** `87c854322e255e79195fcd20c8ae7df881f79fbf` (head da PR #58 nesta data)  
 **Regra:** só se regista aqui o que foi efectivamente consultado. Nada é inferido nem inventado.
 
@@ -16,14 +16,15 @@ Tentativas em 2026-11-17:
 Consequência: **nenhum repositório, versão, endpoint ou campo foi registado a partir desta origem.**  
 Acção pendente (decisão do responsável): confirmar o URL exacto da organização, ou confirmar que a AGT não publica repositórios no GitHub. Enquanto isso, a fonte de nível 2 é a documentação do Quiosque AGT (secção 2).
 
-## 2. Documentação oficial AGT — herdada, a reverificar
+## 2. Documentação oficial AGT — reconsultada em 2026-11-23
 
-Citada na decisão técnica `decisao-alocacoes-paymentReceipt.md` (2026-11-16); **não foi reconsultada nesta sessão**:
-
-- Serviço «Registar Factura»: https://quiosqueagt.minfin.gov.ao/doc-agt/doc-agt/2/servicos/servicos_solicitar_registo.html
+- Serviço «Registar Factura» (schema 2.0): https://quiosqueagt.minfin.gov.ao/doc-agt/doc-agt/2/servicos/servicos_solicitar_registo.html
 - Serviço «Consultar Factura»: https://quiosqueagt.minfin.gov.ao/doc-agt/doc-agt/2/servicos/servicos_consultar.html
+- Decreto Presidencial n.º 71/25, de 20 de Março: https://www.ucm.minfin.gov.ao/cs/groups/public/documents/document/aw40/otu2/~edisp/minfin4956210.pdf
+- Decreto Executivo n.º 683/25, de 22 de Agosto: https://www.ucm.minfin.gov.ao/cs/groups/public/documents/document/aw40/otuy/~edisp/minfin4952361.pdf
+- Resenha Legislativa AGT, Janeiro–Agosto de 2025: https://www.ucm.minfin.gov.ao/cs/groups/public/documents/document/aw40/otkw/~edisp/minfin4990676.pdf
 
-Estado: **reverificar antes de usar como evidência** em `matriz-requisitos-agt.md` (versão, data e excerto por requisito).
+Estado: **consultadas directamente em 2026-11-23**. As divergências entre o anexo normativo e a página técnica em produção estão registadas em `atualizacao-normativa-2026-11-23.md`; não se presume que uma fonte substitui a outra sem esclarecimento da AGT.
 
 ## 3. XSD do SAF-T (AO) — fonte secundária de terceiros
 
@@ -71,3 +72,15 @@ Limitações conhecidas (leitura de `.github/workflows/ci.yml`):
 ## 6. Referência comercial (Vendus)
 
 Não consultada. Quando for, registar só como comparação de boas práticas (nível 5), nunca como regra fiscal.
+
+## 7. Legislação e especificação AGT revalidadas em 2026-11-23
+
+Ver `atualizacao-normativa-2026-11-23.md` para o cruzamento por artigo, datas, campos técnicos e divergência RC entre o Decreto Executivo n.º 683/25 e a página viva do Quiosque AGT.
+
+Conclusões confirmadas nas fontes oficiais consultadas:
+
+- O DP 71/25 revoga o DP 292/18 e o DP 144/23 e derroga os n.os 1 e 5 do artigo 2.º do DP 312/18.
+- O DP 71/25 prevê reporte bimestral da actividade e vendas globais pelo produtor de software e bloqueio de novas facturas após falha de comunicação superior a 60 dias.
+- O DP 683/25 define a estrutura técnica e determina que as séries de facturas electrónicas são geradas pela AGT.
+- O anexo normativo e a documentação técnica viva divergem no tratamento estrutural de RC; o código mantém o bloqueio preventivo até esclarecimento/homologação.
+- O XSD SAF-T guardado em repositório de terceiros continua sem prova de que seja a versão publicada directamente pela AGT; certificação e aceitação do SaaS1 não estão demonstradas.
