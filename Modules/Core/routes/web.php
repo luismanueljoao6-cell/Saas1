@@ -10,6 +10,7 @@ use Modules\Core\Http\Controllers\Auth\PasswordResetLinkController;
 use Modules\Core\Http\Controllers\Auth\RegisteredTenantController;
 use Modules\Core\Http\Controllers\EmpresaController;
 use Modules\Core\Http\Controllers\PainelController;
+use Modules\Core\Http\Controllers\SegurancaContaController;
 use Modules\Core\Http\Controllers\ServicoController;
 use Modules\Core\Http\Controllers\UtilizadorController;
 
@@ -77,6 +78,33 @@ Route::middleware('auth')->group(function () {
         ->middleware('throttle:6,1')
         ->name('verification.send');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Definições de segurança da conta (2FA)
+|--------------------------------------------------------------------------
+| 'auth' + 'tenant', sem 'subscricao.ativa': proteger a própria conta não pode
+| ficar bloqueado por uma subscrição expirada. Todas as ações sensíveis pedem a
+| palavra-passe atual e têm limite de pedidos.
+*/
+Route::middleware(['auth', 'tenant'])
+    ->prefix('conta/seguranca')
+    ->name('core.seguranca.')
+    ->group(function () {
+        Route::get('/', [SegurancaContaController::class, 'index'])->name('index');
+        Route::post('/dois-fatores', [SegurancaContaController::class, 'iniciar'])
+            ->middleware('throttle:5,1')
+            ->name('2fa.iniciar');
+        Route::post('/dois-fatores/confirmar', [SegurancaContaController::class, 'confirmar'])
+            ->middleware('throttle:10,1')
+            ->name('2fa.confirmar');
+        Route::post('/dois-fatores/codigos', [SegurancaContaController::class, 'regenerarCodigos'])
+            ->middleware('throttle:5,1')
+            ->name('2fa.codigos');
+        Route::post('/dois-fatores/desativar', [SegurancaContaController::class, 'desativar'])
+            ->middleware('throttle:5,1')
+            ->name('2fa.desativar');
+    });
 
 /*
 |--------------------------------------------------------------------------
