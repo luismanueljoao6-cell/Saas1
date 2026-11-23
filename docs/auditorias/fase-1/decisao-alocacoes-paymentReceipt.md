@@ -389,3 +389,41 @@ Não basta incluir a FA na relação actual e somar todas as facturas. A agrega�
 - Comparar os indicadores de projecto e os resumos do gateway documento a documento, mantendo explícita a distinção entre saldo documental e saldo contratual.
 
 **Estado:** achado arquitectural confirmado pela agregação actual de `ProjetoMusical`; a implementação depende do contrato definitivo FA→recebimento→FT→abatimento. Não foi alterada a fórmula em produção nesta etapa para evitar uma correcção prematura que quebraria o fluxo legado de duas facturas.
+## 21. Revalidação normativa de 2026-11-23 — divergência RC entre diploma e API viva
+
+Foram reconsultadas directamente três fontes oficiais:
+
+1. Decreto Presidencial n.º 71/25, de 20 de Março, Diário da República, I Série, n.º 52: https://www.ucm.minfin.gov.ao/cs/groups/public/documents/document/aw40/otu2/~edisp/minfin4956210.pdf
+2. Decreto Executivo n.º 683/25, de 22 de Agosto, Diário da República, I Série, n.º 159: https://www.ucm.minfin.gov.ao/cs/groups/public/documents/document/aw40/otuy/~edisp/minfin4952361.pdf
+3. Serviço vivo «Registar Factura» do Quiosque AGT, schema 2.0: https://quiosqueagt.minfin.gov.ao/doc-agt/doc-agt/2/servicos/servicos_solicitar_registo.html
+
+### Divergência técnica que impede alterar o bloqueio RC por suposição
+
+- No Anexo I do Decreto Executivo n.º 683/25, a tabela de `documentType` inclui RC; a tabela de `lines` exclui AR, RC e RG; e a tabela de `paymentReceipt` exige esse objecto para AR, RC e RG.
+- Na página viva do serviço «Registar Factura», consultada em 2026-11-23, as listas de excepção de `lines` e de obrigatoriedade de `paymentReceipt` mencionam apenas AR e RG. Pela estrutura publicada, RC fica no grupo que envia `lines` e não envia `paymentReceipt`.
+- Portanto, o diploma publicado no Diário da República e a documentação técnica operacional actualmente exposta pela AGT não coincidem quanto ao payload de RC.
+
+### Decisão segura
+
+- Não alterar o bloqueio actual de RC com AGT activa.
+- Não substituir `lines` por `paymentReceipt` em RC sem confirmação escrita da AGT ou teste de homologação documentado que resolva a divergência.
+- Manter RG/AR bloqueados até existirem alocações fiscais por linha, totais reconstruídos da mesma fotografia assinada e confirmação do fluxo documental aplicável à FA.
+- Registar o payload, a versão da especificação, a resposta da homologação e a data antes de alterar os builders.
+- Não declarar conformidade fiscal com base apenas na passagem dos testes internos.
+
+### Diplomas e calendário de implementação
+
+O DP 71/25 sujeita à facturação electrónica os contribuintes dos regimes Geral e Simplificado do IVA, permite adesão mediante solicitação para o Regime de Exclusão (artigo 16.º), exige transmissão em tempo real e software validado/disponibilizado pela AGT (artigo 17.º), determina reporte bimestral da actividade e valor global das vendas pelo produtor de software (artigo 17.º, n.º 4) e bloqueio de novas facturas quando a falha de comunicação excede 60 dias (artigo 17.º, n.º 5).
+
+O DP 71/25 estabelece fase transitória de 12 meses contada da entrada em vigor do Decreto Executivo previsto no artigo 36.º (artigo 37.º), revoga expressamente o DP 292/18 e o DP 144/23 e derroga os n.os 1 e 5 do artigo 2.º do DP 312/18 (artigo 40.º), e entra em vigor seis meses após a publicação (artigo 42.º).
+
+O DP 683/25 determina entrada em vigor 30 dias após a publicação e que as séries de facturas electrónicas são geradas pela AGT. Pela contagem literal, os 12 meses transitórios do artigo 37.º parecem ter terminado em Setembro de 2026. Na pesquisa efectuada em fontes oficiais não foi localizada uma prorrogação posterior; qualquer comunicado ou extensão deve ser confirmado antes de uma decisão de produto ou fiscal.
+
+### Lacunas de implementação que exigem decisão/documentação oficial
+
+1. **Reporte bimestral do produtor:** não foi encontrado no código um serviço ou registo que comprove o reporte da actividade e do valor global das vendas do produtor de software. A API viva consultada expõe os serviços de série, registo e consulta de facturas, mas não documenta neste conjunto o mecanismo de reporte bimestral. Não inventar endpoint; obter instruções oficiais da AGT.
+2. **Bloqueio após 60 dias:** `GuardaEmissao::garantirComunicacaoAgtEmDia()` usa a idade de submissões pendentes/erro/intervenção (`created_at`) como aproximação à falha de comunicação. Isso não mede a última comunicação bem-sucedida: pode bloquear apesar de chamadas recentes bem-sucedidas e não detecta uma indisponibilidade prolongada quando não existem submissões pendentes. A equivalência com o artigo 17.º, n.º 5, não está demonstrada. É necessária uma fonte de estado temporal de comunicação e confirmação do critério aplicável.
+3. **SAF-T:** o exportador continua marcado como provisório e o XSD disponível é de fonte terceira. A versão oficial directamente publicada pela AGT e a validação integral do ficheiro continuam pendentes.
+4. **Certificação:** não foi encontrada evidência de certificação/homologação do SaaS1. Nenhum teste local ou CI substitui essa prova.
+
+**Estado:** fontes oficiais reconsultadas; divergência RC e obrigações operacionais registadas; sem alteração funcional fiscal nesta etapa.
