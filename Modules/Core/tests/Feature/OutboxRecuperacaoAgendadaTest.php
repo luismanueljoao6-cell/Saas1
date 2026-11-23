@@ -35,7 +35,7 @@ class OutboxRecuperacaoAgendadaTest extends TestCase
 
         $this->empresa = Empresa::create(['nome_comercial' => 'Empresa Recuperação', 'nif' => '100000501']);
 
-        app(NotificationChannelRegistry::class)->register(new class () implements NotificationChannel
+        app(NotificationChannelRegistry::class)->register(new class implements NotificationChannel
         {
             public function identifier(): string
             {
