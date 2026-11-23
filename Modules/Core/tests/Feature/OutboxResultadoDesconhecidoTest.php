@@ -211,12 +211,12 @@ class OutboxResultadoDesconhecidoTest extends TestCase
     {
         return app(TenantManager::class)->semTenant(
             fn () => app(NotificationDispatcher::class)->dispatch(
-            channel: 'teste.indeterminado',
-            recipient: '+244923000000',
-            payload: ['corpo' => "Mensagem {$chave}"],
-            idempotencyKey: $chave,
-            maxAttempts: $maxAttempts,
-            empresaId: $this->empresa->id,
+                channel: 'teste.indeterminado',
+                recipient: '+244923000000',
+                payload: ['corpo' => "Mensagem {$chave}"],
+                idempotencyKey: $chave,
+                maxAttempts: $maxAttempts,
+                empresaId: $this->empresa->id,
             ),
         );
     }
