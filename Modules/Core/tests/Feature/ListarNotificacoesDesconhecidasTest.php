@@ -12,6 +12,7 @@ use Modules\Core\Notifications\Contracts\NotificationChannel;
 use Modules\Core\Notifications\DTO\NotificationSendResult;
 use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Core\Notifications\NotificationDispatcher;
+use Modules\Core\Services\TenantManager;
 use Tests\TestCase;
 
 /**
@@ -116,14 +117,16 @@ class ListarNotificacoesDesconhecidasTest extends TestCase
 
     private function nova(Empresa $empresa, string $chave, string $estado, int $minutosAtras = 5): NotificationOutbox
     {
-        $notificacao = app(\Modules\Core\Services\TenantManager::class)->semTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+        $notificacao = app(TenantManager::class)->semTenant(
+            fn () => app(NotificationDispatcher::class)->dispatch(
             channel: 'teste.lista-desconhecidas',
             recipient: self::DESTINATARIO,
             payload: ['corpo' => "Mensagem {$chave}"],
             idempotencyKey: $chave,
             maxAttempts: 5,
             empresaId: $empresa->id,
-        ));
+            ),
+        );
 
         $notificacao->forceFill(['status' => $estado, 'attempts' => 1, 'last_error' => 'Resultado desconhecido: teste.'])->save();
 
