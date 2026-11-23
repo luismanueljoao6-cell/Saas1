@@ -80,6 +80,10 @@ class User extends Authenticatable implements MustVerifyEmail
             'is_super_admin' => 'boolean',
             'ativo' => 'boolean',
             'two_factor_confirmed_at' => 'datetime',
+            // Segredo e códigos de recuperação cifrados em repouso (APP_KEY).
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_ultimo_passo' => 'integer',
         ];
     }
 
