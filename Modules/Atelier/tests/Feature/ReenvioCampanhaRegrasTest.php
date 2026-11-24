@@ -121,7 +121,8 @@ class ReenvioCampanhaRegrasTest extends TestCase
         $admin = $this->registarAtelier('500000002');
         $empresaId = (int) $admin->empresa_id;
         $espera = $this->criarCliente($empresaId, 'Cliente em espera', '923456781');
-        $morto = $this->criarCliente($empresaId, 'Cliente sem sorte', '923456782');        $campanha = $this->criarCampanha($admin);
+        $morto = $this->criarCliente($empresaId, 'Cliente sem sorte', '923456782');
+        $campanha = $this->criarCampanha($admin);
 
         $this->correrJob($campanha->id);
         $this->assertSame('em_processamento', $this->campanhaAtual($campanha)->estado);
@@ -241,6 +242,7 @@ class ReenvioCampanhaRegrasTest extends TestCase
         );
         $this->assertSame(1, (int) $this->envioDe($campanha, $falhado)->tentativa);
         $this->assertCount(2, $this->outboxDaEmpresa($empresaId));
+
         $pedido = CampanhaReenvio::withoutGlobalScopes()->findOrFail($pedido->id);
         $this->assertSame(CampanhaReenvio::IGNORADO, $pedido->estado);
         $this->assertNull($pedido->aberto);
@@ -359,6 +361,7 @@ class ReenvioCampanhaRegrasTest extends TestCase
         $this->assertSame(2, (int) $this->envioDe($a['campanha'], $a['falhado'])->tentativa);
         $this->assertCount(3, $this->outboxDaEmpresa((int) $a['admin']->empresa_id));
         $this->assertCount(1, $this->pedidosDe($a['campanha']));
+
         // …e a empresa B ficou exatamente como estava.
         $this->assertSame($antesDeB, $this->fotografia($b['campanha']));
         $this->assertCount(2, $this->outboxDaEmpresa((int) $b['admin']->empresa_id));
@@ -478,7 +481,8 @@ class ReenvioCampanhaRegrasTest extends TestCase
 
         app(SincronizarEstadoCampanhaOutbox::class)->handle(
             new NotificationStateChanged((int) $outbox->id, (int) $outbox->empresa_id, $estado)
-        );    }
+        );
+    }
 
     /** Executa o job como um worker: sem tenant activo e com as dependências do contentor. */
     protected function correrJob(int $campanhaId, ?string $reenvioToken = null): void
