@@ -2,13 +2,21 @@
 
 namespace Modules\Core\Tests\Feature;
 
+use Illuminate\Support\Facades\Gate;
+use Modules\Core\Contracts\AuditLoggerInterface;
+use Modules\Core\Contracts\AuthorizationInterface;
 use Modules\Core\Contracts\FeatureAccessInterface;
+use Modules\Core\Contracts\ModuleRegistryInterface;
 use Modules\Core\Contracts\NotificationDispatcherInterface;
 use Modules\Core\Contracts\TenantContextInterface;
 use Modules\Core\Contracts\TenantProvisionerInterface;
 use Modules\Core\Exceptions\TenantNaoEncontradoException;
 use Modules\Core\Notifications\NotificationDispatcher;
+use Modules\Core\Repositories\Contracts\EmpresaRepositoryInterface;
+use Modules\Core\Services\AuditLogger;
+use Modules\Core\Services\Authorization;
 use Modules\Core\Services\FeatureAccess;
+use Modules\Core\Services\ModuleRegistry;
 use Modules\Core\Services\TenantContext;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantProvisionerRegistry;
