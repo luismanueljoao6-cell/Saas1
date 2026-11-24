@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Mockery;
 use Modules\Atelier\Jobs\DispararCampanhaJob;
 use Modules\Atelier\Jobs\EnviarCampanhasAgendadasJob;
 use Modules\Atelier\Listeners\SincronizarEstadoCampanhaOutbox;
@@ -15,6 +16,8 @@ use Modules\Atelier\Models\CampanhaEnvio;
 use Modules\Atelier\Models\CampanhaReenvio;
 use Modules\Atelier\Models\ClienteCrm;
 use Modules\Atelier\Services\CrmService;
+use Modules\Atelier\Services\Notificacoes\NotificadorClienteService;
+use Modules\Atelier\Services\PortalLinkService;
 use Modules\Core\Events\NotificationStateChanged;
 use Modules\Core\Models\NotificationAttempt;
 use Modules\Core\Models\NotificationOutbox;
@@ -23,6 +26,7 @@ use Modules\Core\Services\RegistoEmpresaService;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
 use ReflectionProperty;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -62,13 +66,13 @@ class ReenvioCampanhaRegrasTest extends TestCase
         $tenantManager = app(TenantManager::class);
         $tenantManager->set($tenantAnterior);
 
-        $registrar = app(\Spatie\Permission\PermissionRegistrar::class);
+        $registrar = app(PermissionRegistrar::class);
         $registrar->setPermissionsTeamId($tenantAnterior);
 
-        $crm = \Mockery::mock(CrmService::class);
+        $crm = Mockery::mock(CrmService::class);
         $crm->shouldReceive('resolverSegmento')
             ->once()
-            ->with(\Mockery::on(function (Campanha $recebida) use ($campanha, $empresaId, $tenantManager, $registrar): bool {
+            ->with(Mockery::on(function (Campanha $recebida) use ($campanha, $empresaId, $tenantManager, $registrar): bool {
                 $this->assertSame($campanha->id, $recebida->id);
                 $this->assertSame($empresaId, $tenantManager->id());
                 $this->assertFalse($tenantManager->emBypass());
@@ -81,8 +85,8 @@ class ReenvioCampanhaRegrasTest extends TestCase
         (new DispararCampanhaJob($campanha->id))->handle(
             $tenantManager,
             $crm,
-            app(\Modules\Atelier\Services\Notificacoes\NotificadorClienteService::class),
-            app(\Modules\Atelier\Services\PortalLinkService::class),
+            app(NotificadorClienteService::class),
+            app(PortalLinkService::class),
         );
 
         $this->assertSame($tenantAnterior, $tenantManager->id());
@@ -117,8 +121,7 @@ class ReenvioCampanhaRegrasTest extends TestCase
         $admin = $this->registarAtelier('500000002');
         $empresaId = (int) $admin->empresa_id;
         $espera = $this->criarCliente($empresaId, 'Cliente em espera', '923456781');
-        $morto = $this->criarCliente($empresaId, 'Cliente sem sorte', '923456782');
-        $campanha = $this->criarCampanha($admin);
+        $morto = $this->criarCliente($empresaId, 'Cliente sem sorte', '923456782');        $campanha = $this->criarCampanha($admin);
 
         $this->correrJob($campanha->id);
         $this->assertSame('em_processamento', $this->campanhaAtual($campanha)->estado);
@@ -238,7 +241,6 @@ class ReenvioCampanhaRegrasTest extends TestCase
         );
         $this->assertSame(1, (int) $this->envioDe($campanha, $falhado)->tentativa);
         $this->assertCount(2, $this->outboxDaEmpresa($empresaId));
-
         $pedido = CampanhaReenvio::withoutGlobalScopes()->findOrFail($pedido->id);
         $this->assertSame(CampanhaReenvio::IGNORADO, $pedido->estado);
         $this->assertNull($pedido->aberto);
@@ -357,7 +359,6 @@ class ReenvioCampanhaRegrasTest extends TestCase
         $this->assertSame(2, (int) $this->envioDe($a['campanha'], $a['falhado'])->tentativa);
         $this->assertCount(3, $this->outboxDaEmpresa((int) $a['admin']->empresa_id));
         $this->assertCount(1, $this->pedidosDe($a['campanha']));
-
         // …e a empresa B ficou exatamente como estava.
         $this->assertSame($antesDeB, $this->fotografia($b['campanha']));
         $this->assertCount(2, $this->outboxDaEmpresa((int) $b['admin']->empresa_id));
@@ -477,8 +478,7 @@ class ReenvioCampanhaRegrasTest extends TestCase
 
         app(SincronizarEstadoCampanhaOutbox::class)->handle(
             new NotificationStateChanged((int) $outbox->id, (int) $outbox->empresa_id, $estado)
-        );
-    }
+        );    }
 
     /** Executa o job como um worker: sem tenant activo e com as dependências do contentor. */
     protected function correrJob(int $campanhaId, ?string $reenvioToken = null): void
