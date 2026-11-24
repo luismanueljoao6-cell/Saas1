@@ -46,21 +46,29 @@ class TenantManager
     /**
      * Executa o callback fora do contexto de qualquer empresa, de forma explícita
      * e temporária (painel de administração da plataforma, serviços de sistema).
-     * O tenant e o bypass anteriores são sempre repostos no fim, mesmo com exceção.
+     * Limpa também o team do Spatie para que operações globais de papéis e
+     * permissões não herdem silenciosamente a empresa anterior.
+     *
+     * O tenant, o bypass e o team anteriores são sempre repostos no fim,
+     * incluindo quando o callback lança uma exceção ou existem chamadas aninhadas.
      */
     public function semTenant(callable $callback): mixed
     {
         $anterior = $this->tenantId;
         $bypassAnterior = $this->bypassGlobal;
-
-        $this->tenantId = null;
-        $this->bypassGlobal = true;
+        $registrar = $this->permissionRegistrar();
+        $teamAnterior = $registrar?->getPermissionsTeamId();
 
         try {
+            $this->tenantId = null;
+            $this->bypassGlobal = true;
+            $registrar?->setPermissionsTeamId(null);
+
             return $callback();
         } finally {
             $this->tenantId = $anterior;
             $this->bypassGlobal = $bypassAnterior;
+            $registrar?->setPermissionsTeamId($teamAnterior);
         }
     }
 
@@ -87,6 +95,27 @@ class TenantManager
      * durante o callback e repõe SEMPRE, mesmo com exceção, o tenant, o bypass
      * e o team do Spatie Permission anteriores.
      */
+    /**
+     * Resolve o registrar apenas quando o container Laravel tem o binding
+     * disponível. TenantManager também é usado em testes unitários sem o
+     * bootstrap completo da aplicação; class_exists() sozinho não garante
+     * que as dependências do registrar possam ser resolvidas.
+     */
+    protected function permissionRegistrar(): ?PermissionRegistrar
+    {
+        if (! class_exists(PermissionRegistrar::class) || ! function_exists('app')) {
+            return null;
+        }
+
+        $container = app();
+
+        if (! $container->bound(PermissionRegistrar::class)) {
+            return null;
+        }
+
+        return $container->make(PermissionRegistrar::class);
+    }
+
     public function comEmpresa(int $empresaId, callable $callback): mixed
     {
         if ($empresaId < 1) {
@@ -95,7 +124,7 @@ class TenantManager
 
         $anterior = $this->tenantId;
         $bypassAnterior = $this->bypassGlobal;
-        $registrar = class_exists(PermissionRegistrar::class) ? app(PermissionRegistrar::class) : null;
+        $registrar = $this->permissionRegistrar();
         $teamAnterior = $registrar?->getPermissionsTeamId();
 
         $this->tenantId = $empresaId;
