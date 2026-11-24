@@ -17,6 +17,7 @@ use Modules\Core\Notifications\Exceptions\ResultadoIndeterminadoException;
 use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Core\Notifications\NotificationDispatcher;
 use Modules\Core\Notifications\NotificationProcessor;
+use Modules\Core\Services\TenantManager;
 use RuntimeException;
 use Tests\TestCase;
 use Throwable;
@@ -208,13 +209,15 @@ class OutboxResultadoDesconhecidoTest extends TestCase
 
     private function nova(string $chave, int $maxAttempts = 5): NotificationOutbox
     {
-        return app(NotificationDispatcher::class)->dispatch(
-            channel: 'teste.indeterminado',
-            recipient: '+244923000000',
-            payload: ['corpo' => "Mensagem {$chave}"],
-            idempotencyKey: $chave,
-            maxAttempts: $maxAttempts,
-            empresaId: $this->empresa->id,
+        return app(TenantManager::class)->semTenant(
+            fn () => app(NotificationDispatcher::class)->dispatch(
+                channel: 'teste.indeterminado',
+                recipient: '+244923000000',
+                payload: ['corpo' => "Mensagem {$chave}"],
+                idempotencyKey: $chave,
+                maxAttempts: $maxAttempts,
+                empresaId: $this->empresa->id,
+            ),
         );
     }
 

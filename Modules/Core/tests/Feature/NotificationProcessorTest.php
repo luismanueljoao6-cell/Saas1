@@ -365,6 +365,28 @@ class NotificationProcessorTest extends TestCase
         $this->assertSame(0, $notificacao->attempts);
     }
 
+    public function test_dispatcher_recusa_empresa_explicita_sem_tenant_e_sem_bypass(): void
+    {
+        $tenants = app(TenantManager::class);
+        $tenants->clear();
+
+        try {
+            app(NotificationDispatcher::class)->dispatch(
+                'teste.canal',
+                '+244923000001',
+                ['corpo' => 'x'],
+                'chave-sem-contexto',
+                empresaId: $this->empresa->id,
+            );
+            $this->fail('Uma empresa explícita não pode substituir um contexto tenant ausente.');
+        } catch (RuntimeException $excecao) {
+            $this->assertStringContainsString('contexto atual', $excecao->getMessage());
+        }
+
+        $this->assertDatabaseCount('notification_outbox', 0);
+        $this->assertFalse($tenants->emBypass());
+    }
+
     public function test_dispatcher_recusa_empresa_diferente_do_tenant_e_isola_chaves_por_empresa(): void
     {
         $tenants = app(TenantManager::class);
@@ -379,9 +401,11 @@ class NotificationProcessorTest extends TestCase
         }
         $tenants->clear();
 
-        // A mesma chave, em duas empresas, são duas notificações diferentes.
-        $a = $dispatcher->dispatch('teste.canal', '+244923000001', ['corpo' => 'x'], 'chave-partilhada', empresaId: $this->empresa->id);
-        $b = $dispatcher->dispatch('teste.canal', '+244923000002', ['corpo' => 'y'], 'chave-partilhada', empresaId: $this->outraEmpresa->id);
+        // O dispatch sem tenant só é permitido num bypass de sistema explícito.
+        [$a, $b] = $tenants->semTenant(fn () => [
+            $dispatcher->dispatch('teste.canal', '+244923000001', ['corpo' => 'x'], 'chave-partilhada', empresaId: $this->empresa->id),
+            $dispatcher->dispatch('teste.canal', '+244923000002', ['corpo' => 'y'], 'chave-partilhada', empresaId: $this->outraEmpresa->id),
+        ]);
 
         $this->assertNotSame($a->id, $b->id);
         $this->assertSame($this->empresa->id, (int) $a->empresa_id);
@@ -465,14 +489,14 @@ class NotificationProcessorTest extends TestCase
 
     private function novaNotificacao(string $chave, int $maxAttempts = 5): NotificationOutbox
     {
-        return app(NotificationDispatcher::class)->dispatch(
+        return app(TenantManager::class)->semTenant(fn () => app(NotificationDispatcher::class)->dispatch(
             channel: 'teste.canal',
             recipient: '+244923000000',
             payload: ['corpo' => "Mensagem {$chave}"],
             idempotencyKey: $chave,
             maxAttempts: $maxAttempts,
             empresaId: $this->empresa->id,
-        );
+        ));
     }
 
     private function processar(NotificationOutbox $notificacao): void
