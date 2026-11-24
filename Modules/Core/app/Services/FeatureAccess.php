@@ -1,11 +1,11 @@
 <?php
 
-namespace Modules\\Core\\Services;
+namespace Modules\Core\Services;
 
-use Modules\\Core\\Contracts\\FeatureAccessInterface;
-use Modules\\Core\\Contracts\\TenantContextInterface;
-use Modules\\Core\\Repositories\\Contracts\\EmpresaRepositoryInterface;
-use Modules\\Core\\Support\\Servico;
+use Modules\Core\Contracts\FeatureAccessInterface;
+use Modules\Core\Contracts\TenantContextInterface;
+use Modules\Core\Repositories\Contracts\EmpresaRepositoryInterface;
+use Modules\Core\Support\Servico;
 
 class FeatureAccess implements FeatureAccessInterface
 {
