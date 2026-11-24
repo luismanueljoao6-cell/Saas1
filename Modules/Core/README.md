@@ -12,6 +12,9 @@ o Core através de **contratos**, nunca de classes internas.
 | `FeatureAccessInterface` | `Services\FeatureAccess` | `servicoAtivo(Servico\|string, ?int)`: a empresa contratou e tem ativo o serviço? Sem empresa, ou com empresa diferente da do contexto, devolve `false`. Não é feature flag nem limite comercial. |
 | `NotificationDispatcherInterface` | `Notifications\NotificationDispatcher` | Enviar notificações pela Outbox, idempotentes por (empresa, canal, chave). |
 | `TenantProvisionerInterface` | `Services\TenantProvisionerRegistry` | Registar o que cada módulo precisa por empresa. Os provisionadores têm de ser idempotentes. |
+| `AuthorizationInterface` | `Services\Authorization` | Consultar capacidades e políticas através do Gate do Laravel. |
+| `ModuleRegistryInterface` | `Services\ModuleRegistry` | Consultar o catálogo de módulos instalados e o seu estado; sem operações de ativação. |
+| `AuditLoggerInterface` | `Services\AuditLogger` | Registar eventos explícitos através do Activitylog, sem expor o pacote aos módulos. |
 | `LimitesDaEmpresa` (já existia) | `Services\SemLimites` (substituível por Subscrições) | Limites comerciais do plano. |
 | `EmpresaRepositoryInterface` (já existia, em `Repositories\Contracts`) | `Repositories\EmpresaRepository` | Acesso a dados da empresa. |
 
@@ -52,6 +55,8 @@ public function notificar(string $destino): void
 
 ## Ainda por fazer neste módulo
 
-Contratos previstos e **ainda não existentes**: `AuthorizationInterface`,
-`ModuleRegistryInterface` e `AuditLoggerInterface`. Serão acrescentados depois
-de auditar o Spatie Permission (Teams), o Nwidart e o Activitylog instalados.
+Os contratos públicos de autorização, catálogo de módulos e auditoria foram
+acrescentados após revisão das APIs instaladas (Spatie Permission, Nwidart e
+Spatie Activitylog). O catálogo é deliberadamente somente de leitura; a
+ativação/desativação de módulos exige um fluxo administrativo próprio, com
+validação de dependências e impacto operacional.
