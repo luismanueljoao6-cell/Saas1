@@ -5,6 +5,7 @@ namespace Modules\Core\Services;
 use Closure;
 use LogicException;
 use Modules\Core\Contracts\TenantProvisionerInterface;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -12,37 +13,41 @@ use Throwable;
  * permissões, dados iniciais) sem o Core o conhecer.
  *
  * Convenção: a chave é o valor do serviço (Servico::Estudio->value = 'estudio'),
- * para o registry só correr o provisionador de serviços ATIVOS. Os
- * provisionadores têm de ser idempotentes (correm no registo, ao ativar o
+ * para o registry só correr o provisionador de serviços ATIVOS. Um módulo que
+ * acompanha um serviço sem ser um Servico (o Armazém acompanha a Faturação)
+ * regista-se na chave do serviço com o seu nome como terceiro argumento.
+ * Os provisionadores têm de ser idempotentes (correm no registo, ao ativar o
  * serviço e no comando core:provisionar-servicos).
- *
- * A chave identifica o provisionador (é única) e, por omissão, também o serviço
- * que o aciona. Um módulo que acompanha o serviço de outro (ex.: o Armazém, que
- * acompanha a Faturação) regista-se com a SUA chave e indica o serviço no 3.º
- * argumento, em vez de ocupar a chave desse serviço.
  */
 class TenantProvisionerRegistry implements TenantProvisionerInterface
 {
     /**
-     * @var array<string, Closure(int): void>
+     * Serviço => [módulo => provisionador].
+     *
+     * @var array<string, array<string, Closure(int): void>>
      */
     protected array $provisioners = [];
 
     /**
-     * Serviço que aciona cada provisionador (por omissão, o próprio módulo).
+     * @param  string  $module  Valor do serviço a que o provisionador se associa.
+     * @param  string|null  $proprietario  Módulo que regista, quando difere do serviço
+     *                                     (por omissão, o próprio serviço).
      *
-     * @var array<string, string>
+     * @throws LogicException se esse módulo já registou um provisionador para o serviço
      */
-    protected array $servicos = [];
-
-    public function register(string $module, Closure $provisioner, ?string $servico = null): void
+    public function register(string $module, Closure $provisioner, ?string $proprietario = null): void
     {
-        if (isset($this->provisioners[$module])) {
-            throw new LogicException("Já existe um provisionador registado para o módulo [{$module}].");
+        $proprietario ??= $module;
+
+        if (isset($this->provisioners[$module][$proprietario])) {
+            throw new LogicException(
+                $proprietario === $module
+                    ? "Já existe um provisionador registado para o módulo [{$module}]."
+                    : "Já existe um provisionador do módulo [{$proprietario}] registado para o serviço [{$module}]."
+            );
         }
 
-        $this->provisioners[$module] = $provisioner;
-        $this->servicos[$module] = $servico ?? $module;
+        $this->provisioners[$module][$proprietario] = $provisioner;
     }
 
     /**
@@ -52,23 +57,31 @@ class TenantProvisionerRegistry implements TenantProvisionerInterface
      */
     public function provision(int $empresaId, ?array $servicosAtivos = null): void
     {
-        foreach ($this->provisioners as $module => $provisioner) {
-            if ($servicosAtivos !== null && ! in_array($this->servicos[$module], $servicosAtivos, true)) {
+        foreach ($this->provisioners as $module => $doServico) {
+            if ($servicosAtivos !== null && ! in_array($module, $servicosAtivos, true)) {
                 continue;
             }
 
-            try {
-                $provisioner($empresaId);
-            } catch (Throwable $e) {
-                throw new \RuntimeException(
-                    "Falha ao provisionar o módulo [{$module}] para a empresa [{$empresaId}].",
-                    previous: $e,
-                );
+            foreach ($doServico as $proprietario => $provisioner) {
+                try {
+                    $provisioner($empresaId);
+                } catch (Throwable $e) {
+                    $rotulo = $proprietario === $module
+                        ? "[{$module}]"
+                        : "[{$proprietario}] (serviço [{$module}])";
+
+                    throw new RuntimeException(
+                        "Falha ao provisionar o módulo {$rotulo} para a empresa [{$empresaId}].",
+                        previous: $e,
+                    );
+                }
             }
         }
     }
 
     /**
+     * Serviços com pelo menos um provisionador.
+     *
      * @return array<int, string>
      */
     public function modules(): array
@@ -76,9 +89,13 @@ class TenantProvisionerRegistry implements TenantProvisionerInterface
         return array_keys($this->provisioners);
     }
 
-    /** Serviço que aciona o provisionador registado sob $module (null se não existir). */
-    public function servicoDe(string $module): ?string
+    /**
+     * Serviço => módulos que o provisionam, pela ordem de registo.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public function proprietarios(): array
     {
-        return $this->servicos[$module] ?? null;
+        return array_map(fn (array $doServico) => array_keys($doServico), $this->provisioners);
     }
 }
