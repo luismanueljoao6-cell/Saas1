@@ -19,8 +19,8 @@ use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Core\Notifications\NotificationDispatcher;
 use Modules\Core\Notifications\NotificationProcessor;
 use Modules\Core\Services\TenantManager;
-use Spatie\Permission\PermissionRegistrar;
 use RuntimeException;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
