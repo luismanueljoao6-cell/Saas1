@@ -5,7 +5,12 @@ namespace Modules\Core\Tests\Feature;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use Modules\Atelier\Models\Perfil;
+use Modules\Atelier\Models\PortfolioItem;
+use Modules\Core\Models\EmpresaServico;
+use Modules\Core\Models\User;
 use Modules\Core\Traits\BelongsToTenant;
+use Modules\Faturacao\Models\AgtSubmissao;
 use ReflectionClass;
 use Tests\TestCase;
 
@@ -21,11 +26,11 @@ class ModelosDeNegocioUsamTenantTest extends TestCase
 
     /** @var array<class-string, string> */
     private const EXCECOES = [
-        \Modules\Core\Models\User::class => 'O login procura o utilizador antes de haver tenant; o isolamento é feito nos controllers.',
-        \Modules\Core\Models\EmpresaServico::class => 'É lida antes de haver tenant (registo, menu); o isolamento faz-se através da Empresa.',
-        \Modules\Atelier\Models\Perfil::class => 'Lido sem tenant pela landing pública; a área admin filtra por empresa_id do utilizador e exige Administrador.',
-        \Modules\Atelier\Models\PortfolioItem::class => 'Lido sem tenant pela landing pública; Admin\PortfolioController filtra por empresa_id e verifica posse e papel.',
-        \Modules\Faturacao\Models\AgtSubmissao::class => 'Acedida pela relação agtSubmissao() dos documentos (já com TenantScope) e por comandos/jobs entre empresas.',
+        User::class => 'O login procura o utilizador antes de haver tenant; o isolamento é feito nos controllers.',
+        EmpresaServico::class => 'É lida antes de haver tenant (registo, menu); o isolamento faz-se através da Empresa.',
+        Perfil::class => 'Lido sem tenant pela landing pública; a área admin filtra por empresa_id do utilizador e exige Administrador.',
+        PortfolioItem::class => 'Lido sem tenant pela landing pública; Admin\PortfolioController filtra por empresa_id e verifica posse e papel.',
+        AgtSubmissao::class => 'Acedida pela relação agtSubmissao() dos documentos (já com TenantScope) e por comandos/jobs entre empresas.',
     ];
 
     public function test_todo_o_model_com_empresa_id_usa_belongs_to_tenant(): void

@@ -6,6 +6,9 @@
     <div class="flex items-center gap-3">
         <button type="button" onclick="alternarTema()" class="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800" aria-label="Alternar tema">Tema</button>
         @auth
+            @if (Route::has('core.seguranca.index'))
+                <a href="{{ route('core.seguranca.index') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">Segurança</a>
+            @endif
             <span class="hidden text-sm font-medium text-slate-700 dark:text-zinc-200 sm:inline">{{ auth()->user()->name }}</span>
             @if (Route::has('core.logout'))
                 <form method="POST" action="{{ route('core.logout') }}">@csrf<button class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-900" type="submit">Sair</button></form>

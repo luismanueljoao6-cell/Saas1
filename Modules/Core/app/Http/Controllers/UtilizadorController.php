@@ -2,32 +2,32 @@
 
 namespace Modules\Core\Http\Controllers;
 
+use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Http\Requests\ConvidarUtilizadorRequest;
+use Modules\Core\Models\Convite;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
-use Spatie\Permission\Models\Role;
-use Spatie\Permission\PermissionRegistrar;
+use Modules\Core\Services\ConviteService;
 use Throwable;
 
 /**
- * Nota sobre o "convite": por agora o administrador cria o utilizador
- * diretamente, definindo ele próprio uma palavra-passe temporária (que
- * comunica ao colega por fora, ex.: WhatsApp). Um convite "a sério" —
- * e-mail com link e token, o próprio utilizador escolhe a sua palavra-passe
- * — é a evolução natural, mas depende de haver um fluxo de recuperação de
- * palavra-passe/verificação de e-mail, que ainda não existe (ver README).
+ * Utilizadores da empresa. Novos utilizadores entram por convite
+ * (ConviteService): recebem uma ligação por e-mail e escolhem eles
+ * próprios a palavra-passe. O administrador nunca a conhece.
  */
 class UtilizadorController extends Controller
 {
-    public function __construct(protected LimitesDaEmpresa $limites) {}
+    public function __construct(
+        protected LimitesDaEmpresa $limites,
+        protected ConviteService $convites,
+    ) {}
 
     public function index(Request $request): View
     {
@@ -35,59 +35,50 @@ class UtilizadorController extends Controller
 
         return view('core::utilizadores.index', [
             'utilizadores' => $request->user()->empresa->utilizadores()->orderBy('name')->get(),
+            // A TenantScope do model restringe aos convites desta empresa.
+            'convites' => Convite::query()->pendentes()->latest()->get(),
         ]);
     }
 
     public function store(ConvidarUtilizadorRequest $request): RedirectResponse
     {
-        $empresa = $request->user()->empresa;
+        $admin = $request->user();
+        $email = $request->validated('email');
 
         try {
-            // O bloqueio da empresa serializa pedidos simultâneos para que
-            // duas requisições não consumam a mesma última vaga do plano.
-            [$novoUtilizador, $mensagem] = DB::transaction(function () use ($request, $empresa) {
-                $empresaBloqueada = Empresa::query()
-                    ->lockForUpdate()
-                    ->findOrFail($empresa->id);
-
-                if ($mensagem = $this->mensagemSeLimiteAtingido($empresaBloqueada)) {
-                    return [null, $mensagem];
-                }
-
-                $novoUtilizador = User::create([
-                    'empresa_id' => $empresaBloqueada->id,
-                    'name' => $request->validated('name'),
-                    'email' => $request->validated('email'),
-                    'password' => Hash::make($request->validated('password')),
-                ]);
-
-                $this->atribuirPapel(
-                    $novoUtilizador,
-                    $empresaBloqueada->id,
-                    $request->boolean('administrador')
-                );
-
-                return [$novoUtilizador, null];
-            });
-
-            if ($mensagem !== null) {
-                return back()->withInput($request->except('password', 'password_confirmation'))
-                    ->with('erro', $mensagem);
-            }
-
-            Log::info('Novo utilizador adicionado à empresa', [
-                'empresa_id' => $empresa->id,
-                'utilizador_id' => $novoUtilizador->id,
-                'criado_por' => $request->user()->id,
-            ]);
+            $this->convites->convidar(
+                $admin,
+                $email,
+                $request->validated('name'),
+                $request->boolean('administrador'),
+            );
+        } catch (DomainException $e) {
+            return back()->withInput()->with('erro', $e->getMessage());
         } catch (Throwable $e) {
-            Log::error('Falha ao adicionar utilizador', ['empresa_id' => $empresa->id, 'erro' => $e->getMessage()]);
+            Log::error('Falha ao enviar convite', ['empresa_id' => $admin->empresa_id, 'erro' => $e->getMessage()]);
 
-            return back()->withInput($request->except('password', 'password_confirmation'))
-                ->with('erro', 'Não foi possível criar o utilizador. Tenta novamente.');
+            return back()->withInput()->with(
+                'erro',
+                'Não foi possível enviar o convite. Tenta novamente (convidar o mesmo e-mail outra vez substitui o convite anterior).'
+            );
         }
 
-        return back()->with('sucesso', "Utilizador {$novoUtilizador->name} criado.");
+        return back()->with('sucesso', "Convite enviado para {$email}.");
+    }
+
+    public function revogarConvite(Request $request, Convite $convite): RedirectResponse
+    {
+        $admin = $request->user();
+
+        $this->garantirAdministrador($admin);
+
+        // O binding já é filtrado pela TenantScope (convite de outra empresa
+        // = 404); esta verificação é a segunda barreira e não deve sair.
+        abort_unless((int) $admin->empresa_id === (int) $convite->empresa_id, 403);
+
+        $this->convites->revogar($admin, $convite);
+
+        return back()->with('sucesso', 'Convite revogado.');
     }
 
     public function alternarAtivo(Request $request, User $utilizador): RedirectResponse
@@ -157,28 +148,6 @@ class UtilizadorController extends Controller
         }
 
         return "O plano atual permite no máximo {$limite} utilizador(es) ativo(s). Desativa alguém ou passa para um plano superior.";
-    }
-
-    protected function atribuirPapel(User $utilizador, int $empresaId, bool $administrador): void
-    {
-        $registrar = app(PermissionRegistrar::class);
-        $equipaAnterior = $registrar->getPermissionsTeamId();
-        $registrar->setPermissionsTeamId($empresaId);
-
-        try {
-            // 'empresa_id' explícito: sem ele o firstOrCreate procura o papel
-            // pelo nome em TODAS as empresas e reutilizaria o de outra.
-            $papel = Role::firstOrCreate([
-                'name' => $administrador ? 'Administrador' : 'Utilizador',
-                'guard_name' => 'web',
-                'empresa_id' => $empresaId,
-            ]);
-
-            $utilizador->assignRole($papel);
-        } finally {
-            // Num worker ou comando persistente a equipa não pode ficar presa.
-            $registrar->setPermissionsTeamId($equipaAnterior);
-        }
     }
 
     protected function garantirAdministrador(User $utilizador): void

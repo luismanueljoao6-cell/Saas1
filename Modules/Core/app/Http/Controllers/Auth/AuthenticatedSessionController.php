@@ -18,7 +18,21 @@ class AuthenticatedSessionController extends Controller
 
     public function store(LoginRequest $request): RedirectResponse
     {
-        $request->autenticar();
+        $aguardaDesafio = $request->autenticar();
+
+        if ($aguardaDesafio !== null) {
+            // Palavra-passe certa, mas a conta tem 2FA: AINDA NÃO está autenticada.
+            // Guarda só o estado do desafio; a sessão abre-se no
+            // DesafioDoisFatoresController, depois do código.
+            $request->session()->regenerate();
+            $request->session()->put(DesafioDoisFatoresController::CHAVE_SESSAO, [
+                'id' => $aguardaDesafio->getKey(),
+                'lembrar' => $request->boolean('lembrar'),
+                'ate' => now()->addMinutes(DesafioDoisFatoresController::VALIDADE_MINUTOS)->timestamp,
+            ]);
+
+            return redirect()->route('core.2fa.desafio');
+        }
 
         $request->session()->regenerate();
 

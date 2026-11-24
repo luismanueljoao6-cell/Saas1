@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Modules\Core\Models\User;
 
 class LoginRequest extends FormRequest
 {
@@ -25,25 +26,43 @@ class LoginRequest extends FormRequest
     }
 
     /**
-     * Tenta autenticar. Lança ValidationException tanto para credenciais
-     * inválidas como para empresa/utilizador desativado — propositadamente
-     * sem distinguir o motivo exato na mensagem, para não dar pistas a
-     * quem tenta adivinhar contas existentes.
+     * Valida as credenciais. Devolve:
+     *  - null: sessão iniciada (conta sem 2FA);
+     *  - o User: palavra-passe certa mas a conta tem 2FA. NÃO ficou autenticado;
+     *    o controller leva-o ao desafio do segundo fator.
+     *
+     * Lança ValidationException tanto para credenciais inválidas como para
+     * conta desativada, sem pistas sobre contas existentes (a conta desativada
+     * só se distingue depois de a palavra-passe estar certa, como antes).
      */
-    public function autenticar(): void
+    public function autenticar(): ?User
     {
         $this->garantirNaoBloqueado();
 
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('lembrar'))) {
-            RateLimiter::hit($this->chaveLimitador());
+        $aguardaDesafio = null;
+        $desativada = false;
 
-            throw ValidationException::withMessages([
-                'email' => 'As credenciais indicadas não são válidas.',
-            ]);
-        }
+        $entrou = Auth::attemptWhen(
+            $this->only('email', 'password'),
+            function (User $utilizador) use (&$aguardaDesafio, &$desativada): bool {
+                if (! $utilizador->ativo) {
+                    $desativada = true;
 
-        if (! Auth::user()->ativo) {
-            Auth::logout();
+                    return false;
+                }
+
+                if ($utilizador->temDoisFatoresAtivos()) {
+                    $aguardaDesafio = $utilizador;
+
+                    return false;
+                }
+
+                return true;
+            },
+            $this->boolean('lembrar'),
+        );
+
+        if ($desativada) {
             RateLimiter::hit($this->chaveLimitador());
 
             throw ValidationException::withMessages([
@@ -51,7 +70,17 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        if (! $entrou && $aguardaDesafio === null) {
+            RateLimiter::hit($this->chaveLimitador());
+
+            throw ValidationException::withMessages([
+                'email' => 'As credenciais indicadas não são válidas.',
+            ]);
+        }
+
         RateLimiter::clear($this->chaveLimitador());
+
+        return $aguardaDesafio;
     }
 
     protected function garantirNaoBloqueado(): void

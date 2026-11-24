@@ -84,4 +84,32 @@ return [
         ),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Autenticação
+    |--------------------------------------------------------------------------
+    |
+    | exigir_email_verificado — quando true, o middleware 'tenant' (usado por
+    | todas as rotas de negócio de todos os módulos) só deixa passar contas com
+    | o e-mail verificado. Desligado por omissão para não bloquear contas
+    | existentes. Ligar só depois de confirmar que o envio de e-mail funciona.
+    |
+    */
+    'auth' => [
+        'exigir_email_verificado' => (bool) env('CORE_EXIGIR_EMAIL_VERIFICADO', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Segurança HTTP
+    |--------------------------------------------------------------------------
+    |
+    | cabecalhos — cabeçalhos de segurança básicos em todas as respostas web
+    | (nosniff, X-Frame-Options, Referrer-Policy, Permissions-Policy e, só
+    | sobre HTTPS, HSTS). Não define Content-Security-Policy.
+    |
+    */
+    'seguranca' => [
+        'cabecalhos' => (bool) env('CORE_CABECALHOS_SEGURANCA', true),
+    ],
 ];
