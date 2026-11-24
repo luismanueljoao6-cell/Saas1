@@ -22,8 +22,9 @@ class ArmazemMigrationTest extends TestCase
              WHERE TABLE_SCHEMA = DATABASE()
                AND TABLE_NAME = ?
                AND COLUMN_NAME = ?
-               AND REFERENCED_TABLE_NAME IS NOT NULL',
-            ['armazem_transferencia_rececao_linhas', 'transferencia_linha_id']
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+               AND CONSTRAINT_NAME = ?',
+            ['armazem_transferencia_rececao_linhas', 'transferencia_linha_id', 'arr_rec_linhas_trans_linha_fk']
         );
 
         $this->assertSame('arr_rec_linhas_trans_linha_fk', $constraint?->CONSTRAINT_NAME);
