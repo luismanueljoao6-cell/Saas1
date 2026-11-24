@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\\Core\\Contracts;
+namespace Modules\Core\Contracts;
 
 /**
  * Catálogo público e somente de leitura dos módulos instalados.
