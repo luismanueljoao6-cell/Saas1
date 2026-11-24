@@ -97,6 +97,11 @@ class FaturaService
                     ->lockForUpdate()
                     ->findOrFail($fatura->id);
 
+                // Validar o tenant antes de qualquer retorno, inclusive quando
+                // o documento já está emitido. Caso contrário, um chamador
+                // poderia obter uma fatura de outra empresa passando o seu modelo.
+                GuardaEmissao::garantirTenant((int) $fatura->empresa_id);
+
                 if ($fatura->estaEmitido()) {
                     return $fatura->fresh('linhas');
                 }
@@ -258,6 +263,10 @@ class FaturaService
     /** Relê o rascunho com lock, sem depender do tenant ambiente, e recusa qualquer outro estado. */
     protected function rascunhoComLock(Fatura $fatura): Fatura
     {
+        // A leitura sem scopes é necessária para jobs e comandos, mas não pode
+        // permitir editar/apagar rascunhos de outra empresa no tenant activo.
+        GuardaEmissao::garantirTenant((int) $fatura->empresa_id);
+
         $atual = Fatura::withoutGlobalScopes()
             ->where('empresa_id', $fatura->empresa_id)
             ->lockForUpdate()

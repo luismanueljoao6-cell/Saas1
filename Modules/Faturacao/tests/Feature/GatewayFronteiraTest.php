@@ -7,9 +7,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Modules\Core\Models\Empresa;
+use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Contracts\FaturacaoGateway;
 use Modules\Faturacao\Models\Cliente;
 use Modules\Faturacao\Models\Fatura;
+use Modules\Faturacao\Services\FaturaService;
 use Modules\Faturacao\Services\NotaCreditoDebitoService;
 use Modules\Faturacao\Support\Dinheiro;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -116,10 +118,26 @@ class GatewayFronteiraTest extends TestCase
         $this->assertSame(114000, $gateway->saldoEmCentimos($fatura));
 
         $gateway->emitirRecibo($empresa->id, $cliente->id, '400.00', 'dinheiro', $fatura->id);
-        $this->assertSame(['recebido' => 40000, 'creditado' => 0, 'abatido' => 0, 'saldo' => 74000], $gateway->resumoDaFatura($fatura->fresh()));
+        $this->assertSame([
+            'recebido' => 40000,
+            'creditado' => 0,
+            'creditado_sem_iva' => 0,
+            'debitado' => 0,
+            'debitado_sem_iva' => 0,
+            'abatido' => 0,
+            'saldo' => 74000,
+        ], $gateway->resumoDaFatura($fatura->fresh()));
 
         $gateway->emitirRecibo($empresa->id, $cliente->id, '740.00', 'transferencia', $fatura->id);
-        $this->assertSame(['recebido' => 114000, 'creditado' => 0, 'abatido' => 0, 'saldo' => 0], $gateway->resumoDaFatura($fatura->fresh()));
+        $this->assertSame([
+            'recebido' => 114000,
+            'creditado' => 0,
+            'creditado_sem_iva' => 0,
+            'debitado' => 0,
+            'debitado_sem_iva' => 0,
+            'abatido' => 0,
+            'saldo' => 0,
+        ], $gateway->resumoDaFatura($fatura->fresh()));
 
         $this->assertRecusado(fn () => $gateway->emitirRecibo($empresa->id, $cliente->id, '0.01', 'dinheiro', $fatura->id));
     }
@@ -134,7 +152,15 @@ class GatewayFronteiraTest extends TestCase
         $linha = [['descricao' => 'Desconto', 'quantidade' => 1, 'preco_unitario' => '500.00', 'taxa_iva' => '14']];
         $notas->emitir($notas->criarRascunho($empresa->id, $cliente->id, 'credito', 'Desconto comercial', $linha, $fatura->id));
 
-        $this->assertSame(['recebido' => 0, 'creditado' => 57000, 'abatido' => 0, 'saldo' => 57000], $gateway->resumoDaFatura($fatura->fresh()));
+        $this->assertSame([
+            'recebido' => 0,
+            'creditado' => 57000,
+            'creditado_sem_iva' => 50000,
+            'debitado' => 0,
+            'debitado_sem_iva' => 0,
+            'abatido' => 0,
+            'saldo' => 57000,
+        ], $gateway->resumoDaFatura($fatura->fresh()));
 
         $gateway->emitirRecibo($empresa->id, $cliente->id, '570.00', 'dinheiro', $fatura->id);
         $this->assertSame(0, $gateway->saldoEmCentimos($fatura->fresh()));
@@ -145,6 +171,64 @@ class GatewayFronteiraTest extends TestCase
     // ---------------------------------------------------------------------
     // Isolamento entre empresas na fronteira
     // ---------------------------------------------------------------------
+
+    public function test_gateway_nao_expoe_resumo_de_fatura_de_outro_tenant(): void
+    {
+        [$empresaA, $clienteA] = $this->cenario('610000012');
+        [$empresaB, $clienteB] = $this->cenario('610000013');
+        $faturaB = $this->emitirPeloGateway($empresaB, $clienteB, '1000.00', '1', '14');
+
+        app(TenantManager::class)->set((int) $empresaA->id);
+
+        $this->expectException(DomainException::class);
+
+        app(FaturacaoGateway::class)->resumoDaFatura($faturaB);
+    }
+
+    public function test_emitir_fatura_ja_emitida_de_outro_tenant_nao_devolve_o_documento(): void
+    {
+        [$empresaA] = $this->cenario('610000014');
+        [$empresaB, $clienteB] = $this->cenario('610000015');
+        $faturaB = $this->emitirPeloGateway($empresaB, $clienteB, '100.00', '1', '14');
+
+        app(TenantManager::class)->set((int) $empresaA->id);
+
+        $this->expectException(DomainException::class);
+
+        app(FaturacaoGateway::class)->emitirFatura($faturaB);
+    }
+
+    public function test_nao_e_possivel_editar_rascunho_de_outro_tenant(): void
+    {
+        [$empresaA] = $this->cenario('610000016');
+        [$empresaB, $clienteB] = $this->cenario('610000017');
+        $rascunho = app(FaturacaoGateway::class)->criarRascunho($empresaB, $clienteB, [
+            ['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => '100.00', 'taxa_iva' => '14'],
+        ]);
+
+        app(TenantManager::class)->set((int) $empresaA->id);
+
+        $this->expectException(DomainException::class);
+
+        app(FaturaService::class)->atualizarRascunho($rascunho, $clienteB, [
+            ['descricao' => 'Alteração indevida', 'quantidade' => 1, 'preco_unitario' => '1.00', 'taxa_iva' => '14'],
+        ]);
+    }
+
+    public function test_nao_e_possivel_eliminar_rascunho_de_outro_tenant(): void
+    {
+        [$empresaA] = $this->cenario('610000018');
+        [$empresaB, $clienteB] = $this->cenario('610000019');
+        $rascunho = app(FaturacaoGateway::class)->criarRascunho($empresaB, $clienteB, [
+            ['descricao' => 'Serviço', 'quantidade' => 1, 'preco_unitario' => '100.00', 'taxa_iva' => '14'],
+        ]);
+
+        app(TenantManager::class)->set((int) $empresaA->id);
+
+        $this->expectException(DomainException::class);
+
+        app(FaturaService::class)->eliminarRascunho($rascunho);
+    }
 
     public function test_gateway_recusa_clientes_e_faturas_de_outra_empresa_sem_deixar_rasto(): void
     {

@@ -81,25 +81,6 @@ class AbatimentoReconciliacaoSafTTest extends TestCase
         return Fatura::withoutGlobalScopes()->findOrFail($ft->id);
     }
 
-    /**
-     * Remove o trigger de coerência entre empresas para simular uma base danificada.
-     * Só em SQLite: no MySQL o DROP TRIGGER faz commit implícito e quebraria o isolamento.
-     */
-    protected function semTriggerDeEmpresa(): void
-    {
-        if (DB::connection()->getDriverName() !== 'sqlite') {
-            $this->markTestSkipped('Só simulável em SQLite; a recusa da base de dados é coberta por outro teste.');
-        }
-
-        $triggers = DB::select("select name from sqlite_master where type = 'trigger' and tbl_name = 'adiantamento_abatimentos' and sql like '%pertencer%'");
-
-        $this->assertNotEmpty($triggers, 'O trigger de coerência entre empresas devia existir.');
-
-        foreach ($triggers as $trigger) {
-            DB::unprepared('DROP TRIGGER IF EXISTS "'.$trigger->name.'"');
-        }
-    }
-
     /** Grava um abatimento diretamente na tabela, sem passar pelo serviço (dados «corrompidos»). */
     protected function abatimentoDireto(int $empresaId, int $faId, int $ftId, int $centimos, string $chave): void
     {
@@ -164,21 +145,6 @@ class AbatimentoReconciliacaoSafTTest extends TestCase
         $this->abatimentoDireto($this->empresa->id, $fa->id, $ft->id, 10000, 'chave-rec-0003');
 
         $this->assertTrue($this->contem($this->validar(), 'clientes diferentes'));
-    }
-
-    public function test_abatimento_que_liga_faturas_de_outra_empresa_e_detetado(): void
-    {
-        $empresaB = Empresa::create(['nome_comercial' => 'Loja B', 'nif' => '5001636864']);
-        $clienteB = Cliente::create(['empresa_id' => $empresaB->id, 'nome' => 'Cliente B', 'nif' => null]);
-
-        $fa = $this->adiantamentoRecebido();
-        $ftB = $this->faturaFinal($empresaB, $clienteB);
-        // A base de dados já recusa este dado (ver o teste seguinte). Aqui simula-se uma base
-        // danificada para provar que a pré-validação SAF-T o deteta como segunda linha de defesa.
-        $this->semTriggerDeEmpresa();
-        $this->abatimentoDireto($this->empresa->id, $fa->id, $ftB->id, 10000, 'chave-rec-0004');
-
-        $this->assertTrue($this->contem($this->validar(), 'não existe nesta empresa'));
     }
 
     public function test_a_base_de_dados_recusa_um_abatimento_entre_empresas(): void

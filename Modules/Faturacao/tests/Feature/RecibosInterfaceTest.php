@@ -166,7 +166,15 @@ class RecibosInterfaceTest extends TestCase
 
         $this->assertSame('emitida', $nota->estado);
         $this->assertSame(124000, app(ReciboService::class)->saldoEmCentimos($fatura));
-        $this->assertSame(['recebido' => 0, 'creditado' => 0, 'abatido' => 0, 'saldo' => 124000], app(ReciboService::class)->resumoDaFatura($fatura));
+        $this->assertSame([
+            'recebido' => 0,
+            'creditado' => 0,
+            'creditado_sem_iva' => 0,
+            'debitado' => 10000,
+            'debitado_sem_iva' => 10000,
+            'abatido' => 0,
+            'saldo' => 124000,
+        ], app(ReciboService::class)->resumoDaFatura($fatura));
 
         $this->actingAs($this->admin)->post(route('faturacao.recibos.guardar'), $this->pedido($fatura, '1240.00'))
             ->assertSessionHasNoErrors();

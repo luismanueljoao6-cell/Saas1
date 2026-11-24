@@ -225,7 +225,7 @@ class FaturacaoEstudioService
      *
      * @throws InvalidArgumentException|DomainException
      */
-    public function registrarRecibo(ProjetoMusical $projeto, Fatura $fatura, string $meioPagamento, string|int|float|null $valor = null): Recibo
+    public function registrarRecibo(ProjetoMusical $projeto, Fatura $fatura, string $meioPagamento, string|int|null $valor = null): Recibo
     {
         return DB::transaction(function () use ($projeto, $fatura, $meioPagamento, $valor) {
             $pertenceAoProjeto = (int) $fatura->empresa_id === (int) $projeto->empresa_id
@@ -238,7 +238,7 @@ class FaturacaoEstudioService
             if ($valor === null) {
                 // Por omissão recebe o que falta (e não o total da fatura, que
                 // seria recusado se já houver recebimentos parciais ou notas de crédito).
-                $emFalta = $projeto->saldoDaFaturaCentimos($fatura);
+                $emFalta = $this->faturacao->saldoEmCentimos($fatura);
 
                 if ($emFalta <= 0) {
                     throw new InvalidArgumentException('Esta fatura já não tem valor por receber.');
