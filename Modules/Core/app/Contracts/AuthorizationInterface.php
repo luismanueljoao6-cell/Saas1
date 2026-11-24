@@ -12,15 +12,11 @@ interface AuthorizationInterface
 {
     /**
      * Verifica uma capacidade sem lançar exceção.
-     *
-     * @param  mixed  $arguments  Modelo, ID ou argumentos da política.
      */
     public function allows(string $ability, mixed $arguments = []): bool;
 
     /**
      * Autoriza uma capacidade ou devolve a resposta de negação do Laravel.
-     *
-     * @param  mixed  $arguments
      */
     public function authorize(string $ability, mixed $arguments = []): Response;
 }
