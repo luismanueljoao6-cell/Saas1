@@ -1,10 +1,10 @@
 <?php
 
-namespace Modules\\Core\\Services;
+namespace Modules\Core\Services;
 
-use Illuminate\\Auth\\Access\\Response;
-use Illuminate\\Contracts\\Auth\\Access\\Gate;
-use Modules\\Core\\Contracts\\AuthorizationInterface;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Contracts\Auth\Access\Gate;
+use Modules\Core\Contracts\AuthorizationInterface;
 
 /** Adaptador do mecanismo de políticas e permissões do Laravel. */
 class Authorization implements AuthorizationInterface
