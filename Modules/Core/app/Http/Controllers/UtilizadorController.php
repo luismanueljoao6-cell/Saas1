@@ -15,6 +15,7 @@ use Modules\Core\Models\Convite;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\ConviteService;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 /**
@@ -108,6 +109,23 @@ class UtilizadorController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($admin->empresa_id);
 
+                // Relê quem atua sob o bloqueio da empresa. Dois administradores a
+                // desativarem-se um ao outro em simultâneo passam ambos pelo middleware;
+                // sem esta releitura o 2.º (já desativado pelo 1.º) desativava o outro e a
+                // empresa ficava sem nenhum administrador ativo. Quem atua nunca é o alvo
+                // (desativar a própria conta é recusado acima), por isso fica sempre um.
+                $administradorAtual = User::query()
+                    ->where('empresa_id', $empresa->id)
+                    ->lockForUpdate()
+                    ->find($admin->id);
+
+                abort_unless(
+                    $administradorAtual !== null
+                        && $administradorAtual->ativo
+                        && $administradorAtual->hasRole('Administrador'),
+                    403,
+                );
+
                 $utilizadorAtual = User::query()
                     ->where('empresa_id', $empresa->id)
                     ->lockForUpdate()
@@ -127,8 +145,16 @@ class UtilizadorController extends Controller
 
                 $utilizadorAtual->update(['ativo' => $ativoPretendido]);
 
+                // Conta desativada perde também as credenciais de API (Sanctum).
+                if (! $ativoPretendido) {
+                    $utilizadorAtual->tokens()->delete();
+                }
+
                 return [$utilizadorAtual, null];
             });
+        } catch (HttpExceptionInterface $e) {
+            // Autorização negada dentro da transação (403): não é uma falha técnica.
+            throw $e;
         } catch (Throwable $e) {
             Log::error('Falha ao alterar estado do utilizador', [
                 'empresa_id' => $admin->empresa_id,

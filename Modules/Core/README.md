@@ -50,6 +50,14 @@ public function notificar(string $destino): void
 - `CORE_CABECALHOS_SEGURANCA=false` desliga os cabeçalhos de segurança (omissão: ligados).
 - Estado, decisões e riscos residuais: `docs/auditorias/core-03-autenticacao.md`.
 
+## Ciclo de vida da empresa (CORE-04)
+
+- `php artisan core:empresa-eliminar {id} --confirmar` e `core:empresa-restaurar {id}`: eliminação lógica
+  (só `deleted_at`, nunca apaga dados), idempotente. Enquanto eliminada, o middleware `tenant` termina a sessão
+  (web) ou responde 403 (API), o login é recusado e os convites pendentes deixam de valer.
+- `php artisan core:provisionar-servicos`: tudo-ou-nada por empresa; continua nas restantes e mostra a causa.
+- Estado, decisões e riscos residuais: `docs/auditorias/core-04-empresas-provisionamento.md`.
+
 ## Ainda por fazer neste módulo
 
 Contratos previstos e **ainda não existentes**: `AuthorizationInterface`,
