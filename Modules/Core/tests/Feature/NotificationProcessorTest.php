@@ -379,9 +379,19 @@ class NotificationProcessorTest extends TestCase
         }
         $tenants->clear();
 
-        // A mesma chave, em duas empresas, são duas notificações diferentes.
-        $a = $dispatcher->dispatch('teste.canal', '+244923000001', ['corpo' => 'x'], 'chave-partilhada', empresaId: $this->empresa->id);
-        $b = $dispatcher->dispatch('teste.canal', '+244923000002', ['corpo' => 'y'], 'chave-partilhada', empresaId: $this->outraEmpresa->id);
+        // Um ID explícito sem tenant nem bypass não concede acesso à Outbox.
+        try {
+            $dispatcher->dispatch('teste.canal', '+244923000001', ['corpo' => 'x'], 'chave-sem-contexto', empresaId: $this->empresa->id);
+            $this->fail('Devia exigir bypass explícito num contexto sem tenant.');
+        } catch (RuntimeException $excecao) {
+            $this->assertStringContainsString('bypass explícito', $excecao->getMessage());
+        }
+
+        // Uma operação de sistema pode percorrer empresas apenas dentro de semTenant().
+        [$a, $b] = $tenants->semTenant(fn () => [
+            $dispatcher->dispatch('teste.canal', '+244923000001', ['corpo' => 'x'], 'chave-partilhada', empresaId: $this->empresa->id),
+            $dispatcher->dispatch('teste.canal', '+244923000002', ['corpo' => 'y'], 'chave-partilhada', empresaId: $this->outraEmpresa->id),
+        ]);
 
         $this->assertNotSame($a->id, $b->id);
         $this->assertSame($this->empresa->id, (int) $a->empresa_id);
@@ -465,14 +475,14 @@ class NotificationProcessorTest extends TestCase
 
     private function novaNotificacao(string $chave, int $maxAttempts = 5): NotificationOutbox
     {
-        return app(NotificationDispatcher::class)->dispatch(
+        return app(TenantManager::class)->semTenant(fn () => app(NotificationDispatcher::class)->dispatch(
             channel: 'teste.canal',
             recipient: '+244923000000',
             payload: ['corpo' => "Mensagem {$chave}"],
             idempotencyKey: $chave,
             maxAttempts: $maxAttempts,
             empresaId: $this->empresa->id,
-        );
+        ));
     }
 
     private function processar(NotificationOutbox $notificacao): void
