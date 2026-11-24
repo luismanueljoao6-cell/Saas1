@@ -74,7 +74,13 @@ class ArmazemStockRelatorioController extends Controller
         $fim = $filtros['data_fim'] ?? now()->toDateString();
 
         $movimentos = ArmazemStockMovimento::query()
-            ->with(['armazem:id,nome', 'produto:id,nome', 'utilizador:id,name'])
+            ->with([
+                'armazem:id,nome',
+                'produto:id,nome',
+                'utilizador' => fn ($query) => $query
+                    ->where('empresa_id', $empresaId)
+                    ->select(['id', 'name', 'empresa_id']),
+            ])
             ->where('empresa_id', $empresaId)
             ->whereDate('created_at', '>=', $inicio)
             ->whereDate('created_at', '<=', $fim)

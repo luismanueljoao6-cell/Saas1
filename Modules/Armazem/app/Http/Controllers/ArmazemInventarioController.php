@@ -20,6 +20,8 @@ class ArmazemInventarioController extends Controller
     {
         $empresaId = (int) $request->user()->empresa_id;
 
+        $utilizadorDaEmpresa = fn ($query) => $query->where('empresa_id', $empresaId);
+
         return view('armazem::inventarios.index', [
             'armazens' => Armazem::query()->where('ativo', true)->orderBy('nome')->get(),
             'produtos' => Produto::query()
@@ -28,7 +30,16 @@ class ArmazemInventarioController extends Controller
                 ->orderBy('nome')
                 ->get(['id', 'nome']),
             'inventarios' => ArmazemInventario::query()
-                ->with(['armazem:id,nome,codigo', 'utilizadorAbertura:id,name', 'utilizadorSubmissao:id,name', 'utilizadorConclusao:id,name', 'utilizadorRejeicao:id,name', 'linhas.produto:id,nome', 'linhas.utilizadorContagem:id,name', 'linhas.contagens.utilizador:id,name'])
+                ->with([
+                    'armazem:id,nome,codigo',
+                    'utilizadorAbertura' => $utilizadorDaEmpresa,
+                    'utilizadorSubmissao' => $utilizadorDaEmpresa,
+                    'utilizadorConclusao' => $utilizadorDaEmpresa,
+                    'utilizadorRejeicao' => $utilizadorDaEmpresa,
+                    'linhas.produto:id,nome',
+                    'linhas.utilizadorContagem' => $utilizadorDaEmpresa,
+                    'linhas.contagens.utilizador' => $utilizadorDaEmpresa,
+                ])
                 ->where('empresa_id', $empresaId)
                 ->latest()
                 ->paginate(10)
