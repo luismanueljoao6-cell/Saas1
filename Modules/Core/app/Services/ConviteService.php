@@ -99,7 +99,13 @@ class ConviteService
             ->pendentes()
             ->first());
 
-        return $convite ?? throw new DomainException(self::MENSAGEM_INVALIDO);
+        // Empresa eliminada logicamente: a relação vem a null (SoftDeletes). O convite
+        // deixa de poder ser usado, com a mesma resposta de qualquer convite inválido.
+        if ($convite === null || $convite->empresa === null) {
+            throw new DomainException(self::MENSAGEM_INVALIDO);
+        }
+
+        return $convite;
     }
 
     /**
@@ -113,7 +119,12 @@ class ConviteService
         try {
             return $this->tenants->comEmpresa((int) $pendente->empresa_id, function () use ($pendente, $nome, $palavraPasse) {
                 return DB::transaction(function () use ($pendente, $nome, $palavraPasse) {
-                    $empresa = Empresa::query()->lockForUpdate()->findOrFail($pendente->empresa_id);
+                    $empresa = Empresa::query()->lockForUpdate()->find($pendente->empresa_id);
+
+                    // Eliminada entre o GET e o POST: o convite deixa de valer.
+                    if ($empresa === null) {
+                        throw new DomainException(self::MENSAGEM_INVALIDO);
+                    }
 
                     // Relê com bloqueio: dois pedidos com o mesmo token não passam ambos.
                     $convite = Convite::query()->pendentes()->lockForUpdate()->find($pendente->id);
