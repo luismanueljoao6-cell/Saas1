@@ -12,7 +12,11 @@ use Illuminate\Support\ServiceProvider;
 use Modules\Core\Console\Commands\ListUnknownNotifications;
 use Modules\Core\Console\Commands\RecoverNotificationOutbox;
 use Modules\Core\Console\Commands\ResolveUnknownNotification;
+use Modules\Core\Contracts\FeatureAccessInterface;
 use Modules\Core\Contracts\LimitesDaEmpresa;
+use Modules\Core\Contracts\NotificationDispatcherInterface;
+use Modules\Core\Contracts\TenantContextInterface;
+use Modules\Core\Contracts\TenantProvisionerInterface;
 use Modules\Core\Http\Middleware\ExigirPapel;
 use Modules\Core\Http\Middleware\ExigirServico;
 use Modules\Core\Http\Middleware\ExigirServicoDaEmpresa;
@@ -20,10 +24,13 @@ use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Core\Http\Middleware\NegarPapeis;
 use Modules\Core\Http\Middleware\VerificarSubscricaoAtiva;
 use Modules\Core\Notifications\NotificationChannelRegistry;
+use Modules\Core\Notifications\NotificationDispatcher;
 use Modules\Core\Repositories\Contracts\EmpresaRepositoryInterface;
 use Modules\Core\Repositories\EmpresaRepository;
+use Modules\Core\Services\FeatureAccess;
 use Modules\Core\Services\MenuRegistry;
 use Modules\Core\Services\SemLimites;
+use Modules\Core\Services\TenantContext;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Services\TenantProvisionerRegistry;
 use Spatie\Permission\PermissionRegistrar;
@@ -56,6 +63,18 @@ class CoreServiceProvider extends ServiceProvider
         $this->app->bindIf(LimitesDaEmpresa::class, SemLimites::class);
 
         $this->app->bind(EmpresaRepositoryInterface::class, EmpresaRepository::class);
+
+        // Contratos públicos (CORE-01): os módulos injetam estas interfaces.
+        $this->app->bind(TenantContextInterface::class, TenantContext::class);
+        $this->app->bind(FeatureAccessInterface::class, FeatureAccess::class);
+        // Não singleton: o dispatcher guarda o TenantManager (scoped) e não pode
+        // reter o tenant de um pedido/job anterior em workers persistentes.
+        $this->app->bind(NotificationDispatcherInterface::class, NotificationDispatcher::class);
+        // Mesma instância do registo singleton acima.
+        $this->app->singleton(
+            TenantProvisionerInterface::class,
+            fn ($app) => $app->make(TenantProvisionerRegistry::class),
+        );
     }
 
     public function boot(): void

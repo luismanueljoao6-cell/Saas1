@@ -3,6 +3,7 @@
 namespace Modules\Core\Services;
 
 use Closure;
+use Modules\Core\Contracts\TenantProvisionerInterface;
 use Throwable;
 
 /**
@@ -14,7 +15,7 @@ use Throwable;
  * provisionadores têm de ser idempotentes (correm no registo, ao ativar o
  * serviço e no comando core:provisionar-servicos).
  */
-class TenantProvisionerRegistry
+class TenantProvisionerRegistry implements TenantProvisionerInterface
 {
     /**
      * @var array<string, Closure(int): void>

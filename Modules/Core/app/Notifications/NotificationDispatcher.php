@@ -4,12 +4,13 @@ namespace Modules\Core\Notifications;
 
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Modules\Core\Contracts\NotificationDispatcherInterface;
 use Modules\Core\Jobs\ProcessNotificationJob;
 use Modules\Core\Models\NotificationOutbox;
 use Modules\Core\Services\TenantManager;
 use RuntimeException;
 
-class NotificationDispatcher
+class NotificationDispatcher implements NotificationDispatcherInterface
 {
     public function __construct(
         private readonly TenantManager $tenants,
