@@ -37,7 +37,6 @@ class CicloDeVidaEmpresaService
 
             Log::warning('Empresa eliminada logicamente.', [
                 'empresa_id' => $empresa->id,
-                'nif' => $empresa->nif,
             ]);
 
             return true;
@@ -62,7 +61,6 @@ class CicloDeVidaEmpresaService
 
             Log::warning('Empresa restaurada.', [
                 'empresa_id' => $empresa->id,
-                'nif' => $empresa->nif,
             ]);
 
             return true;
