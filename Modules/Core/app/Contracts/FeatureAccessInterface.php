@@ -13,8 +13,9 @@ use Modules\Core\Support\Servico;
 interface FeatureAccessInterface
 {
     /**
-     * Fail-closed: sem empresa no contexto (e sem $empresaId) devolve false;
-     * se houver contexto de empresa e $empresaId for outra, devolve false.
+     * Fail-closed: sem empresa no contexto devolve false, mesmo que $empresaId
+     * seja indicado. Quando existe contexto, um $empresaId explícito só é
+     * aceite se corresponder à empresa atual.
      */
     public function servicoAtivo(Servico|string $servico, ?int $empresaId = null): bool;
 }
