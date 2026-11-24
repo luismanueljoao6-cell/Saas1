@@ -66,6 +66,16 @@ class DispararCampanhaJob implements ShouldQueue
         NotificadorClienteService $notificador,
         PortalLinkService $linkService,
     ): void {
+        $empresaId = $this->resolverEmpresaId();
+
+        if ($empresaId === null) {
+            Log::info('Atelier: job ignorado — campanha inexistente', [
+                'campanha_id' => $this->campanhaId,
+            ]);
+
+            return;
+        }
+
         $lock = Cache::lock('atelier:campanha:'.$this->campanhaId, $this->timeout + 60);
 
         if (! $lock->get()) {
@@ -73,16 +83,6 @@ class DispararCampanhaJob implements ShouldQueue
             // não pode ficar aberto sem ninguém o tratar: volta a tentar mais
             // tarde ou, esgotadas as tentativas, fecha-se como ignorado.
             $this->adiarOuIgnorarPedido();
-
-            return;
-        }
-
-        $empresaId = $this->resolverEmpresaId();
-
-        if ($empresaId === null) {
-            Log::info('Atelier: job ignorado — campanha inexistente', [
-                'campanha_id' => $this->campanhaId,
-            ]);
 
             return;
         }
