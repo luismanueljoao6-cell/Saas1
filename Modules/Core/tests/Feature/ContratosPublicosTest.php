@@ -19,7 +19,10 @@ class ContratosPublicosTest extends TestCase
 {
     public function test_contratos_resolvem_para_as_implementacoes_do_core(): void
     {
-        $this->assertInstanceOf(AuditLogger::class, $this->app->make(AuditLoggerInterface::class));\n        $this->assertInstanceOf(ModuleRegistry::class, $this->app->make(ModuleRegistryInterface::class));\n        $this->assertInstanceOf(Authorization::class, $this->app->make(AuthorizationInterface::class));\n        $this->assertInstanceOf(TenantContext::class, $this->app->make(TenantContextInterface::class));
+        $this->assertInstanceOf(AuditLogger::class, $this->app->make(AuditLoggerInterface::class));
+        $this->assertInstanceOf(ModuleRegistry::class, $this->app->make(ModuleRegistryInterface::class));
+        $this->assertInstanceOf(Authorization::class, $this->app->make(AuthorizationInterface::class));
+        $this->assertInstanceOf(TenantContext::class, $this->app->make(TenantContextInterface::class));
         $this->assertInstanceOf(FeatureAccess::class, $this->app->make(FeatureAccessInterface::class));
         $this->assertInstanceOf(NotificationDispatcher::class, $this->app->make(NotificationDispatcherInterface::class));
         $this->assertSame(
@@ -65,7 +68,7 @@ class ContratosPublicosTest extends TestCase
 
     public function test_id_empresa_explicito_nao_permite_consulta_sem_tenant(): void
     {
-        $repositorio = \\Mockery::mock(EmpresaRepositoryInterface::class);
+        $repositorio = \Mockery::mock(EmpresaRepositoryInterface::class);
         $repositorio->shouldNotReceive('encontrarPorId');
         $this->app->instance(EmpresaRepositoryInterface::class, $repositorio);
 
