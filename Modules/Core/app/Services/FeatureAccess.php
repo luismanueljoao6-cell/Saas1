@@ -18,17 +18,19 @@ class FeatureAccess implements FeatureAccessInterface
     {
         $atual = $this->tenant->id();
 
-        if ($empresaId !== null && $atual !== null && $empresaId !== $atual) {
+        // O parâmetro explícito nunca pode substituir a identidade do contexto.
+        // Sem tenant, a consulta tem de falhar fechada, mesmo que seja indicado
+        // um empresaId; assim evita-se consultar serviços de outra empresa
+        // através de contextos globais ou de sistema.
+        if ($atual === null || $atual < 1) {
             return false;
         }
 
-        $id = $empresaId ?? $atual;
-
-        if ($id === null || $id < 1) {
+        if ($empresaId !== null && $empresaId !== $atual) {
             return false;
         }
 
-        $empresa = $this->empresas->encontrarPorId($id);
+        $empresa = $this->empresas->encontrarPorId($atual);
 
         return $empresa !== null && $empresa->temServico($servico);
     }
