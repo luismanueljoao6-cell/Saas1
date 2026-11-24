@@ -3,13 +3,18 @@
 namespace Modules\Faturacao\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Armazem\Models\ArmazemStockMovimento;
+use Modules\Armazem\Services\ArmazemService;
+use Modules\Armazem\Services\ArmazemStockService;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\TenantManager;
 use Modules\Core\Support\Servico;
 use Modules\Faturacao\Models\Produto;
 use Modules\Faturacao\Models\StockMovimento;
+use Modules\Faturacao\Models\StockSaldo;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -84,6 +89,77 @@ class StockInterfaceTest extends TestCase
             ->assertSee('Gestão de stock')
             ->assertSee('Produto com stock')
             ->assertSee('Receção inicial');
+    }
+
+    public function test_historico_inclui_movimentos_registados_diretamente_no_armazem(): void
+    {
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Produto de armazém',
+            'unidade' => 'un',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'ativo' => true,
+            'controla_stock' => true,
+            'stock_minimo' => '0.000',
+        ]);
+
+        $armazem = app(ArmazemService::class)->obterPrincipal($this->empresa);
+        app(ArmazemStockService::class)->entrada(
+            $this->empresa,
+            $armazem,
+            $produto,
+            '3.000',
+            'Entrada direta multi-armazém',
+            (int) $this->utilizador->id,
+        );
+
+        $this->assertSame(1, ArmazemStockMovimento::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa->id)
+            ->where('produto_id', $produto->id)
+            ->count());
+        $this->assertSame(0, StockMovimento::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa->id)
+            ->where('produto_id', $produto->id)
+            ->count());
+
+        $this->actingAs($this->utilizador)
+            ->get(route('faturacao.stock.index'))
+            ->assertOk()
+            ->assertSee('Entrada direta multi-armazém')
+            ->assertSee($armazem->nome)
+            ->assertSee('Armazém');
+    }
+
+    public function test_saldos_e_alertas_preservam_precisao_decimal_no_limite_do_banco(): void
+    {
+        if (DB::getDriverName() === 'sqlite') {
+            $this->markTestSkipped('SQLite não preserva a precisão de DECIMAL(14,3) em valores desta magnitude; a validação exata é executada na suite MySQL.');
+        }
+
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Produto de precisão',
+            'unidade' => 'un',
+            'preco_unitario' => '100.00',
+            'taxa_iva' => '14',
+            'ativo' => true,
+            'controla_stock' => true,
+            'stock_minimo' => '99999999999.998',
+        ]);
+
+        StockSaldo::create([
+            'empresa_id' => $this->empresa->id,
+            'produto_id' => $produto->id,
+            'quantidade' => '99999999999.999',
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->get(route('faturacao.stock.index'))
+            ->assertOk()
+            ->assertSee('99.999.999.999,999')
+            ->assertSee('99.999.999.999,998')
+            ->assertSee('Disponível');
     }
 
     public function test_nao_permite_registar_movimento_para_produto_de_outra_empresa(): void
