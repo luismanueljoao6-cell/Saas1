@@ -62,13 +62,13 @@ class ReenvioCampanhaRegrasTest extends TestCase
         $tenantManager = app(TenantManager::class);
         $tenantManager->set($tenantAnterior);
 
-        $registrar = app(\\Spatie\\Permission\\PermissionRegistrar::class);
+        $registrar = app(\Spatie\Permission\PermissionRegistrar::class);
         $registrar->setPermissionsTeamId($tenantAnterior);
 
-        $crm = \\Mockery::mock(CrmService::class);
+        $crm = \Mockery::mock(CrmService::class);
         $crm->shouldReceive('resolverSegmento')
             ->once()
-            ->with(\\Mockery::on(function (Campanha $recebida) use ($campanha, $empresaId, $tenantManager, $registrar): bool {
+            ->with(\Mockery::on(function (Campanha $recebida) use ($campanha, $empresaId, $tenantManager, $registrar): bool {
                 $this->assertSame($campanha->id, $recebida->id);
                 $this->assertSame($empresaId, $tenantManager->id());
                 $this->assertFalse($tenantManager->emBypass());
@@ -81,8 +81,8 @@ class ReenvioCampanhaRegrasTest extends TestCase
         (new DispararCampanhaJob($campanha->id))->handle(
             $tenantManager,
             $crm,
-            app(\\Modules\\Atelier\\Services\\Notificacoes\\NotificadorClienteService::class),
-            app(\\Modules\\Atelier\\Services\\PortalLinkService::class),
+            app(\Modules\Atelier\Services\Notificacoes\NotificadorClienteService::class),
+            app(\Modules\Atelier\Services\PortalLinkService::class),
         );
 
         $this->assertSame($tenantAnterior, $tenantManager->id());
