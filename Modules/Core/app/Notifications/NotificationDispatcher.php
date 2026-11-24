@@ -26,13 +26,22 @@ class NotificationDispatcher implements NotificationDispatcherInterface
         int $maxAttempts = 5,
         ?int $empresaId = null,
     ): NotificationOutbox {
-        $tenantId = $this->tenants->id() ?? $empresaId;
+        $temTenant = $this->tenants->has();
+
+        // Sem tenant, só um fluxo de sistema explicitamente delimitado por
+        // semTenant() pode indicar a empresa de destino. Um ID fornecido por
+        // si só nunca concede autoridade para escrever fora do contexto.
+        if (! $temTenant && (! $this->tenants->emBypass() || ! $empresaId || $empresaId < 1)) {
+            throw new RuntimeException('É obrigatório identificar a empresa num contexto de tenant ou bypass explícito.');
+        }
+
+        $tenantId = $temTenant ? $this->tenants->id() : $empresaId;
 
         if (! $tenantId || $tenantId < 1) {
             throw new RuntimeException('É obrigatório identificar a empresa para registar uma notificação.');
         }
 
-        if ($this->tenants->has() && $empresaId !== null && $empresaId !== $this->tenants->id()) {
+        if ($temTenant && $empresaId !== null && $empresaId !== $tenantId) {
             throw new RuntimeException('A empresa indicada não corresponde ao tenant atual.');
         }
 
