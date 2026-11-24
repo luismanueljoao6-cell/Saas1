@@ -39,6 +39,17 @@ class ContratosPublicosTest extends TestCase
         $contexto->requireTenant();
     }
 
+    public function test_id_empresa_explicito_nao_permite_consulta_sem_tenant(): void
+    {
+        $repositorio = \\Mockery::mock(EmpresaRepositoryInterface::class);
+        $repositorio->shouldNotReceive('encontrarPorId');
+        $this->app->instance(EmpresaRepositoryInterface::class, $repositorio);
+
+        $acesso = $this->app->make(FeatureAccessInterface::class);
+
+        $this->assertFalse($acesso->servicoAtivo(Servico::Faturacao, 7));
+    }
+
     public function test_contexto_acompanha_o_tenant_ativo_e_a_limpeza(): void
     {
         $contexto = $this->app->make(TenantContextInterface::class);
