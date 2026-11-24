@@ -1,6 +1,7 @@
 {
     "name": "EstudioMusica",
     "alias": "estudiomusica",
+    "servico": "estudio",
     "description": "Gestão de Estúdio de Música: artistas, projetos/faixas, agendamento de salas e sessões, portal do cliente com player de demos, automação de notificações e integração com o motor de faturação do SaaS. Depende dos módulos Core e Faturacao.",
     "keywords": [],
     "priority": 2,

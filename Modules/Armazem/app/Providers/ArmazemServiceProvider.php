@@ -18,8 +18,9 @@ class ArmazemServiceProvider extends ServiceProvider
         // O Armazém acompanha o serviço de Faturação e é provisionado
         // automaticamente no registo, ativação ou reparação do serviço.
         $this->app->make(TenantProvisionerRegistry::class)->register(
-            'faturacao',
+            'armazem',
             fn (int $empresaId) => PapeisArmazem::provisionar($empresaId),
+            servico: 'faturacao',
         );
 
         $menu = $this->app->make(MenuRegistry::class);

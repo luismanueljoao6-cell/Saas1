@@ -36,3 +36,25 @@ PR de trabalho: #89 (`core/04-empresas-provisionamento`).
 ## Pendente / decisão
 
 - **ModuleRegistry** (descoberta, dependências e ativação de módulos): o contrato previsto no CORE-01 ainda não existe. Hoje há o enum `Servico` (Atelier e Estúdio trazem a Faturação), o `TenantProvisionerRegistry` e o `modules_statuses.json` do Nwidart. Decidir se entra neste PR ou no CORE-06.
+
+## Passo 7 — ModuleRegistry e provisionadores (resolve o pendente acima)
+
+**Decisão: o ModuleRegistry entra no CORE-04, só de leitura e validação.** A ativação já tem
+dono: o serviço contratado por cada empresa é do Core (`Servico`, `ServicoController`) e a
+ativação global de um módulo é do Nwidart (`modules_statuses.json`). Um registry que
+"ativasse" módulos duplicaria isso.
+
+- `ModuleRegistryInterface` / `ModuleRegistry`: lê os módulos do Nwidart e valida dependências
+  (em falta, desativadas, circulares, Core em falta), a relação módulo ↔ serviço e os
+  provisionadores. Comando `php artisan core:modulos` (sai com erro se houver incoerências).
+- Cada módulo de negócio declara o seu serviço no `module.json` (`"servico": "estudio"`), em
+  vez de o Core adivinhar pelo nome (o módulo `EstudioMusica` presta o serviço `estudio`).
+- **Provisionadores:** a chave servia ao mesmo tempo de identidade e de serviço. O Armazém
+  registava-se sob `'faturacao'` por acompanhar a Faturação, e com o PR #91 (chaves duplicadas
+  recusadas) qualquer provisionador futuro da própria Faturação rebentaria o arranque da
+  aplicação. `register()` ganha um 3.º argumento opcional `servico` (por omissão, a própria
+  chave, sem alterar quem já usa a convenção antiga); o Armazém passa a `register('armazem', ..., servico: 'faturacao')`.
+
+Riscos residuais: a validação só vê o que está registado depois do arranque (corre como
+comando e em teste, não a cada pedido); não valida o comportamento dos provisionadores
+(idempotência continua provada por teste).

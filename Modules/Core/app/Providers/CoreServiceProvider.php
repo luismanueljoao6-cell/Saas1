@@ -11,11 +11,13 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Modules\Core\Console\Commands\EliminarEmpresaCommand;
 use Modules\Core\Console\Commands\ListUnknownNotifications;
+use Modules\Core\Console\Commands\ModulosCommand;
 use Modules\Core\Console\Commands\RecoverNotificationOutbox;
 use Modules\Core\Console\Commands\ResolveUnknownNotification;
 use Modules\Core\Console\Commands\RestaurarEmpresaCommand;
 use Modules\Core\Contracts\FeatureAccessInterface;
 use Modules\Core\Contracts\LimitesDaEmpresa;
+use Modules\Core\Contracts\ModuleRegistryInterface;
 use Modules\Core\Contracts\NotificationDispatcherInterface;
 use Modules\Core\Contracts\TenantContextInterface;
 use Modules\Core\Contracts\TenantProvisionerInterface;
@@ -31,6 +33,7 @@ use Modules\Core\Repositories\Contracts\EmpresaRepositoryInterface;
 use Modules\Core\Repositories\EmpresaRepository;
 use Modules\Core\Services\FeatureAccess;
 use Modules\Core\Services\MenuRegistry;
+use Modules\Core\Services\ModuleRegistry;
 use Modules\Core\Services\SemLimites;
 use Modules\Core\Services\TenantContext;
 use Modules\Core\Services\TenantManager;
@@ -69,6 +72,7 @@ class CoreServiceProvider extends ServiceProvider
         // Contratos públicos (CORE-01): os módulos injetam estas interfaces.
         $this->app->bind(TenantContextInterface::class, TenantContext::class);
         $this->app->bind(FeatureAccessInterface::class, FeatureAccess::class);
+        $this->app->bind(ModuleRegistryInterface::class, ModuleRegistry::class);
         // Não singleton: o dispatcher guarda o TenantManager (scoped) e não pode
         // reter o tenant de um pedido/job anterior em workers persistentes.
         $this->app->bind(NotificationDispatcherInterface::class, NotificationDispatcher::class);
@@ -89,6 +93,7 @@ class CoreServiceProvider extends ServiceProvider
             ListUnknownNotifications::class,
             EliminarEmpresaCommand::class,
             RestaurarEmpresaCommand::class,
+            ModulosCommand::class,
         ]);
         $this->registerMiddlewareAliases();
         $this->registerMenuItems();
