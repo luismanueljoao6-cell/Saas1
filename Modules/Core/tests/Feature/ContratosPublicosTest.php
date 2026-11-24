@@ -2,7 +2,8 @@
 
 namespace Modules\Core\Tests\Feature;
 
-use Illuminate\Support\Facades\Gate;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Modules\Core\Contracts\AuditLoggerInterface;
 use Modules\Core\Contracts\AuthorizationInterface;
 use Modules\Core\Contracts\FeatureAccessInterface;
@@ -53,10 +54,21 @@ class ContratosPublicosTest extends TestCase
 
     public function test_contrato_de_autorizacao_delega_no_gate_do_laravel(): void
     {
-        Gate::define('core.contrato.autorizado', fn () => true);
-        Gate::define('core.contrato.negado', fn () => false);
+        $gate = \\Mockery::mock(GateContract::class);
+        $gate->shouldReceive('allows')
+            ->once()
+            ->with('core.contrato.autorizado', [])
+            ->andReturn(true);
+        $gate->shouldReceive('allows')
+            ->once()
+            ->with('core.contrato.negado', [])
+            ->andReturn(false);
+        $gate->shouldReceive('authorize')
+            ->once()
+            ->with('core.contrato.autorizado', [])
+            ->andReturn(Response::allow());
 
-        $autorizacao = $this->app->make(AuthorizationInterface::class);
+        $autorizacao = new Authorization($gate);
 
         $this->assertTrue($autorizacao->allows('core.contrato.autorizado'));
         $this->assertFalse($autorizacao->allows('core.contrato.negado'));
