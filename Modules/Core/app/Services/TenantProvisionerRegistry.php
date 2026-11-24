@@ -40,7 +40,13 @@ class TenantProvisionerRegistry implements TenantProvisionerInterface
             }
 
             try {
-                $provisioner($empresaId);
+                // O registry é singleton: resolve o TenantManager scoped em cada
+                // execução e garante que TODO o provisionador corre com a empresa
+                // e a equipa Spatie correspondentes, restaurando o contexto anterior.
+                app(TenantManager::class)->comEmpresa(
+                    $empresaId,
+                    fn () => $provisioner($empresaId),
+                );
             } catch (Throwable $e) {
                 throw new \RuntimeException(
                     "Falha ao provisionar o módulo [{$module}] para a empresa [{$empresaId}].",
