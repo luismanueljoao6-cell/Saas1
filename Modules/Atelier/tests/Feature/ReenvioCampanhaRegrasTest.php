@@ -14,6 +14,7 @@ use Modules\Atelier\Models\Campanha;
 use Modules\Atelier\Models\CampanhaEnvio;
 use Modules\Atelier\Models\CampanhaReenvio;
 use Modules\Atelier\Models\ClienteCrm;
+use Modules\Atelier\Services\CrmService;
 use Modules\Core\Events\NotificationStateChanged;
 use Modules\Core\Models\NotificationAttempt;
 use Modules\Core\Models\NotificationOutbox;
@@ -49,6 +50,44 @@ class ReenvioCampanhaRegrasTest extends TestCase
         $this->withoutVite();
 
         Queue::fake();
+    }
+
+    public function test_job_processa_campanha_no_tenant_proprietario_e_restaura_contexto_anterior(): void
+    {
+        $admin = $this->registarAtelier('500000013');
+        $campanha = $this->criarCampanha($admin);
+        $empresaId = (int) $admin->empresa_id;
+        $tenantAnterior = $empresaId + 100000;
+
+        $tenantManager = app(TenantManager::class);
+        $tenantManager->set($tenantAnterior);
+
+        $registrar = app(\\Spatie\\Permission\\PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId($tenantAnterior);
+
+        $crm = \\Mockery::mock(CrmService::class);
+        $crm->shouldReceive('resolverSegmento')
+            ->once()
+            ->with(\\Mockery::on(function (Campanha $recebida) use ($campanha, $empresaId, $tenantManager, $registrar): bool {
+                $this->assertSame($campanha->id, $recebida->id);
+                $this->assertSame($empresaId, $tenantManager->id());
+                $this->assertFalse($tenantManager->emBypass());
+                $this->assertSame($empresaId, $registrar->getPermissionsTeamId());
+
+                return true;
+            }))
+            ->andReturn(collect());
+
+        (new DispararCampanhaJob($campanha->id))->handle(
+            $tenantManager,
+            $crm,
+            app(\\Modules\\Atelier\\Services\\Notificacoes\\NotificadorClienteService::class),
+            app(\\Modules\\Atelier\\Services\\PortalLinkService::class),
+        );
+
+        $this->assertSame($tenantAnterior, $tenantManager->id());
+        $this->assertFalse($tenantManager->emBypass());
+        $this->assertSame($tenantAnterior, $registrar->getPermissionsTeamId());
     }
 
     // ---------------------------------------------------------------------
