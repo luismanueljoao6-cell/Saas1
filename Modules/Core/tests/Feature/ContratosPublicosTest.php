@@ -54,7 +54,7 @@ class ContratosPublicosTest extends TestCase
 
     public function test_contrato_de_autorizacao_delega_no_gate_do_laravel(): void
     {
-        $gate = \\Mockery::mock(GateContract::class);
+        $gate = \Mockery::mock(GateContract::class);
         $gate->shouldReceive('allows')
             ->once()
             ->with('core.contrato.autorizado', [])
