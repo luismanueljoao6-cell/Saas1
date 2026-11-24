@@ -2,7 +2,7 @@
 
 namespace Modules\Core\Tests\Feature;
 
-use Illuminate\Support\Facades\Log;
+use LogicException;
 use Modules\Core\Services\TenantProvisionerRegistry;
 use RuntimeException;
 use Tests\TestCase;
@@ -70,26 +70,27 @@ class TenantProvisionerRegistryTest extends TestCase
         $this->assertFalse($seguinteCorreu);
     }
 
-    public function test_registar_a_mesma_chave_substitui_e_avisa_no_log(): void
+    public function test_registo_duplicado_falha_sem_substituir_o_provisionador_original(): void
     {
-        Log::spy();
-
         $corridos = [];
         $registry = new TenantProvisionerRegistry;
 
         $registry->register('a', function () use (&$corridos): void {
             $corridos[] = 'primeiro';
         });
-        Log::shouldNotHaveReceived('warning');
 
-        $registry->register('a', function () use (&$corridos): void {
-            $corridos[] = 'segundo';
-        });
-        Log::shouldHaveReceived('warning')->once();
+        try {
+            $registry->register('a', function () use (&$corridos): void {
+                $corridos[] = 'segundo';
+            });
+            $this->fail('Uma chave duplicada não pode substituir o provisionador original.');
+        } catch (LogicException $e) {
+            $this->assertSame('Já existe um provisionador registado para o módulo [a].', $e->getMessage());
+        }
 
         $registry->provision(1);
 
-        $this->assertSame(['segundo'], $corridos);
+        $this->assertSame(['primeiro'], $corridos);
         $this->assertSame(['a'], $registry->modules());
     }
 }
