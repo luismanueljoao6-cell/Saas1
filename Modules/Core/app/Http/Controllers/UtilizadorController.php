@@ -15,6 +15,7 @@ use Modules\Core\Models\Convite;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
 use Modules\Core\Services\ConviteService;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 /**
@@ -93,31 +94,67 @@ class UtilizadorController extends Controller
         // empresa, e nunca deve ser removida.
         abort_unless((int) $admin->empresa_id === (int) $utilizador->empresa_id, 403);
 
-        if ((int) $admin->id === (int) $utilizador->id) {
+        $dados = $request->validate([
+            'ativo' => ['required', 'boolean'],
+        ]);
+        $ativoPretendido = (bool) $dados['ativo'];
+
+        if ((int) $admin->id === (int) $utilizador->id && ! $ativoPretendido) {
             return back()->with('erro', 'Não podes desativar a tua própria conta.');
         }
 
         try {
-            [$utilizadorAtual, $mensagem] = DB::transaction(function () use ($admin, $utilizador) {
+            [$utilizadorAtual, $mensagem] = DB::transaction(function () use ($admin, $utilizador, $ativoPretendido) {
                 $empresa = Empresa::query()
                     ->lockForUpdate()
                     ->findOrFail($admin->empresa_id);
+
+                // Relê quem atua sob o bloqueio da empresa. Dois administradores a
+                // desativarem-se um ao outro em simultâneo passam ambos pelo middleware;
+                // sem esta releitura o 2.º (já desativado pelo 1.º) desativava o outro e a
+                // empresa ficava sem nenhum administrador ativo. Quem atua nunca é o alvo
+                // (desativar a própria conta é recusado acima), por isso fica sempre um.
+                $administradorAtual = User::query()
+                    ->where('empresa_id', $empresa->id)
+                    ->lockForUpdate()
+                    ->find($admin->id);
+
+                abort_unless(
+                    $administradorAtual !== null
+                        && $administradorAtual->ativo
+                        && $administradorAtual->hasRole('Administrador'),
+                    403,
+                );
 
                 $utilizadorAtual = User::query()
                     ->where('empresa_id', $empresa->id)
                     ->lockForUpdate()
                     ->findOrFail($utilizador->id);
 
+                // O pedido declara o estado final: repetições e retries são
+                // idempotentes e nunca invertem acidentalmente o estado.
+                if ((bool) $utilizadorAtual->ativo === $ativoPretendido) {
+                    return [$utilizadorAtual, null];
+                }
+
                 // Reativar também conta para o limite. A contagem e a
                 // alteração ficam serializadas pela linha da empresa.
-                if (! $utilizadorAtual->ativo && ($mensagem = $this->mensagemSeLimiteAtingido($empresa))) {
+                if ($ativoPretendido && ($mensagem = $this->mensagemSeLimiteAtingido($empresa))) {
                     return [null, $mensagem];
                 }
 
-                $utilizadorAtual->update(['ativo' => ! $utilizadorAtual->ativo]);
+                $utilizadorAtual->update(['ativo' => $ativoPretendido]);
+
+                // Conta desativada perde também as credenciais de API (Sanctum).
+                if (! $ativoPretendido) {
+                    $utilizadorAtual->tokens()->delete();
+                }
 
                 return [$utilizadorAtual, null];
             });
+        } catch (HttpExceptionInterface $e) {
+            // Autorização negada dentro da transação (403): não é uma falha técnica.
+            throw $e;
         } catch (Throwable $e) {
             Log::error('Falha ao alterar estado do utilizador', [
                 'empresa_id' => $admin->empresa_id,
@@ -132,7 +169,7 @@ class UtilizadorController extends Controller
             return back()->with('erro', $mensagem);
         }
 
-        return back()->with('sucesso', $utilizadorAtual->ativo ? 'Utilizador reativado.' : 'Utilizador desativado.');
+        return back()->with('sucesso', $utilizadorAtual->ativo ? 'Utilizador está ativo.' : 'Utilizador está desativado.');
     }
 
     protected function mensagemSeLimiteAtingido(Empresa $empresa): ?string

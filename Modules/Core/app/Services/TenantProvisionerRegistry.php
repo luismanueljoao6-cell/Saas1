@@ -3,6 +3,7 @@
 namespace Modules\Core\Services;
 
 use Closure;
+use LogicException;
 use Modules\Core\Contracts\TenantProvisionerInterface;
 use Throwable;
 
@@ -14,6 +15,11 @@ use Throwable;
  * para o registry só correr o provisionador de serviços ATIVOS. Os
  * provisionadores têm de ser idempotentes (correm no registo, ao ativar o
  * serviço e no comando core:provisionar-servicos).
+ *
+ * A chave identifica o provisionador (é única) e, por omissão, também o serviço
+ * que o aciona. Um módulo que acompanha o serviço de outro (ex.: o Armazém, que
+ * acompanha a Faturação) regista-se com a SUA chave e indica o serviço no 3.º
+ * argumento, em vez de ocupar a chave desse serviço.
  */
 class TenantProvisionerRegistry implements TenantProvisionerInterface
 {
@@ -22,9 +28,21 @@ class TenantProvisionerRegistry implements TenantProvisionerInterface
      */
     protected array $provisioners = [];
 
-    public function register(string $module, Closure $provisioner): void
+    /**
+     * Serviço que aciona cada provisionador (por omissão, o próprio módulo).
+     *
+     * @var array<string, string>
+     */
+    protected array $servicos = [];
+
+    public function register(string $module, Closure $provisioner, ?string $servico = null): void
     {
+        if (isset($this->provisioners[$module])) {
+            throw new LogicException("Já existe um provisionador registado para o módulo [{$module}].");
+        }
+
         $this->provisioners[$module] = $provisioner;
+        $this->servicos[$module] = $servico ?? $module;
     }
 
     /**
@@ -35,7 +53,7 @@ class TenantProvisionerRegistry implements TenantProvisionerInterface
     public function provision(int $empresaId, ?array $servicosAtivos = null): void
     {
         foreach ($this->provisioners as $module => $provisioner) {
-            if ($servicosAtivos !== null && ! in_array($module, $servicosAtivos, true)) {
+            if ($servicosAtivos !== null && ! in_array($this->servicos[$module], $servicosAtivos, true)) {
                 continue;
             }
 
@@ -56,5 +74,11 @@ class TenantProvisionerRegistry implements TenantProvisionerInterface
     public function modules(): array
     {
         return array_keys($this->provisioners);
+    }
+
+    /** Serviço que aciona o provisionador registado sob $module (null se não existir). */
+    public function servicoDe(string $module): ?string
+    {
+        return $this->servicos[$module] ?? null;
     }
 }

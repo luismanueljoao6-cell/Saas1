@@ -32,8 +32,8 @@ class LoginRequest extends FormRequest
      *    o controller leva-o ao desafio do segundo fator.
      *
      * Lança ValidationException tanto para credenciais inválidas como para
-     * conta desativada, sem pistas sobre contas existentes (a conta desativada
-     * só se distingue depois de a palavra-passe estar certa, como antes).
+     * conta desativada ou empresa eliminada, sem pistas sobre contas existentes
+     * (estes dois estados só se distinguem depois de a palavra-passe estar certa).
      */
     public function autenticar(): ?User
     {
@@ -41,12 +41,21 @@ class LoginRequest extends FormRequest
 
         $aguardaDesafio = null;
         $desativada = false;
+        $empresaIndisponivel = false;
 
         $entrou = Auth::attemptWhen(
             $this->only('email', 'password'),
-            function (User $utilizador) use (&$aguardaDesafio, &$desativada): bool {
+            function (User $utilizador) use (&$aguardaDesafio, &$desativada, &$empresaIndisponivel): bool {
                 if (! $utilizador->ativo) {
                     $desativada = true;
+
+                    return false;
+                }
+
+                // Empresa eliminada logicamente: a relação ignora-a (null). Vem antes
+                // do 2FA para nem sequer se oferecer o desafio a esta conta.
+                if (! $utilizador->is_super_admin && $utilizador->empresa_id !== null && $utilizador->empresa === null) {
+                    $empresaIndisponivel = true;
 
                     return false;
                 }
@@ -67,6 +76,14 @@ class LoginRequest extends FormRequest
 
             throw ValidationException::withMessages([
                 'email' => 'Esta conta está desativada. Contacta o administrador da tua empresa.',
+            ]);
+        }
+
+        if ($empresaIndisponivel) {
+            RateLimiter::hit($this->chaveLimitador());
+
+            throw ValidationException::withMessages([
+                'email' => 'A empresa desta conta já não está disponível. Contacta o suporte.',
             ]);
         }
 

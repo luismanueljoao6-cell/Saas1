@@ -50,8 +50,24 @@ public function notificar(string $destino): void
 - `CORE_CABECALHOS_SEGURANCA=false` desliga os cabeçalhos de segurança (omissão: ligados).
 - Estado, decisões e riscos residuais: `docs/auditorias/core-03-autenticacao.md`.
 
+## Ciclo de vida da empresa (CORE-04)
+
+- `php artisan core:empresa-eliminar {id} --confirmar` e `core:empresa-restaurar {id}`: eliminação lógica
+  (só `deleted_at`, nunca apaga dados), idempotente. Enquanto eliminada, o middleware `tenant` termina a sessão
+  (web) ou responde 403 (API), o login é recusado e os convites pendentes deixam de valer.
+- `php artisan core:provisionar-servicos`: tudo-ou-nada por empresa; continua nas restantes e mostra a causa.
+- Estado, decisões e riscos residuais: `docs/auditorias/core-04-empresas-provisionamento.md`.
+
+## Módulos (CORE-04)
+
+`ModuleRegistryInterface` (`Services\ModuleRegistry`) lê os módulos instalados e valida as
+dependências, o serviço que cada módulo de negócio declara no `module.json` (`"servico"`) e os
+provisionadores. `php artisan core:modulos` mostra o estado e falha se houver incoerências.
+Um módulo que acompanha o serviço de outro (o Armazém acompanha a Faturação) regista o
+provisionador com a sua chave e indica o serviço no 3.º argumento de `register()` (`servico:`).
+
 ## Ainda por fazer neste módulo
 
 Contratos previstos e **ainda não existentes**: `AuthorizationInterface`,
-`ModuleRegistryInterface` e `AuditLoggerInterface`. Serão acrescentados depois
+`AuditLoggerInterface`. Serão acrescentados depois
 de auditar o Spatie Permission (Teams), o Nwidart e o Activitylog instalados.

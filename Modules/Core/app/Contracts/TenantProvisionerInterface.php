@@ -12,9 +12,11 @@ use Closure;
 interface TenantProvisionerInterface
 {
     /**
+     * @param  string  $module  identifica o provisionador (único)
      * @param  Closure(int): void  $provisioner
+     * @param  string|null  $servico  serviço cuja ativação o aciona; por omissão, o próprio $module
      */
-    public function register(string $module, Closure $provisioner): void;
+    public function register(string $module, Closure $provisioner, ?string $servico = null): void;
 
     /**
      * @param  array<int, string>|null  $servicosAtivos  null = corre todos
@@ -25,4 +27,7 @@ interface TenantProvisionerInterface
      * @return array<int, string>
      */
     public function modules(): array;
+
+    /** Serviço que aciona o provisionador registado sob $module (null se não existir). */
+    public function servicoDe(string $module): ?string;
 }
