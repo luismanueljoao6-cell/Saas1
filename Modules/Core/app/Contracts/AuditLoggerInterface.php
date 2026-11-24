@@ -1,8 +1,8 @@
 <?php
 
-namespace Modules\\Core\\Contracts;
+namespace Modules\Core\Contracts;
 
-use Illuminate\\Database\\Eloquent\\Model;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Registo explícito de eventos relevantes de negócio e segurança.
