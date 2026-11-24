@@ -3,6 +3,7 @@
 namespace Modules\Core\Services;
 
 use Closure;
+use Illuminate\Support\Facades\Log;
 use Modules\Core\Contracts\TenantProvisionerInterface;
 use Throwable;
 
@@ -24,6 +25,13 @@ class TenantProvisionerRegistry implements TenantProvisionerInterface
 
     public function register(string $module, Closure $provisioner): void
     {
+        if (isset($this->provisioners[$module])) {
+            // A segunda chamada com a mesma chave SUBSTITUI a primeira: o provisionador
+            // anterior deixaria de correr sem ninguém dar por isso (ex.: dois módulos
+            // a registarem-se sob 'faturacao').
+            Log::warning('Provisionador substituído: a chave já estava registada.', ['modulo' => $module]);
+        }
+
         $this->provisioners[$module] = $provisioner;
     }
 
