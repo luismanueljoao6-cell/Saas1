@@ -17,33 +17,52 @@
             </div>
         @endif
 
-        <div x-data="{ aFormulario: {{ $errors->any() ? 'true' : 'false' }} }" class="mt-4">
+        <div x-data="{ aFormulario: {{ ($errors->any() || old('email')) ? 'true' : 'false' }} }" class="mt-4">
             <button type="button" @click="aFormulario = !aFormulario"
                     class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-                <span x-text="aFormulario ? '− Fechar' : '+ Novo utilizador'"></span>
+                <span x-text="aFormulario ? '− Fechar' : '+ Convidar utilizador'"></span>
             </button>
 
             <form x-show="aFormulario" x-cloak method="POST" action="{{ route('core.utilizadores.store') }}"
                   class="mt-3 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4">
                 @csrf
-                <input name="name" value="{{ old('name') }}" placeholder="Nome" required
+                <input name="name" value="{{ old('name') }}" placeholder="Nome (opcional)"
                        class="rounded-md border border-slate-300 px-3 py-2 text-sm">
                 <input name="email" type="email" value="{{ old('email') }}" placeholder="E-mail" required
                        class="rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <input name="password" type="password" placeholder="Palavra-passe temporária" required autocomplete="new-password"
-                       class="rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <input name="password_confirmation" type="password" placeholder="Confirmar palavra-passe" required autocomplete="new-password"
-                       class="rounded-md border border-slate-300 px-3 py-2 text-sm">
                 <label class="flex items-center gap-2 text-sm text-slate-600">
-                    <input type="checkbox" name="administrador" value="1" class="rounded border-slate-300">
+                    <input type="checkbox" name="administrador" value="1" class="rounded border-slate-300" @checked(old('administrador'))>
                     Também é administrador
                 </label>
-                <p class="text-xs text-slate-400">Comunica a palavra-passe ao colega por fora da aplicação (ex.: WhatsApp).</p>
+                <p class="text-xs text-slate-400">O colega recebe um e-mail com uma ligação para escolher a própria palavra-passe. A ligação expira e só pode ser usada uma vez.</p>
                 <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
-                    Criar utilizador
+                    Enviar convite
                 </button>
             </form>
         </div>
+
+        @if ($convites->isNotEmpty())
+            <h2 class="mt-6 text-sm font-semibold text-slate-700">Convites pendentes</h2>
+            <div class="mt-2 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+                @foreach ($convites as $convite)
+                    <div class="flex items-center justify-between px-4 py-3">
+                        <div>
+                            <p class="text-sm font-medium text-slate-900">
+                                {{ $convite->email }}
+                                @if ($convite->administrador)
+                                    <span class="text-xs font-normal text-slate-400">(administrador)</span>
+                                @endif
+                            </p>
+                            <p class="text-xs text-slate-500">Expira a {{ $convite->expires_at->format('d/m/Y') }}</p>
+                        </div>
+                        <form method="POST" action="{{ route('core.convites.revogar', $convite) }}">
+                            @csrf
+                            <button type="submit" class="text-xs font-medium text-red-600 hover:text-red-500">Revogar</button>
+                        </form>
+                    </div>
+                @endforeach
+            </div>
+        @endif
 
         <div class="mt-6 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
             @foreach ($utilizadores as $utilizador)

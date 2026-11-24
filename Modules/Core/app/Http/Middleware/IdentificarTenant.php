@@ -3,6 +3,7 @@
 namespace Modules\Core\Http\Middleware;
 
 use Closure;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -70,6 +71,18 @@ class IdentificarTenant
                 ]);
             }
 
+            // Com CORE_EXIGIR_EMAIL_VERIFICADO=true só passam contas com o e-mail
+            // verificado. Todas as rotas de negócio usam este middleware, por isso
+            // a regra vale para todos os módulos. As rotas de verificação não
+            // passam por aqui (evita ciclos de redirecionamento).
+            if ($this->emailPorVerificar($utilizador)) {
+                if ($request->expectsJson() || $request->is('api/*')) {
+                    abort(403, 'O teu e-mail ainda não foi verificado.');
+                }
+
+                return redirect()->route('verification.notice');
+            }
+
             // Super admins da plataforma não têm tenant; o contexto começa
             // limpo e só podem aceder a dados globais por bypass explícito.
             if ($utilizador->is_super_admin) {
@@ -99,5 +112,12 @@ class IdentificarTenant
                 $registrar->setPermissionsTeamId(null);
             }
         }
+    }
+
+    protected function emailPorVerificar(object $utilizador): bool
+    {
+        return (bool) config('core.auth.exigir_email_verificado', false)
+            && $utilizador instanceof MustVerifyEmail
+            && ! $utilizador->hasVerifiedEmail();
     }
 }

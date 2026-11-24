@@ -3,6 +3,7 @@
 namespace Modules\Core\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Modules\Core\Contracts\LimitesDaEmpresa;
 use Modules\Core\Models\Empresa;
 use Modules\Core\Models\User;
@@ -70,8 +71,6 @@ class UtilizadoresEPapeisTest extends TestCase
         return [
             'name' => 'Novo Colega',
             'email' => 'novo@teste.ao',
-            'password' => 'Senha-Forte-123!',
-            'password_confirmation' => 'Senha-Forte-123!',
         ];
     }
 
@@ -102,11 +101,13 @@ class UtilizadoresEPapeisTest extends TestCase
             ->post(route('core.utilizadores.store'), $this->dadosNovoUtilizador())
             ->assertSessionHas('erro');
 
-        $this->assertDatabaseMissing('users', ['email' => 'novo@teste.ao']);
+        $this->assertDatabaseMissing('convites', ['email' => 'novo@teste.ao']);
     }
 
-    public function test_sem_limite_o_utilizador_e_criado(): void
+    public function test_sem_limite_o_convite_e_emitido(): void
     {
+        Notification::fake();
+
         $admin = $this->criarUtilizador($this->criarEmpresa('500000004'));
         $this->definirLimiteUtilizadores(null);
 
@@ -114,7 +115,9 @@ class UtilizadoresEPapeisTest extends TestCase
             ->post(route('core.utilizadores.store'), $this->dadosNovoUtilizador())
             ->assertSessionHas('sucesso');
 
-        $this->assertDatabaseHas('users', ['email' => 'novo@teste.ao', 'empresa_id' => $admin->empresa_id]);
+        // O utilizador só nasce quando o convite é aceite.
+        $this->assertDatabaseHas('convites', ['email' => 'novo@teste.ao', 'empresa_id' => $admin->empresa_id]);
+        $this->assertDatabaseMissing('users', ['email' => 'novo@teste.ao']);
     }
 
     public function test_utilizador_sem_papel_de_administrador_nao_cria_utilizadores(): void

@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Modules\Core\Notifications\RedefinirPalavraPasse;
+use Modules\Core\Notifications\VerificarEmail;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 use Spatie\Permission\Traits\HasRoles;
@@ -78,6 +80,10 @@ class User extends Authenticatable implements MustVerifyEmail
             'is_super_admin' => 'boolean',
             'ativo' => 'boolean',
             'two_factor_confirmed_at' => 'datetime',
+            // Segredo e códigos de recuperação cifrados em repouso (APP_KEY).
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_ultimo_passo' => 'integer',
         ];
     }
 
@@ -89,6 +95,16 @@ class User extends Authenticatable implements MustVerifyEmail
     public function empresa(): BelongsTo
     {
         return $this->belongsTo(Empresa::class);
+    }
+
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new RedefinirPalavraPasse($token));
+    }
+
+    public function sendEmailVerificationNotification(): void
+    {
+        $this->notify(new VerificarEmail);
     }
 
     public function temDoisFatoresAtivos(): bool

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Modules\Core\Http\Requests\RegistarEmpresaRequest;
+use Modules\Core\Models\User;
 use Modules\Core\Services\RegistoEmpresaService;
 use Throwable;
 
@@ -41,7 +42,29 @@ class RegisteredTenantController extends Controller
         Auth::guard('web')->login($utilizador);
         $request->session()->regenerate();
 
+        $this->enviarVerificacaoDeEmail($utilizador);
+
         return redirect()->route('core.empresa.editar', $utilizador->empresa_id)
             ->with('sucesso', 'Empresa registada com sucesso! Confirma os teus dados abaixo.');
+    }
+
+    /**
+     * Falhar o envio não pode desfazer um registo já concluído: o utilizador
+     * pode pedir novo envio em /verificar-email.
+     */
+    protected function enviarVerificacaoDeEmail(User $utilizador): void
+    {
+        if ($utilizador->hasVerifiedEmail()) {
+            return;
+        }
+
+        try {
+            $utilizador->sendEmailVerificationNotification();
+        } catch (Throwable $e) {
+            Log::warning('Não foi possível enviar o e-mail de verificação no registo.', [
+                'utilizador_id' => $utilizador->id,
+                'erro' => $e->getMessage(),
+            ]);
+        }
     }
 }
