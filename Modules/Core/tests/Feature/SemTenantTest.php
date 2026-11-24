@@ -1,11 +1,11 @@
 <?php
 
-namespace Modules\\Core\\Tests\\Feature;
+namespace Modules\Core\Tests\Feature;
 
-use Modules\\Core\\Services\\TenantManager;
+use Modules\Core\Services\TenantManager;
 use RuntimeException;
-use Spatie\\Permission\\PermissionRegistrar;
-use Tests\\TestCase;
+use Spatie\Permission\PermissionRegistrar;
+use Tests\TestCase;
 
 class SemTenantTest extends TestCase
 {
