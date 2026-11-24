@@ -54,21 +54,28 @@ class IdentificarTenant
             if (! $utilizador->ativo) {
                 Log::info('Sessão terminada: utilizador desativado.', ['utilizador_id' => $utilizador->id]);
 
-                // Pedidos de API (guard sanctum) não têm sessão nem logout().
-                if ($request->expectsJson() || $request->is('api/*')) {
-                    abort(403, 'Esta conta está desativada.');
-                }
+                return $this->terminarSessao(
+                    $request,
+                    'Esta conta está desativada.',
+                    'Esta conta foi desativada. Contacta o administrador da tua empresa.',
+                );
+            }
 
-                Auth::logout();
-
-                if ($request->hasSession()) {
-                    $request->session()->invalidate();
-                    $request->session()->regenerateToken();
-                }
-
-                return redirect()->route('core.login')->withErrors([
-                    'email' => 'Esta conta foi desativada. Contacta o administrador da tua empresa.',
+            // Empresa eliminada logicamente: a relação ignora registos eliminados,
+            // por isso null aqui = empresa indisponível. Vale para TODAS as rotas
+            // com 'tenant' (não só as que também têm 'subscricao.ativa') e falha
+            // em segurança. O super admin não pertence a nenhuma empresa.
+            if (! $utilizador->is_super_admin && $utilizador->empresa_id !== null && $utilizador->empresa === null) {
+                Log::info('Sessão terminada: empresa indisponível.', [
+                    'utilizador_id' => $utilizador->id,
+                    'empresa_id' => $utilizador->empresa_id,
                 ]);
+
+                return $this->terminarSessao(
+                    $request,
+                    'A empresa desta conta já não está disponível.',
+                    'A empresa desta conta já não está disponível. Contacta o suporte.',
+                );
             }
 
             // Com CORE_EXIGIR_EMAIL_VERIFICADO=true só passam contas com o e-mail
@@ -112,6 +119,29 @@ class IdentificarTenant
                 $registrar->setPermissionsTeamId(null);
             }
         }
+    }
+
+    /**
+     * Fecha o acesso já neste pedido: 403 para a API; logout + sessão invalidada
+     * + volta ao login com a mensagem, para pedidos web.
+     */
+    protected function terminarSessao(Request $request, string $mensagemApi, string $mensagemWeb): Response
+    {
+        // Pedidos de API (guard sanctum) não têm sessão nem logout().
+        if ($request->expectsJson() || $request->is('api/*')) {
+            abort(403, $mensagemApi);
+        }
+
+        Auth::logout();
+
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
+        return redirect()->route('core.login')->withErrors([
+            'email' => $mensagemWeb,
+        ]);
     }
 
     protected function emailPorVerificar(object $utilizador): bool
