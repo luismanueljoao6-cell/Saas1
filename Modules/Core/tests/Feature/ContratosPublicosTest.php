@@ -19,13 +19,25 @@ class ContratosPublicosTest extends TestCase
 {
     public function test_contratos_resolvem_para_as_implementacoes_do_core(): void
     {
-        $this->assertInstanceOf(TenantContext::class, $this->app->make(TenantContextInterface::class));
+        $this->assertInstanceOf(Authorization::class, $this->app->make(AuthorizationInterface::class));\n        $this->assertInstanceOf(TenantContext::class, $this->app->make(TenantContextInterface::class));
         $this->assertInstanceOf(FeatureAccess::class, $this->app->make(FeatureAccessInterface::class));
         $this->assertInstanceOf(NotificationDispatcher::class, $this->app->make(NotificationDispatcherInterface::class));
         $this->assertSame(
             $this->app->make(TenantProvisionerRegistry::class),
             $this->app->make(TenantProvisionerInterface::class),
         );
+    }
+
+    public function test_contrato_de_autorizacao_delega_no_gate_do_laravel(): void
+    {
+        Gate::define('core.contrato.autorizado', fn () => true);
+        Gate::define('core.contrato.negado', fn () => false);
+
+        $autorizacao = $this->app->make(AuthorizationInterface::class);
+
+        $this->assertTrue($autorizacao->allows('core.contrato.autorizado'));
+        $this->assertFalse($autorizacao->allows('core.contrato.negado'));
+        $this->assertTrue($autorizacao->authorize('core.contrato.autorizado')->allowed());
     }
 
     public function test_contexto_sem_empresa_falha_em_seguranca(): void
