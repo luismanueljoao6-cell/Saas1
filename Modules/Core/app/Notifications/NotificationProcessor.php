@@ -31,21 +31,14 @@ class NotificationProcessor
 
     public function process(int $notificationId, int $empresaId): void
     {
-        // O processador também pode ser executado pelo driver "sync", no
-        // próprio pedido HTTP. Nesse caso, não podemos deixar o tenant do
-        // job substituir o tenant original do pedido.
-        $tenantAnterior = $this->tenants->id();
-        $this->tenants->set($empresaId);
-
-        try {
-            $this->processWithinTenant($notificationId, $empresaId);
-        } finally {
-            if ($tenantAnterior === null) {
-                $this->tenants->clear();
-            } else {
-                $this->tenants->set($tenantAnterior);
-            }
-        }
+        // comEmpresa define o tenant e o team do Spatie em conjunto,
+        // desativa qualquer bypass herdado e repõe o contexto anterior.
+        // Isto é essencial no driver "sync", que pode executar dentro de
+        // um pedido ou de um semTenant() ainda ativo.
+        $this->tenants->comEmpresa(
+            $empresaId,
+            fn () => $this->processWithinTenant($notificationId, $empresaId),
+        );
     }
 
     private function processWithinTenant(int $notificationId, int $empresaId): void

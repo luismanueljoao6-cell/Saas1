@@ -20,6 +20,7 @@ use Modules\Core\Notifications\NotificationDispatcher;
 use Modules\Core\Notifications\NotificationProcessor;
 use Modules\Core\Services\TenantManager;
 use RuntimeException;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -57,6 +58,42 @@ class NotificationProcessorTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
+    public function test_processador_define_e_restaura_tenant_bypass_e_team_do_spatie(): void
+    {
+        $notificacao = $this->novaNotificacao('chave-contexto-processador');
+        $tenants = app(TenantManager::class);
+        $registrar = app(PermissionRegistrar::class);
+        $observado = [];
+
+        $this->canal->aoEnviar = function () use ($tenants, $registrar, &$observado): NotificationSendResult {
+            $observado = [
+                'tenant_id' => $tenants->id(),
+                'bypass' => $tenants->emBypass(),
+                'team_id' => $registrar->getPermissionsTeamId(),
+            ];
+
+            return NotificationSendResult::accepted('teste', 'msg-contexto');
+        };
+
+        // Simula o driver sync a executar dentro de um bypass global.
+        $tenants->semTenant(function () use ($notificacao, $tenants, $registrar): void {
+            $this->assertTrue($tenants->emBypass());
+            $this->assertNull($tenants->id());
+            $this->assertNull($registrar->getPermissionsTeamId());
+
+            $this->processar($notificacao);
+
+            // O contexto exterior tem de ficar exatamente como estava.
+            $this->assertTrue($tenants->emBypass());
+            $this->assertNull($tenants->id());
+            $this->assertNull($registrar->getPermissionsTeamId());
+        });
+
+        $this->assertSame((int) $this->empresa->id, $observado['tenant_id']);
+        $this->assertFalse($observado['bypass']);
+        $this->assertSame((int) $this->empresa->id, $observado['team_id']);
+    }
+
     // Uma mensagem já entregue ao fornecedor nunca volta a ser enviada
     // ---------------------------------------------------------------------
 
