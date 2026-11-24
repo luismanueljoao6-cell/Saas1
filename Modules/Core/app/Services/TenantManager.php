@@ -1,10 +1,10 @@
 <?php
 
-namespace Modules\\Core\\Services;
+namespace Modules\Core\Services;
 
 use DomainException;
 use InvalidArgumentException;
-use Spatie\\Permission\\PermissionRegistrar;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Guarda, durante o ciclo de vida de um pedido (ou de um comando artisan/job),
