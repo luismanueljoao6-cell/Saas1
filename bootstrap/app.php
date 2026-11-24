@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Modules\Core\Console\ProvisionarServicosCommand;
+use Modules\Core\Http\Middleware\CabecalhosDeSeguranca;
 use Modules\Core\Http\Middleware\IdentificarTenant;
 use Modules\Core\Support\ProxiesConfiaveis;
 use Modules\Faturacao\Console\CorrigirDocumentoAgtCommand;
@@ -68,7 +69,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Redefinir a palavra-passe termina as outras sessões abertas do mesmo
         // utilizador, seja qual for o driver de sessão.
-        $middleware->web(append: [AuthenticateSession::class]);
+        $middleware->web(append: [AuthenticateSession::class, CabecalhosDeSeguranca::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

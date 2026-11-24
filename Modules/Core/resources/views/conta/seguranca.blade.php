@@ -116,5 +116,7 @@
                 </form>
             @endif
         </section>
+
+        @include('core::conta._palavra-passe-e-sessoes')
     </div>
 @endsection

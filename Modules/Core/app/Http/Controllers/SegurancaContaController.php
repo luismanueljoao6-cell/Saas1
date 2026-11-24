@@ -7,9 +7,12 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Modules\Core\Http\Requests\AlterarPalavraPasseRequest;
 use Modules\Core\Http\Requests\ConfirmarDoisFatoresRequest;
 use Modules\Core\Http\Requests\ConfirmarPalavraPasseRequest;
 use Modules\Core\Models\User;
@@ -125,6 +128,51 @@ class SegurancaContaController extends Controller
 
         return redirect()->route('core.seguranca.index')
             ->with('sucesso', 'A verificação em dois passos foi desativada.');
+    }
+
+    /**
+     * Troca a palavra-passe. As outras sessões ficam com o hash antigo e são
+     * terminadas no pedido seguinte (AuthenticateSession, grupo web); o mesmo
+     * middleware regrava o hash novo na sessão ATUAL no fim deste pedido, por
+     * isso quem alterou não é desautenticado.
+     */
+    public function alterarPalavraPasse(AlterarPalavraPasseRequest $request): RedirectResponse
+    {
+        $utilizador = $this->utilizador($request);
+
+        // O cast 'hashed' do model trata do hash.
+        $utilizador->forceFill([
+            'password' => (string) $request->validated('password'),
+            'remember_token' => Str::random(60),
+        ])->save();
+
+        $utilizador->tokens()->delete();
+
+        Log::info('Palavra-passe alterada pelo próprio utilizador.', [
+            'utilizador_id' => $utilizador->id,
+            'empresa_id' => $utilizador->empresa_id,
+        ]);
+
+        return redirect()->route('core.seguranca.index')
+            ->with('sucesso', 'Palavra-passe alterada. Terminámos as outras sessões e revogámos os tokens de API.');
+    }
+
+    /** Invalida todas as sessões menos a atual (hash novo com o mesmo valor) e revoga os tokens de API. */
+    public function terminarOutrasSessoes(ConfirmarPalavraPasseRequest $request): RedirectResponse
+    {
+        $utilizador = $this->utilizador($request);
+
+        Auth::logoutOtherDevices((string) $request->validated('password'));
+
+        $utilizador->tokens()->delete();
+
+        Log::info('Outras sessões do utilizador terminadas.', [
+            'utilizador_id' => $utilizador->id,
+            'empresa_id' => $utilizador->empresa_id,
+        ]);
+
+        return redirect()->route('core.seguranca.index')
+            ->with('sucesso', 'Terminámos as outras sessões e revogámos os tokens de API.');
     }
 
     /** @param  list<string>  $codigos */

@@ -14,7 +14,10 @@ Sanctum 4, Spatie Permission 8 com Teams, Activitylog 5; sem Fortify).
 | Sessões ao mudar a palavra-passe | Sessões antigas continuavam válidas | `AuthenticateSession` no grupo `web` |
 | Tokens Sanctum ao mudar a palavra-passe | Mantinham-se | Revogados na redefinição |
 | Convites | Admin define palavra-passe temporária e comunica por fora | Convite por e-mail com token (hash na BD), expiração, revogação e aceitação pelo próprio utilizador |
-| 2FA | Só colunas na BD (sem UI nem fluxo); segredo sem cifra no model | **Pendente (Parte C)** |
+| 2FA | Só colunas na BD (sem UI nem fluxo); segredo sem cifra no model | TOTP, segredo e códigos cifrados, desafio no login e definições de segurança (Parte C) |
+| Alterar a palavra-passe estando autenticado | Não existia (só o fluxo "esqueci") | Página de segurança, exige a atual (Parte D) |
+| Terminar outras sessões | Não existia | Disponível, com a palavra-passe (Parte D) |
+| Cabeçalhos de segurança | Nenhum | Middleware no grupo `web` (Parte D) |
 
 ## Decisões
 
@@ -38,9 +41,42 @@ Sanctum 4, Spatie Permission 8 com Teams, Activitylog 5; sem Fortify).
 - Com `SESSION_DRIVER=database`, `AuthenticateSession` invalida as sessões no
   pedido seguinte; não apaga as linhas da tabela `sessions`.
 
-## Pendente neste CORE-03
+## Parte C — 2FA
 
-- **Parte C** — 2FA TOTP com códigos de recuperação e desafio no login.
+- TOTP (RFC 6238): SHA-1, 6 dígitos, passo de 30 s, tolerância de ±1 passo, comparação em tempo
+  constante. Cada passo só pode ser usado uma vez (`two_factor_ultimo_passo`).
+- O segredo e os códigos de recuperação ficam cifrados na BD (casts `encrypted`, chave `APP_KEY`).
+  São 8 códigos de uso único, guardados como HMAC-SHA256.
+- Login: palavra-passe certa + 2FA ativo ⇒ a sessão **não** é aberta. Fica só um estado pendente
+  (10 minutos); o código tem limite de 5 tentativas por 5 minutos por utilizador+IP.
+- Ativação em dois passos (segredo pendente + confirmação por código): só então passa a valer.
+  Ativar, desativar e gerar novos códigos pedem a palavra-passe atual.
+
+### Riscos residuais da Parte C
+
+- Perder a `APP_KEY` inutiliza os segredos e os códigos de 2FA: guardar a chave em cofre e planear a rotação.
+- Não há fluxo para um administrador da plataforma repor o 2FA de quem perdeu o telemóvel e os códigos.
+- O 2FA não é obrigatório por papel nem por empresa (decisão para o CORE-05).
+- Redefinir a palavra-passe por e-mail não pede o 2FA; o login seguinte pede.
+
+## Parte D — fecho
+
+- **Alterar palavra-passe** (`core.seguranca.palavra-passe`): exige a atual, recusa nova igual à atual,
+  roda o `remember_token` e revoga os tokens Sanctum. A sessão atual mantém-se: o `AuthenticateSession`
+  regrava o hash novo no fim do pedido; as outras sessões ficam com o hash antigo e caem no pedido seguinte.
+- **Terminar outras sessões** (`core.seguranca.sessoes.terminar`): `Auth::logoutOtherDevices` + revoga tokens.
+- **Cabeçalhos de segurança** (`CabecalhosDeSeguranca`, grupo `web`): `nosniff`, `X-Frame-Options: SAMEORIGIN`,
+  `Referrer-Policy`, `Permissions-Policy` e HSTS apenas sobre HTTPS. Nunca substitui um cabeçalho já definido.
+  Desligável com `CORE_CABECALHOS_SEGURANCA=false`.
+
+## Fora do CORE-03 (passa para as fases seguintes)
+
+- **CORE-05** — autorização: 2FA obrigatório por papel/empresa; matriz de permissões das ações de segurança.
+- **CORE-06** — API: emissão de tokens Sanctum, abilities e expiração.
+- **CORE-08** — auditoria: eventos de segurança no Activitylog (hoje só `Log::info`).
+- **CORE-11** — Content-Security-Policy (exige nonce no script do tema e remover o Alpine por CDN).
+- Registo e convites continuam a revelar se um e-mail já tem conta (validação `unique`).
+- Não existe lista de sessões ativas por dispositivo; só "terminar todas as outras".
 
 ## Parte B — convites
 

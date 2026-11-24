@@ -98,4 +98,18 @@ return [
     'auth' => [
         'exigir_email_verificado' => (bool) env('CORE_EXIGIR_EMAIL_VERIFICADO', false),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Segurança HTTP
+    |--------------------------------------------------------------------------
+    |
+    | cabecalhos — cabeçalhos de segurança básicos em todas as respostas web
+    | (nosniff, X-Frame-Options, Referrer-Policy, Permissions-Policy e, só
+    | sobre HTTPS, HSTS). Não define Content-Security-Policy.
+    |
+    */
+    'seguranca' => [
+        'cabecalhos' => (bool) env('CORE_CABECALHOS_SEGURANCA', true),
+    ],
 ];

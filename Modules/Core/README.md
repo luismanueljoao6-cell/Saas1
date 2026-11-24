@@ -41,10 +41,14 @@ public function notificar(string $destino): void
 | Login / logout / registo | `core.login`, `core.logout`, `core.registo` | Limitador por e-mail+IP e por IP. |
 | Recuperar palavra-passe | `password.request`, `password.email`, `password.reset`, `password.update` | Resposta idêntica exista ou não a conta; contas desativadas não recebem ligação. Revoga tokens Sanctum e remember_token. |
 | Verificar e-mail | `verification.notice`, `verification.verify`, `verification.send` | Ligação assinada e temporária; reenvio limitado. |
+| Convites | `core.convite.mostrar`, `core.convite.aceitar` | Token de 64 caracteres (na BD só o SHA-256), expira, uma só vez; e-mail, empresa e papel vêm sempre do convite. |
+| 2FA (TOTP) | `core.2fa.desafio`, `core.seguranca.index` | Segredo e códigos cifrados; sem sessão até o código ser aceite; ações sensíveis pedem a palavra-passe. |
+| Conta | `core.seguranca.palavra-passe`, `core.seguranca.sessoes.terminar` | Alterar palavra-passe e terminar outras sessões; revogam tokens de API. |
 
 - `CORE_EXIGIR_EMAIL_VERIFICADO=true` faz o middleware `tenant` exigir e-mail verificado em **todos** os módulos (omissão: `false`).
 - O grupo `web` inclui `AuthenticateSession`: mudar a palavra-passe termina as outras sessões.
-- Ainda por fazer: convites com ligação (substituem a palavra-passe temporária) e 2FA (TOTP). Ver `docs/auditorias/core-03-autenticacao.md`.
+- `CORE_CABECALHOS_SEGURANCA=false` desliga os cabeçalhos de segurança (omissão: ligados).
+- Estado, decisões e riscos residuais: `docs/auditorias/core-03-autenticacao.md`.
 
 ## Ainda por fazer neste módulo
 

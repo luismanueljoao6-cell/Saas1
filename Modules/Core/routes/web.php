@@ -104,6 +104,14 @@ Route::middleware(['auth', 'tenant'])
         Route::post('/dois-fatores/desativar', [SegurancaContaController::class, 'desativar'])
             ->middleware('throttle:5,1')
             ->name('2fa.desativar');
+
+        // Palavra-passe e sessões da própria conta.
+        Route::put('/palavra-passe', [SegurancaContaController::class, 'alterarPalavraPasse'])
+            ->middleware('throttle:5,1')
+            ->name('palavra-passe');
+        Route::post('/sessoes/terminar', [SegurancaContaController::class, 'terminarOutrasSessoes'])
+            ->middleware('throttle:5,1')
+            ->name('sessoes.terminar');
     });
 
 /*
