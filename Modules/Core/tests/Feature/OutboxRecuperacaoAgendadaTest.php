@@ -13,6 +13,7 @@ use Modules\Core\Notifications\Contracts\NotificationChannel;
 use Modules\Core\Notifications\DTO\NotificationSendResult;
 use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Core\Notifications\NotificationDispatcher;
+use Modules\Core\Services\TenantManager;
 use Tests\TestCase;
 
 /**
@@ -85,12 +86,12 @@ class OutboxRecuperacaoAgendadaTest extends TestCase
 
     private function novaNotificacao(string $chave): NotificationOutbox
     {
-        return app(NotificationDispatcher::class)->dispatch(
+        return app(TenantManager::class)->semTenant(fn () => app(NotificationDispatcher::class)->dispatch(
             channel: 'teste.recuperacao',
             recipient: '+244923000000',
             payload: ['message' => "Mensagem {$chave}"],
             idempotencyKey: $chave,
             empresaId: $this->empresa->id,
-        );
+        ));
     }
 }
