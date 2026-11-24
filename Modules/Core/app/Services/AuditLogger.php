@@ -1,10 +1,10 @@
 <?php
 
-namespace Modules\\Core\\Services;
+namespace Modules\Core\Services;
 
-use Illuminate\\Database\\Eloquent\\Model;
+use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
-use Modules\\Core\\Contracts\\AuditLoggerInterface;
+use Modules\Core\Contracts\AuditLoggerInterface;
 
 /** Adaptador do Spatie Activitylog, sem expor o pacote aos módulos consumidores. */
 class AuditLogger implements AuditLoggerInterface
