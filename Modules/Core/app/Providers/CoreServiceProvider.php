@@ -65,7 +65,10 @@ class CoreServiceProvider extends ServiceProvider
         $this->app->bind(EmpresaRepositoryInterface::class, EmpresaRepository::class);
 
         // Contratos públicos (CORE-01): os módulos injetam estas interfaces.
-        $this->app->bind(AuditLoggerInterface::class, AuditLogger::class);\n        $this->app->bind(AuthorizationInterface::class, Authorization::class);\n        $this->app->singleton(ModuleRegistryInterface::class, ModuleRegistry::class);\n        $this->app->bind(TenantContextInterface::class, TenantContext::class);
+        $this->app->bind(AuditLoggerInterface::class, AuditLogger::class);
+        $this->app->bind(AuthorizationInterface::class, Authorization::class);
+        $this->app->singleton(ModuleRegistryInterface::class, ModuleRegistry::class);
+        $this->app->bind(TenantContextInterface::class, TenantContext::class);
         $this->app->bind(FeatureAccessInterface::class, FeatureAccess::class);
         // Não singleton: o dispatcher guarda o TenantManager (scoped) e não pode
         // reter o tenant de um pedido/job anterior em workers persistentes.
