@@ -1,9 +1,9 @@
 <?php
 
-namespace Modules\\Core\\Services;
+namespace Modules\Core\Services;
 
-use Modules\\Core\\Contracts\\ModuleRegistryInterface;
-use Nwidart\\Modules\\Facades\\Module as Modules;
+use Modules\Core\Contracts\ModuleRegistryInterface;
+use Nwidart\Modules\Facades\Module as Modules;
 
 /**
  * Adaptador de leitura para o Nwidart Laravel Modules.
