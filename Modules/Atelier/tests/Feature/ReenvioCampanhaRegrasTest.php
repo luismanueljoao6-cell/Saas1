@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Mockery;
 use Modules\Atelier\Jobs\DispararCampanhaJob;
 use Modules\Atelier\Jobs\EnviarCampanhasAgendadasJob;
 use Modules\Atelier\Listeners\SincronizarEstadoCampanhaOutbox;
@@ -14,6 +15,9 @@ use Modules\Atelier\Models\Campanha;
 use Modules\Atelier\Models\CampanhaEnvio;
 use Modules\Atelier\Models\CampanhaReenvio;
 use Modules\Atelier\Models\ClienteCrm;
+use Modules\Atelier\Services\CrmService;
+use Modules\Atelier\Services\Notificacoes\NotificadorClienteService;
+use Modules\Atelier\Services\PortalLinkService;
 use Modules\Core\Events\NotificationStateChanged;
 use Modules\Core\Models\NotificationAttempt;
 use Modules\Core\Models\NotificationOutbox;
@@ -22,6 +26,7 @@ use Modules\Core\Services\RegistoEmpresaService;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
 use ReflectionProperty;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -49,6 +54,44 @@ class ReenvioCampanhaRegrasTest extends TestCase
         $this->withoutVite();
 
         Queue::fake();
+    }
+
+    public function test_job_processa_campanha_no_tenant_proprietario_e_restaura_contexto_anterior(): void
+    {
+        $admin = $this->registarAtelier('500000013');
+        $campanha = $this->criarCampanha($admin);
+        $empresaId = (int) $admin->empresa_id;
+        $tenantAnterior = $empresaId + 100000;
+
+        $tenantManager = app(TenantManager::class);
+        $tenantManager->set($tenantAnterior);
+
+        $registrar = app(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId($tenantAnterior);
+
+        $crm = Mockery::mock(CrmService::class);
+        $crm->shouldReceive('resolverSegmento')
+            ->once()
+            ->with(Mockery::on(function (Campanha $recebida) use ($campanha, $empresaId, $tenantManager, $registrar): bool {
+                $this->assertSame($campanha->id, $recebida->id);
+                $this->assertSame($empresaId, $tenantManager->id());
+                $this->assertFalse($tenantManager->emBypass());
+                $this->assertSame($empresaId, $registrar->getPermissionsTeamId());
+
+                return true;
+            }))
+            ->andReturn(collect());
+
+        (new DispararCampanhaJob($campanha->id))->handle(
+            $tenantManager,
+            $crm,
+            app(NotificadorClienteService::class),
+            app(PortalLinkService::class),
+        );
+
+        $this->assertSame($tenantAnterior, $tenantManager->id());
+        $this->assertFalse($tenantManager->emBypass());
+        $this->assertSame($tenantAnterior, $registrar->getPermissionsTeamId());
     }
 
     // ---------------------------------------------------------------------

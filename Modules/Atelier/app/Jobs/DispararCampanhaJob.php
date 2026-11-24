@@ -66,6 +66,16 @@ class DispararCampanhaJob implements ShouldQueue
         NotificadorClienteService $notificador,
         PortalLinkService $linkService,
     ): void {
+        $empresaId = $this->resolverEmpresaId();
+
+        if ($empresaId === null) {
+            Log::info('Atelier: job ignorado — campanha inexistente', [
+                'campanha_id' => $this->campanhaId,
+            ]);
+
+            return;
+        }
+
         $lock = Cache::lock('atelier:campanha:'.$this->campanhaId, $this->timeout + 60);
 
         if (! $lock->get()) {
@@ -78,7 +88,10 @@ class DispararCampanhaJob implements ShouldQueue
         }
 
         try {
-            $tenantManager->semTenant(fn () => $this->processar($crmService, $notificador, $linkService));
+            $tenantManager->comEmpresa(
+                $empresaId,
+                fn () => $this->processar($crmService, $notificador, $linkService),
+            );
         } finally {
             $lock->release();
         }
@@ -165,13 +178,33 @@ class DispararCampanhaJob implements ShouldQueue
             return;
         }
 
-        app(TenantManager::class)->semTenant(function () use ($estado, $motivo): void {
+        $empresaId = $this->resolverEmpresaId();
+
+        if ($empresaId === null) {
+            return;
+        }
+
+        app(TenantManager::class)->comEmpresa($empresaId, function () use ($estado, $motivo): void {
             CampanhaReenvio::query()
                 ->where('campanha_id', $this->campanhaId)
                 ->where('token', $this->reenvioToken)
                 ->first()
                 ?->fechar($estado, $motivo);
         });
+    }
+
+    /**
+     * Resolve apenas a empresa proprietária do ID da campanha. A consulta
+     * usa o Query Builder para não depender de um tenant/bypass herdado pelo
+     * worker; todo o processamento seguinte fica limitado a essa empresa.
+     */
+    protected function resolverEmpresaId(): ?int
+    {
+        $empresaId = DB::table('atelier_campanhas')
+            ->where('id', $this->campanhaId)
+            ->value('empresa_id');
+
+        return $empresaId !== null ? (int) $empresaId : null;
     }
 
     protected function executar(
