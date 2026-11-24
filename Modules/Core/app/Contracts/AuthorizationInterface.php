@@ -1,8 +1,8 @@
 <?php
 
-namespace Modules\\Core\\Contracts;
+namespace Modules\Core\Contracts;
 
-use Illuminate\\Auth\\Access\\Response;
+use Illuminate\Auth\Access\Response;
 
 /**
  * Contrato público de autorização. Os módulos consultam capacidades através
