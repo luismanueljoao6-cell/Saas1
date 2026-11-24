@@ -1,10 +1,10 @@
 <?php
 
-namespace Modules\Core\Services;
+namespace Modules\\Core\\Services;
 
 use DomainException;
 use InvalidArgumentException;
-use Spatie\Permission\PermissionRegistrar;
+use Spatie\\Permission\\PermissionRegistrar;
 
 /**
  * Guarda, durante o ciclo de vida de um pedido (ou de um comando artisan/job),
@@ -46,21 +46,29 @@ class TenantManager
     /**
      * Executa o callback fora do contexto de qualquer empresa, de forma explícita
      * e temporária (painel de administração da plataforma, serviços de sistema).
-     * O tenant e o bypass anteriores são sempre repostos no fim, mesmo com exceção.
+     * Limpa também o team do Spatie para que operações globais de papéis e
+     * permissões não herdem silenciosamente a empresa anterior.
+     *
+     * O tenant, o bypass e o team anteriores são sempre repostos no fim,
+     * incluindo quando o callback lança uma exceção ou existem chamadas aninhadas.
      */
     public function semTenant(callable $callback): mixed
     {
         $anterior = $this->tenantId;
         $bypassAnterior = $this->bypassGlobal;
-
-        $this->tenantId = null;
-        $this->bypassGlobal = true;
+        $registrar = class_exists(PermissionRegistrar::class) ? app(PermissionRegistrar::class) : null;
+        $teamAnterior = $registrar?->getPermissionsTeamId();
 
         try {
+            $this->tenantId = null;
+            $this->bypassGlobal = true;
+            $registrar?->setPermissionsTeamId(null);
+
             return $callback();
         } finally {
             $this->tenantId = $anterior;
             $this->bypassGlobal = $bypassAnterior;
+            $registrar?->setPermissionsTeamId($teamAnterior);
         }
     }
 
