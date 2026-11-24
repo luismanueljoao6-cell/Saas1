@@ -28,6 +28,11 @@ class DesafioDoisFatoresController extends Controller
 
     protected const JANELA_SEGUNDOS = 300;
 
+    /** Falhas toleradas por utilizador, somando todos os IPs. */
+    protected const MAX_TENTATIVAS_UTILIZADOR = 15;
+
+    protected const JANELA_UTILIZADOR_SEGUNDOS = 900;
+
     public function __construct(protected DoisFatoresService $doisFatores) {}
 
     public function create(Request $request): View|RedirectResponse
@@ -51,10 +56,17 @@ class DesafioDoisFatoresController extends Controller
         // Chave por utilizador+IP (não por sessão): voltar a fazer login não repõe o limite.
         $chave = '2fa|'.$utilizador->id.'|'.$request->ip();
 
-        if (RateLimiter::tooManyAttempts($chave, self::MAX_TENTATIVAS)) {
-            throw ValidationException::withMessages([
-                'codigo' => 'Demasiadas tentativas. Tenta novamente dentro de '.RateLimiter::availableIn($chave).' segundos.',
-            ]);
+        // Limite por utilizador (todos os IPs): quem já tem a palavra-passe mas roda
+        // de IP não pode tentar códigos sem fim. Custo: sob ataque, o próprio
+        // utilizador também espera; só chega aqui quem já sabe a palavra-passe.
+        $chaveUtilizador = '2fa-utilizador|'.$utilizador->id;
+
+        foreach ([[$chave, self::MAX_TENTATIVAS], [$chaveUtilizador, self::MAX_TENTATIVAS_UTILIZADOR]] as [$limite, $maximo]) {
+            if (RateLimiter::tooManyAttempts($limite, $maximo)) {
+                throw ValidationException::withMessages([
+                    'codigo' => 'Demasiadas tentativas. Tenta novamente dentro de '.RateLimiter::availableIn($limite).' segundos.',
+                ]);
+            }
         }
 
         $codigo = preg_replace('/\s+/', '', (string) $request->validated('codigo'));
@@ -66,6 +78,7 @@ class DesafioDoisFatoresController extends Controller
 
         if (! $valido) {
             RateLimiter::hit($chave, self::JANELA_SEGUNDOS);
+            RateLimiter::hit($chaveUtilizador, self::JANELA_UTILIZADOR_SEGUNDOS);
 
             // Mesma mensagem para os dois tipos de código.
             throw ValidationException::withMessages([
@@ -74,6 +87,7 @@ class DesafioDoisFatoresController extends Controller
         }
 
         RateLimiter::clear($chave);
+        RateLimiter::clear($chaveUtilizador);
 
         $lembrar = (bool) data_get($request->session()->get(self::CHAVE_SESSAO), 'lembrar', false);
         $request->session()->forget(self::CHAVE_SESSAO);

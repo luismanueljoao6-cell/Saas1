@@ -96,3 +96,11 @@ Sanctum 4, Spatie Permission 8 com Teams, Activitylog 5; sem Fortify).
 - O e-mail de convite é enviado de forma síncrona: uma falha de SMTP deixa o convite
   criado (convidar o mesmo e-mail outra vez substitui-o).
 - Convites só podem ser aceites por visitantes: quem já tem sessão aberta é reencaminhado.
+
+## Parte E — limite do desafio 2FA por utilizador
+
+- O limite de 5 tentativas em 5 minutos era por utilizador **e IP**: quem já tinha a
+  palavra-passe e trocava de IP contornava-o (o `throttle:10,1` da rota também é por IP).
+  Passa a existir ainda um limite de 15 falhas em 15 minutos **por utilizador**, somando todos os IPs.
+- Custo assumido: sob ataque, o próprio utilizador espera até 15 minutos. Só chega ao
+  desafio quem já sabe a palavra-passe, e os códigos de recuperação não escapam ao limite.
