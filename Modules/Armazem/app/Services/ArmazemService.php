@@ -199,14 +199,14 @@ class ArmazemService
                     throw new DomainException('Não é possível inativar este armazém enquanto existir uma transferência em trânsito associada.');
                 }
 
-                $temInventarioAberto = DB::table('armazem_inventarios')
+                $temInventarioPendente = DB::table('armazem_inventarios')
                     ->where('empresa_id', $empresa->id)
                     ->where('armazem_id', $alvo->id)
-                    ->where('estado', 'em_contagem')
+                    ->whereIn('estado', ['em_contagem', 'aguarda_aprovacao', 'a_finalizar'])
                     ->exists();
 
-                if ($temInventarioAberto) {
-                    throw new DomainException('Não é possível inativar este armazém enquanto existir um inventário físico em contagem.');
+                if ($temInventarioPendente) {
+                    throw new DomainException('Não é possível inativar este armazém enquanto existir um inventário em curso ou aguardando aprovação.');
                 }
 
                 $alvo->forceFill(['ativo' => false])->save();
