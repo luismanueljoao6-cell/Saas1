@@ -56,7 +56,7 @@ class TenantManager
     {
         $anterior = $this->tenantId;
         $bypassAnterior = $this->bypassGlobal;
-        $registrar = class_exists(PermissionRegistrar::class) ? app(PermissionRegistrar::class) : null;
+        $registrar = $this->permissionRegistrar();
         $teamAnterior = $registrar?->getPermissionsTeamId();
 
         try {
@@ -95,6 +95,27 @@ class TenantManager
      * durante o callback e repõe SEMPRE, mesmo com exceção, o tenant, o bypass
      * e o team do Spatie Permission anteriores.
      */
+    /**
+     * Resolve o registrar apenas quando o container Laravel tem o binding
+     * disponível. TenantManager também é usado em testes unitários sem o
+     * bootstrap completo da aplicação; class_exists() sozinho não garante
+     * que as dependências do registrar possam ser resolvidas.
+     */
+    protected function permissionRegistrar(): ?PermissionRegistrar
+    {
+        if (! class_exists(PermissionRegistrar::class) || ! function_exists('app')) {
+            return null;
+        }
+
+        $container = app();
+
+        if (! $container->bound(PermissionRegistrar::class)) {
+            return null;
+        }
+
+        return $container->make(PermissionRegistrar::class);
+    }
+
     public function comEmpresa(int $empresaId, callable $callback): mixed
     {
         if ($empresaId < 1) {
@@ -103,7 +124,7 @@ class TenantManager
 
         $anterior = $this->tenantId;
         $bypassAnterior = $this->bypassGlobal;
-        $registrar = class_exists(PermissionRegistrar::class) ? app(PermissionRegistrar::class) : null;
+        $registrar = $this->permissionRegistrar();
         $teamAnterior = $registrar?->getPermissionsTeamId();
 
         $this->tenantId = $empresaId;
