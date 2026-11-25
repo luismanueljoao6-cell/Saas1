@@ -74,8 +74,14 @@ class LembretesProvaJob implements ShouldQueue
                         }
 
                         try {
-                            $this->enviarLembrete($prova, $notificador);
-                            $prova->update(['lembrete_enviado_em' => now()]);
+                            if ($this->enviarLembrete($prova, $notificador)) {
+                                $prova->update(['lembrete_enviado_em' => now()]);
+                            } else {
+                                Log::warning('Atelier: nenhum canal aceitou o lembrete de prova', [
+                                    'empresa_id' => $empresaId,
+                                    'prova_id' => $provaId,
+                                ]);
+                            }
                         } catch (Throwable $e) {
                             Log::error('Atelier: falha ao enviar lembrete de prova', [
                                 'empresa_id' => $empresaId,
@@ -88,15 +94,15 @@ class LembretesProvaJob implements ShouldQueue
             });
     }
 
-    protected function enviarLembrete(Prova $prova, NotificadorClienteService $notificador): void
+    protected function enviarLembrete(Prova $prova, NotificadorClienteService $notificador): bool
     {
         $cliente = $prova->pedido?->cliente;
 
         if (! $cliente || (int) $cliente->empresa_id !== (int) $prova->empresa_id) {
-            return;
+            return false;
         }
 
-        $notificador->notificar(
+        return $notificador->notificar(
             $cliente,
             "{$prova->tipoRotulo()} — {$prova->pedido->empresa->nome_comercial}",
             "Lembramos que tem a {$prova->tipoRotulo()} da sua peça agendada para ".
