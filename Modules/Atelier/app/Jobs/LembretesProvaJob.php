@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Atelier\Models\Prova;
 use Modules\Atelier\Services\Notificacoes\NotificadorClienteService;
@@ -15,12 +16,10 @@ use Throwable;
 
 /**
  * Corre de hora a hora (ver AtelierServiceProvider::agendarTarefas()).
- * Percorre provas de TODAS as empresas — por isso corre dentro do bypass
- * explícito do TenantManager, tal como VerificarSubscricoesExpiradasJob já
- * faz no módulo Subscricoes.
  *
- * Não envia lembretes de provas de pedidos já entregues/cancelados, nem de
- * empresas sem acesso ativo ou sem o serviço atelier.
+ * A consulta global descobre apenas os pares ID/empresa_id. Cada prova é
+ * recarregada e processada dentro de comEmpresa(), para que as relações
+ * Pedido, Cliente e Empresa respeitem os scopes do tenant proprietário.
  */
 class LembretesProvaJob implements ShouldQueue
 {
@@ -31,56 +30,83 @@ class LembretesProvaJob implements ShouldQueue
 
     public function handle(TenantManager $tenantManager, NotificadorClienteService $notificador): void
     {
-        $tenantManager->semTenant(function () use ($notificador) {
-            Prova::query()
-                ->whereIn('estado', ['agendada', 'confirmada', 'reagendada'])
-                ->whereNull('lembrete_enviado_em')
-                ->where('data_hora_agendada', '>=', now())
-                ->with(['pedido.cliente', 'pedido.empresa'])
-                ->chunkById(100, function ($provas) use ($notificador) {
-                    foreach ($provas as $prova) {
+        DB::table('atelier_provas')
+            ->select(['id', 'empresa_id'])
+            ->whereIn('estado', ['agendada', 'confirmada', 'reagendada'])
+            ->whereNull('lembrete_enviado_em')
+            ->where('data_hora_agendada', '>=', now())
+            ->orderBy('id')
+            ->chunkById(100, function ($identificadores) use ($tenantManager, $notificador): void {
+                foreach ($identificadores as $identificador) {
+                    $empresaId = (int) $identificador->empresa_id;
+                    $provaId = (int) $identificador->id;
+
+                    if ($empresaId < 1 || $provaId < 1) {
+                        continue;
+                    }
+
+                    $tenantManager->comEmpresa($empresaId, function () use ($empresaId, $provaId, $notificador): void {
+                        $prova = Prova::query()
+                            ->where('empresa_id', $empresaId)
+                            ->with(['pedido.cliente', 'pedido.empresa'])
+                            ->find($provaId);
+
+                        if (! $prova || (int) $prova->empresa_id !== $empresaId) {
+                            return;
+                        }
+
                         $pedido = $prova->pedido;
                         $empresa = $pedido?->empresa;
 
-                        if (! $pedido || $pedido->estaFinalizado()) {
-                            continue;
-                        }
-
-                        if (! $empresa || ! $empresa->temAcesso() || ! $empresa->temServico('atelier')) {
-                            continue;
-                        }
-
-                        if (! $prova->precisaDeLembrete()) {
-                            continue;
+                        // Uma FK simples não prova que a prova e o pedido pertencem
+                        // à mesma empresa. A relação scoped deve existir e coincidir.
+                        if (
+                            ! $pedido
+                            || (int) $pedido->empresa_id !== $empresaId
+                            || ! $empresa
+                            || (int) $empresa->id !== $empresaId
+                            || $pedido->estaFinalizado()
+                            || ! $empresa->temAcesso()
+                            || ! $empresa->temServico('atelier')
+                            || ! $prova->precisaDeLembrete()
+                        ) {
+                            return;
                         }
 
                         try {
-                            $this->enviarLembrete($prova, $notificador);
-                            $prova->update(['lembrete_enviado_em' => now()]);
+                            if ($this->enviarLembrete($prova, $notificador)) {
+                                $prova->update(['lembrete_enviado_em' => now()]);
+                            } else {
+                                Log::warning('Atelier: nenhum canal aceitou o lembrete de prova', [
+                                    'empresa_id' => $empresaId,
+                                    'prova_id' => $provaId,
+                                ]);
+                            }
                         } catch (Throwable $e) {
                             Log::error('Atelier: falha ao enviar lembrete de prova', [
-                                'prova_id' => $prova->id,
+                                'empresa_id' => $empresaId,
+                                'prova_id' => $provaId,
                                 'erro' => $e->getMessage(),
                             ]);
                         }
-                    }
-                });
-        });
+                    });
+                }
+            });
     }
 
-    protected function enviarLembrete(Prova $prova, NotificadorClienteService $notificador): void
+    protected function enviarLembrete(Prova $prova, NotificadorClienteService $notificador): bool
     {
         $cliente = $prova->pedido?->cliente;
 
-        if (! $cliente) {
-            return;
+        if (! $cliente || (int) $cliente->empresa_id !== (int) $prova->empresa_id) {
+            return false;
         }
 
-        $notificador->notificar(
+        return $notificador->notificar(
             $cliente,
-            "Lembrete: {$prova->tipoRotulo()} — {$prova->pedido->empresa->nome_comercial}",
+            "{$prova->tipoRotulo()} — {$prova->pedido->empresa->nome_comercial}",
             "Lembramos que tem a {$prova->tipoRotulo()} da sua peça agendada para ".
-                $prova->data_hora_agendada->format('d/m/Y \à\s H:i').'.',
+                $prova->data_hora_agendada->format('d/m/Y \\à\\s H:i').'.',
         );
     }
 }

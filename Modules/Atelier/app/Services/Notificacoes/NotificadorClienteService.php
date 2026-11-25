@@ -14,15 +14,11 @@ use Modules\Faturacao\Models\Cliente;
 use Throwable;
 
 /**
- * Ponto único de disparo de notificações ao cliente (requisito C). Percorre
- * os canais ativos em config('atelier.canais_notificacao') — por omissão só
- * 'mail', que funciona de imediato; 'whatsapp'/'sms' só fazem algo quando
- * as credenciais em .env estiverem preenchidas (ver WhatsAppCanal/SmsCanal).
- * Falha num canal nunca impede os restantes — cada envio é isolado e só
- * regista um warning.
+ * Ponto único de disparo de notificações ao cliente (requisito C).
  *
- * Telefones: normalizados para o formato internacional (Angola, +244, por
- * omissão) antes de chegarem aos canais — ver Support\NumeroTelefone.
+ * notificar() devolve true quando pelo menos um canal aceitou ou colocou a
+ * mensagem na fila. Não significa entrega final: os canais assíncronos têm
+ * o seu próprio ciclo de tentativas e confirmação.
  */
 class NotificadorClienteService
 {
@@ -32,18 +28,30 @@ class NotificadorClienteService
         string $mensagem,
         ?string $linkAcao = null,
         ?string $textoAcao = null,
-    ): void {
+    ): bool {
+        $algumCanalAceitou = false;
+
         foreach ((array) config('atelier.canais_notificacao') as $canal) {
             $canal = trim($canal);
 
+            if ($canal === '') {
+                continue;
+            }
+
+            if (! in_array($canal, ['mail', 'whatsapp', 'sms'], true)) {
+                Log::warning("Atelier: canal de notificação desconhecido \"{$canal}\".");
+
+                continue;
+            }
+
             try {
-                match ($canal) {
+                $aceitou = match ($canal) {
                     'mail' => $this->enviarMail($cliente, $assunto, $mensagem, $linkAcao, $textoAcao),
                     'whatsapp' => $this->enviarViaCanal(app(WhatsAppCanal::class), $cliente, $mensagem),
                     'sms' => $this->enviarViaCanal(app(SmsCanal::class), $cliente, $mensagem),
-                    '' => null,
-                    default => Log::warning("Atelier: canal de notificação desconhecido \"{$canal}\"."),
                 };
+
+                $algumCanalAceitou = $aceitou || $algumCanalAceitou;
             } catch (Throwable $e) {
                 Log::warning('Atelier: falha ao notificar cliente por um canal', [
                     'canal' => $canal,
@@ -52,6 +60,8 @@ class NotificadorClienteService
                 ]);
             }
         }
+
+        return $algumCanalAceitou;
     }
 
     /**
@@ -114,10 +124,6 @@ class NotificadorClienteService
             throw NotificacaoException::contactoEmFalta('mail');
         }
 
-        // Campanhas precisam de saber se o transporte de e-mail aceitou
-        // o envio antes de actualizar atelier_campanha_envios. A Notification
-        // implementa ShouldQueue para os restantes fluxos; sendNow evita que
-        // este caminho marque "enviado" apenas por ter colocado outro job na fila.
         Notification::sendNow(
             Notification::route('mail', $cliente->email),
             new ClienteAtelierNotification($assunto, $mensagem),
@@ -135,32 +141,38 @@ class NotificadorClienteService
         $canal->enviar($destino, $mensagem);
     }
 
-    protected function enviarMail(Cliente $cliente, string $assunto, string $mensagem, ?string $linkAcao, ?string $textoAcao): void
+    protected function enviarMail(Cliente $cliente, string $assunto, string $mensagem, ?string $linkAcao, ?string $textoAcao): bool
     {
         if (! $cliente->email) {
-            return;
+            return false;
         }
 
         Notification::route('mail', $cliente->email)
             ->notify(new ClienteAtelierNotification($assunto, $mensagem, $linkAcao, $textoAcao));
+
+        return true;
     }
 
-    protected function enviarViaCanal(CanalNotificacaoInterface $canal, Cliente $cliente, string $mensagem): void
+    protected function enviarViaCanal(CanalNotificacaoInterface $canal, Cliente $cliente, string $mensagem): bool
     {
         $destino = NumeroTelefone::internacional($cliente->telefone);
 
         if ($destino === null) {
-            return;
+            return false;
         }
 
         try {
             $canal->enviar($destino, $mensagem);
+
+            return true;
         } catch (NotificacaoException $e) {
             Log::warning('Atelier: falha ao notificar cliente', [
                 'canal' => $canal->identificador(),
                 'cliente_id' => $cliente->id,
                 'erro' => $e->getMessage(),
             ]);
+
+            return false;
         }
     }
 }
