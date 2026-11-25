@@ -126,7 +126,7 @@ class PedidoFluxoTest extends TestCase
 
         Event::assertDispatched(
             PedidoMudouEstado::class,
-            fn (PedidoMudouEstado $evento) => $evento->pedido->is($pedido) && $evento->estadoAnterior === 'pendente'
+            fn (PedidoMudouEstado $evento) => $evento->pedidoId === (int) $pedido->id && $evento->empresaId === (int) $pedido->empresa_id && $evento->estadoAnterior === 'pendente'
         );
     }
 

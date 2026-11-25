@@ -86,8 +86,13 @@ class PedidoStatusService
 
         // O evento só é disparado DEPOIS do commit: os listeners (notificação
         // ao cliente por WhatsApp/SMS/mail) nunca veem — nem avisam o cliente
-        // de — um estado que acabou em rollback.
-        event(new PedidoMudouEstado($pedido, $estadoAnterior));
+        // de — um estado que acabou em rollback. Só transporta IDs para que o
+        // worker volte a carregar o pedido com o tenant e scopes corretos.
+        event(new PedidoMudouEstado(
+            (int) $pedido->id,
+            (int) $pedido->empresa_id,
+            $estadoAnterior,
+        ));
 
         return $pedido;
     }

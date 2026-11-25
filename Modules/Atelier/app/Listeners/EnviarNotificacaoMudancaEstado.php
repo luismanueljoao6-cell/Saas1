@@ -10,13 +10,8 @@ use Modules\Core\Services\TenantManager;
 
 /**
  * Traduz uma mudança de estado (requisito A.2) numa notificação ao cliente
- * (requisito C.1). 'pendente', 'em_corte' e 'em_costura' são passos
- * internos de produção — não geram notificação.
- *
- * Corre na fila, onde não há tenant definido: por isso o acesso a Cliente
- * (que usa TenantScope, fail-closed) é feito dentro de semTenant(), tal como
- * os Jobs do módulo. $afterCommit garante que o worker só corre depois de o
- * novo estado estar gravado.
+ * (requisito C.1). O evento transporta apenas IDs; o pedido e as relações
+ * são recarregados dentro do tenant proprietário, sem bypass global.
  *
  * O motivo do cancelamento é uma nota INTERNA (pode conter observações que
  * o cliente não deve ler) — nunca é enviado na mensagem ao cliente.
@@ -32,11 +27,31 @@ class EnviarNotificacaoMudancaEstado implements ShouldQueue
 
     public function handle(PedidoMudouEstado $event): void
     {
-        $this->tenantManager->semTenant(function () use ($event) {
-            $pedido = $event->pedido;
-            $cliente = $pedido->cliente;
+        if ($event->pedidoId < 1 || $event->empresaId < 1) {
+            return;
+        }
 
-            if (! $cliente) {
+        $this->tenantManager->comEmpresa($event->empresaId, function () use ($event): void {
+            $pedido = Pedido::query()
+                ->where('empresa_id', $event->empresaId)
+                ->with(['cliente', 'empresa'])
+                ->find($event->pedidoId);
+
+            if (! $pedido || (int) $pedido->empresa_id !== $event->empresaId) {
+                return;
+            }
+
+            $cliente = $pedido->cliente;
+            $empresa = $pedido->empresa;
+
+            // A FK de cliente_id não é composta com empresa_id. A relação só
+            // pode ser usada se cliente, pedido e empresa forem do mesmo tenant.
+            if (
+                ! $cliente
+                || (int) $cliente->empresa_id !== $event->empresaId
+                || ! $empresa
+                || (int) $empresa->id !== $event->empresaId
+            ) {
                 return;
             }
 
@@ -48,7 +63,7 @@ class EnviarNotificacaoMudancaEstado implements ShouldQueue
 
             $this->notificador->notificar(
                 $cliente,
-                "Atualização do seu pedido — {$pedido->empresa->nome_comercial}",
+                "Atualização do seu pedido — {$empresa->nome_comercial}",
                 $mensagem,
             );
         });

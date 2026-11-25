@@ -21,6 +21,7 @@ use Modules\Core\Notifications\NotificationChannelRegistry;
 use Modules\Core\Services\TenantManager;
 use Modules\Faturacao\Models\Cliente;
 use RuntimeException;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 class NotificacoesELandingTest extends TestCase
@@ -51,7 +52,7 @@ class NotificacoesELandingTest extends TestCase
             'status' => 'primeira_prova',
         ]);
 
-        $evento = new PedidoMudouEstado($pedido->fresh(), 'em_costura');
+        $evento = new PedidoMudouEstado((int) $pedido->id, (int) $empresa->id, 'em_costura');
 
         // Como num worker da fila: nenhum tenant definido.
         $tenant->clear();
@@ -62,6 +63,47 @@ class NotificacoesELandingTest extends TestCase
             ClienteAtelierNotification::class,
             fn ($notificacao, $canais, $notifiable) => ($notifiable->routes['mail'] ?? null) === 'maria@example.test'
         );
+    }
+
+    public function test_listener_nao_notifica_cliente_de_outra_empresa_por_fk_historica_cruzada(): void
+    {
+        Notification::fake();
+        config(['atelier.canais_notificacao' => ['mail']]);
+
+        $empresaA = Empresa::create(['nome_comercial' => 'Atelier Pedido A', 'nif' => '400000111']);
+        $empresaB = Empresa::create(['nome_comercial' => 'Atelier Cliente B', 'nif' => '400000112']);
+        $tenant = app(TenantManager::class);
+
+        $clienteB = $tenant->comEmpresa((int) $empresaB->id, fn (): Cliente => Cliente::create([
+            'nome' => 'Cliente da empresa B',
+            'email' => 'cliente-b@example.test',
+        ]));
+
+        // A FK de atelier_pedidos.cliente_id não inclui empresa_id. Simula
+        // um registo legado inconsistente que nunca pode originar notificação
+        // para o cliente de outra empresa.
+        $pedidoA = $tenant->comEmpresa((int) $empresaA->id, fn (): Pedido => Pedido::create([
+            'cliente_id' => $clienteB->id,
+            'tipo_servico' => 'confecao_medida',
+            'descricao' => 'Pedido com relação histórica cruzada',
+            'valor_orcamento' => 10000,
+            'taxa_iva_aplicada' => 14,
+            'status' => 'primeira_prova',
+        ]));
+
+        $tenant->clear();
+
+        $registrar = app(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId(999991);
+
+        app(EnviarNotificacaoMudancaEstado::class)->handle(
+            new PedidoMudouEstado((int) $pedidoA->id, (int) $empresaA->id, 'em_costura')
+        );
+
+        Notification::assertNothingSent();
+        $this->assertNull($tenant->id());
+        $this->assertFalse($tenant->emBypass());
+        $this->assertSame(999991, $registrar->getPermissionsTeamId());
     }
 
     public function test_atelier_regista_canais_e_persiste_notificacao_na_outbox_do_core(): void
