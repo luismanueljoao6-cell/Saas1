@@ -71,7 +71,7 @@ class VerificarAniversariosJob implements ShouldQueue
                                     $cliente,
                                     "Feliz Aniversário! — {$empresa->nome_comercial}",
                                     "Hoje é um dia especial! A equipa do {$empresa->nome_comercial} deseja-lhe um feliz aniversário."
-                                        ."\\n\\nPara deixar de receber estas mensagens: ".$linkService->gerarLinkCancelarMarketing($cliente),
+                                        ."\n\nPara deixar de receber estas mensagens: ".$linkService->gerarLinkCancelarMarketing($cliente),
                                 );
                             }
                         } catch (Throwable $e) {
