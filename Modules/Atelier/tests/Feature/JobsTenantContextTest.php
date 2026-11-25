@@ -5,6 +5,7 @@ namespace Modules\Atelier\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Modules\Atelier\Jobs\DispararCampanhaJob;
@@ -15,6 +16,7 @@ use Modules\Atelier\Models\Campanha;
 use Modules\Atelier\Models\ClienteCrm;
 use Modules\Atelier\Models\Pedido;
 use Modules\Atelier\Models\Prova;
+use Modules\Atelier\Notifications\ClienteAtelierNotification;
 use Modules\Atelier\Services\CrmService;
 use Modules\Atelier\Services\Notificacoes\NotificadorClienteService;
 use Modules\Atelier\Services\PortalLinkService;
@@ -76,7 +78,8 @@ class JobsTenantContextTest extends TestCase
                 $empresasNotificadas[] = (int) $cliente->empresa_id;
 
                 return true;
-            });
+            })
+            ->andReturn(true);
 
         (new LembretesProvaJob)->handle($tenant, $notificador);
 
@@ -120,7 +123,8 @@ class JobsTenantContextTest extends TestCase
                 $empresasNotificadas[] = (int) $cliente->empresa_id;
 
                 return true;
-            });
+            })
+            ->andReturn(true);
 
         $portal = Mockery::mock(PortalLinkService::class);
         $portal->shouldReceive('gerarLinkCancelarMarketing')
@@ -179,6 +183,77 @@ class JobsTenantContextTest extends TestCase
         $this->assertSame(999993, $tenant->id());
         $this->assertSame(999993, $registrar->getPermissionsTeamId());
         $this->assertFalse($tenant->emBypass());
+    }
+
+    public function test_lembrete_sem_canal_aceite_nao_e_marcado_e_pode_ser_retentado(): void
+    {
+        $empresa = $this->novaEmpresa('Atelier Retry Prova', '400000207');
+        $dados = $this->criarProva($empresa, 'Cliente Retry Prova');
+        $tenant = app(TenantManager::class);
+
+        $notificador = Mockery::mock(NotificadorClienteService::class);
+        $notificador->shouldReceive('notificar')
+            ->twice()
+            ->andReturn(false, true);
+
+        $job = new LembretesProvaJob;
+
+        $job->handle($tenant, $notificador);
+
+        $this->assertNull(DB::table('atelier_provas')->where('id', $dados['prova']->id)->value('lembrete_enviado_em'));
+
+        $job->handle($tenant, $notificador);
+
+        $this->assertNotNull(DB::table('atelier_provas')->where('id', $dados['prova']->id)->value('lembrete_enviado_em'));
+    }
+
+    public function test_aniversario_sem_canal_aceite_liberta_chave_para_nova_tentativa(): void
+    {
+        $empresa = $this->novaEmpresa('Atelier Retry Aniversário', '400000208');
+        $this->criarAniversariante($empresa, 'Cliente Retry Aniversário');
+
+        $tenant = app(TenantManager::class);
+        $notificador = Mockery::mock(NotificadorClienteService::class);
+        $notificador->shouldReceive('notificar')
+            ->twice()
+            ->andReturn(false, true);
+
+        $portal = Mockery::mock(PortalLinkService::class);
+        $portal->shouldReceive('gerarLinkCancelarMarketing')
+            ->twice()
+            ->andReturn('https://example.test/marketing/cancelar');
+
+        $job = new VerificarAniversariosJob;
+        $argumentos = [$tenant, app(CrmService::class), $notificador, $portal];
+
+        $job->handle(...$argumentos);
+        $job->handle(...$argumentos);
+    }
+
+    public function test_notificador_indica_se_algum_canal_aceitou_a_mensagem(): void
+    {
+        Notification::fake();
+        config(['atelier.canais_notificacao' => ['mail']]);
+
+        $empresa = $this->novaEmpresa('Atelier Notificador', '400000209');
+        $tenant = app(TenantManager::class);
+
+        [$semEmail, $comEmail] = $tenant->comEmpresa((int) $empresa->id, function (): array {
+            return [
+                Cliente::create(['nome' => 'Sem email']),
+                Cliente::create(['nome' => 'Com email', 'email' => 'cliente@example.test']),
+            ];
+        });
+
+        $notificador = app(NotificadorClienteService::class);
+
+        $this->assertFalse($notificador->notificar($semEmail, 'Assunto', 'Mensagem'));
+        $this->assertTrue($notificador->notificar($comEmail, 'Assunto', 'Mensagem'));
+
+        Notification::assertSentOnDemand(
+            ClienteAtelierNotification::class,
+            fn ($notificacao, $canais, $notifiable) => ($notifiable->routes['mail'] ?? null) === 'cliente@example.test'
+        );
     }
 
     protected function novaEmpresa(string $nome, string $nif): Empresa
