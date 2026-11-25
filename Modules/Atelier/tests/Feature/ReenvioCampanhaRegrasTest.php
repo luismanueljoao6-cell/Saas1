@@ -107,7 +107,7 @@ class ReenvioCampanhaRegrasTest extends TestCase
         $this->criarCampanha($admin, 'concluida_com_falhas', now()->subHour());
         $this->criarCampanha($admin, 'enviada', now()->subDay());
 
-        (new EnviarCampanhasAgendadasJob)->handle(app(TenantManager::class));
+        (new EnviarCampanhasAgendadasJob)->handle();
 
         Queue::assertPushed(DispararCampanhaJob::class, 1);
         Queue::assertPushed(
