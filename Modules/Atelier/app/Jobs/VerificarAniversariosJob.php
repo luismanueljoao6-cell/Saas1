@@ -67,12 +67,31 @@ class VerificarAniversariosJob implements ShouldQueue
                                     continue;
                                 }
 
-                                $notificador->notificar(
-                                    $cliente,
-                                    "Feliz Aniversário! — {$empresa->nome_comercial}",
-                                    "Hoje é um dia especial! A equipa do {$empresa->nome_comercial} deseja-lhe um feliz aniversário."
-                                        ."\n\nPara deixar de receber estas mensagens: ".$linkService->gerarLinkCancelarMarketing($cliente),
-                                );
+                                try {
+                                    $aceitou = $notificador->notificar(
+                                        $cliente,
+                                        "Feliz Aniversário! — {$empresa->nome_comercial}",
+                                        "Hoje é um dia especial! A equipa do {$empresa->nome_comercial} deseja-lhe um feliz aniversário."
+                                            ."\n\nPara deixar de receber estas mensagens: ".$linkService->gerarLinkCancelarMarketing($cliente),
+                                    );
+
+                                    if (! $aceitou) {
+                                        Cache::forget($chave);
+
+                                        Log::warning('Atelier: nenhum canal aceitou a mensagem de aniversário', [
+                                            'empresa_id' => $empresaId,
+                                            'cliente_id' => $cliente->id,
+                                        ]);
+                                    }
+                                } catch (Throwable $e) {
+                                    Cache::forget($chave);
+
+                                    Log::warning('Atelier: falha ao preparar mensagem de aniversário', [
+                                        'empresa_id' => $empresaId,
+                                        'cliente_id' => $cliente->id,
+                                        'erro' => $e->getMessage(),
+                                    ]);
+                                }
                             }
                         } catch (Throwable $e) {
                             Log::error('Atelier: falha ao processar aniversários da empresa', [
