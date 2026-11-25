@@ -1,21 +1,20 @@
 <?php
 
-namespace Modules\Atelier\Jobs;
+namespace Modules\\Atelier\\Jobs;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Modules\Atelier\Models\Campanha;
-use Modules\Core\Services\TenantManager;
+use Illuminate\\Bus\\Queueable;
+use Illuminate\\Contracts\\Queue\\ShouldQueue;
+use Illuminate\\Foundation\\Bus\\Dispatchable;
+use Illuminate\\Queue\\InteractsWithQueue;
+use Illuminate\\Queue\\SerializesModels;
+use Illuminate\\Support\\Facades\\DB;
 
 /**
- * Faz o polling de campanhas com agendada_para vencida — o mesmo motivo já
- * documentado em config/config.php para os lembretes de prova: um Job
- * despachado com ->delay() não sobrevive a um restart da fila, polling
- * agendado sim. Corre de hora a hora; o trabalho de envio em si fica em
- * DispararCampanhaJob.
+ * Faz o polling de campanhas com agendada_para vencida.
+ *
+ * A descoberta é global, mas só lê os IDs necessários para despachar o job.
+ * O processamento da campanha é sempre feito por DispararCampanhaJob, que
+ * resolve a empresa proprietária e entra no respetivo contexto tenant.
  */
 class EnviarCampanhasAgendadasJob implements ShouldQueue
 {
@@ -24,17 +23,17 @@ class EnviarCampanhasAgendadasJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public function handle(TenantManager $tenantManager): void
+    public function handle(): void
     {
-        $tenantManager->semTenant(function () {
-            Campanha::query()
-                ->where('estado', 'agendada')
-                ->where('agendada_para', '<=', now())
-                ->chunkById(100, function ($campanhas) {
-                    foreach ($campanhas as $campanha) {
-                        DispararCampanhaJob::dispatch($campanha->id);
-                    }
-                });
-        });
+        DB::table('atelier_campanhas')
+            ->select('id')
+            ->where('estado', 'agendada')
+            ->where('agendada_para', '<=', now())
+            ->orderBy('id')
+            ->chunkById(100, function ($campanhas): void {
+                foreach ($campanhas as $campanha) {
+                    DispararCampanhaJob::dispatch((int) $campanha->id);
+                }
+            });
     }
 }
