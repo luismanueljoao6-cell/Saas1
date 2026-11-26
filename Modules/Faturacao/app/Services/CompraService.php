@@ -97,11 +97,24 @@ class CompraService
                 throw new DomainException('Não é possível receber uma compra sem linhas.');
             }
 
+            // Bloqueia os produtos por ID em ordem estável para impedir
+            // inativação concorrente durante a receção e reduzir deadlocks.
+            $produtos = Produto::query()
+                ->where('empresa_id', $empresa->id)
+                ->where('controla_stock', true)
+                ->where('ativo', true)
+                ->whereIn('id', $linhas->pluck('produto_id')->unique()->all())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
             foreach ($linhas as $linha) {
-                $produto = Produto::query()
-                    ->where('empresa_id', $empresa->id)
-                    ->where('controla_stock', true)
-                    ->findOrFail($linha->produto_id);
+                $produto = $produtos->get((int) $linha->produto_id);
+
+                if ($produto === null) {
+                    throw new DomainException('A compra contém um produto inativo ou indisponível para movimentação de stock.');
+                }
 
                 $this->stock->entrada(
                     $empresa,

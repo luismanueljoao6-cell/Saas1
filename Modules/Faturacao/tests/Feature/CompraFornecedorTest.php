@@ -552,4 +552,65 @@ class CompraFornecedorTest extends TestCase
             'quantidade' => '2.000',
         ]);
     }
+
+    public function test_nao_recebe_compra_se_um_produto_foi_inativado_depois_do_rascunho(): void
+    {
+        $fornecedor = Fornecedor::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Fornecedor com artigo descontinuado',
+            'pais' => 'AO',
+            'ativo' => true,
+        ]);
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Artigo descontinuado antes da receção',
+            'unidade' => 'un',
+            'preco_unitario' => '125.00',
+            'taxa_iva' => '0',
+            'ativo' => true,
+            'controla_stock' => true,
+        ]);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.guardar'), [
+                'fornecedor_id' => $fornecedor->id,
+                'data_documento' => today()->toDateString(),
+                'linhas' => [[
+                    'selecionado' => '1',
+                    'produto_id' => $produto->id,
+                    'quantidade' => '3.000',
+                    'preco_unitario' => '125.00',
+                    'taxa_iva' => '0',
+                ]],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $compra = Compra::withoutGlobalScopes()
+            ->where('empresa_id', $this->empresa->id)
+            ->firstOrFail();
+
+        $produto->update(['ativo' => false]);
+
+        $this->actingAs($this->utilizador)
+            ->post(route('faturacao.compras.receber', $compra))
+            ->assertSessionHasErrors(['compra']);
+
+        $this->assertDatabaseHas('compras', [
+            'id' => $compra->id,
+            'empresa_id' => $this->empresa->id,
+            'estado' => 'rascunho',
+        ]);
+        $this->assertDatabaseMissing('armazem_stock_saldos', [
+            'empresa_id' => $this->empresa->id,
+            'produto_id' => $produto->id,
+        ]);
+        $this->assertDatabaseMissing('armazem_stock_movimentos', [
+            'empresa_id' => $this->empresa->id,
+            'produto_id' => $produto->id,
+        ]);
+        $this->assertDatabaseMissing('stock_movimentos', [
+            'empresa_id' => $this->empresa->id,
+            'produto_id' => $produto->id,
+        ]);
+    }
 }
