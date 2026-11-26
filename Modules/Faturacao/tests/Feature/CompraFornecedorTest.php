@@ -552,6 +552,7 @@ class CompraFornecedorTest extends TestCase
             'quantidade' => '2.000',
         ]);
     }
+
     public function test_nao_recebe_compra_se_um_produto_foi_inativado_depois_do_rascunho(): void
     {
         $fornecedor = Fornecedor::create([
@@ -612,5 +613,4 @@ class CompraFornecedorTest extends TestCase
             'produto_id' => $produto->id,
         ]);
     }
-
 }
