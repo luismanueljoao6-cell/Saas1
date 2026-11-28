@@ -33,15 +33,17 @@ class ArmazemTransferenciaController extends Controller
             ->orderBy('nome')
             ->get(['id', 'nome']);
 
+        $utilizadorDaEmpresa = fn ($query) => $query->where('empresa_id', (int) $empresa->id);
+
         $transferencias = ArmazemTransferencia::query()
             ->with([
                 'origem:id,nome,codigo',
                 'destino:id,nome,codigo',
-                'criador:id,name',
-                'expedidor:id,name',
-                'recebedor:id,name',
+                'criador' => $utilizadorDaEmpresa,
+                'expedidor' => $utilizadorDaEmpresa,
+                'recebedor' => $utilizadorDaEmpresa,
                 'linhas.produto',
-                'rececoes.utilizador',
+                'rececoes.utilizador' => $utilizadorDaEmpresa,
                 'rececoes.linhas.linhaTransferencia.produto',
             ])
             ->latest()
